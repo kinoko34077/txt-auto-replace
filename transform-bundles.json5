@@ -38,5 +38,12 @@
       enabled: true,
       order: 50,
     },
+    {
+      id: "general-character-replacements",
+      label: "一般単漢字置換",
+      path: "transforms/60-general-character-replacements.json5",
+      enabled: true,
+      order: 60,
+    },
   ],
 }

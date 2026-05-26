@@ -7,7 +7,13 @@
 
   const DEBUG = true;
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
+  const BUNDLE_OVERRIDE_STORAGE_KEY = "bundleOverrideSettingsV1";
   const DICT_PATH = "dict/";
+  const EDITABLE_BUNDLE_IDS = new Set([
+    "legacy-kanji",
+    "general-character-replacements",
+    "homophone-kanji"
+  ]);
   const SKIP_TAGS = new Set([
     "SCRIPT",
     "STYLE",
@@ -463,6 +469,109 @@
     };
   };
 
+  const normalizeStoredRule = (rule) => {
+    if (!rule || typeof rule !== "object") {
+      return null;
+    }
+
+    return {
+      ...rule,
+      enabled: rule.enabled !== false,
+      priority: Number.isFinite(rule.priority) ? rule.priority : Number(rule.priority) || 0
+    };
+  };
+
+  const normalizeStoredBundleOverride = (override) => {
+    if (!override || typeof override !== "object" || Array.isArray(override)) {
+      return null;
+    }
+
+    const phraseRules = Array.isArray(override.phrase_rules)
+      ? override.phrase_rules
+        .map(normalizeStoredRule)
+        .filter(Boolean)
+      : null;
+
+    const characterMap = (
+      override.character_map &&
+      typeof override.character_map === "object" &&
+      !Array.isArray(override.character_map)
+    )
+      ? Object.fromEntries(
+        Object.entries(override.character_map).filter(([from, to]) => {
+          return Boolean(from) && Boolean(to) && from !== to;
+        })
+      )
+      : null;
+
+    return {
+      enabled: typeof override.enabled === "boolean" ? override.enabled : null,
+      phrase_rules: phraseRules,
+      character_map_priority: Number.isFinite(override.character_map_priority)
+        ? override.character_map_priority
+        : Number(override.character_map_priority) || null,
+      character_map: characterMap
+    };
+  };
+
+  const loadBundleOverrides = async () => {
+    if (!chrome?.storage?.local) {
+      return {};
+    }
+
+    const storedValue = await new Promise((resolve, reject) => {
+      chrome.storage.local.get([BUNDLE_OVERRIDE_STORAGE_KEY], (result) => {
+        const runtimeError = chrome.runtime.lastError;
+        if (runtimeError) {
+          reject(new Error(runtimeError.message));
+          return;
+        }
+
+        resolve(result?.[BUNDLE_OVERRIDE_STORAGE_KEY] ?? null);
+      });
+    });
+
+    const storedBundles = storedValue?.bundles;
+    if (!storedBundles || typeof storedBundles !== "object" || Array.isArray(storedBundles)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(storedBundles)
+        .filter(([bundleId]) => EDITABLE_BUNDLE_IDS.has(bundleId))
+        .map(([bundleId, override]) => [bundleId, normalizeStoredBundleOverride(override)])
+        .filter(([, override]) => override)
+    );
+  };
+
+  const applyBundleOverrideToManifest = (bundle, override) => {
+    if (!override || typeof override.enabled !== "boolean") {
+      return bundle;
+    }
+
+    return {
+      ...bundle,
+      enabled: override.enabled
+    };
+  };
+
+  const mergeBundleDefinition = (definition, override) => {
+    if (!override) {
+      return definition;
+    }
+
+    if (definition.kind !== "dictionary-rules") {
+      return definition;
+    }
+
+    return {
+      ...definition,
+      phrase_rules: override.phrase_rules ?? definition.phrase_rules ?? [],
+      character_map_priority: override.character_map_priority ?? definition.character_map_priority,
+      character_map: override.character_map ?? definition.character_map ?? {}
+    };
+  };
+
   const extractBundleRules = (bundle, definition) => {
     if (!definition) {
       throw new Error(`空のバンドル定義です: ${bundle.id}`);
@@ -505,8 +614,10 @@
 
   const loadRules = async () => {
     const bundleManifest = await loadJson5Resource(TRANSFORM_BUNDLES_PATH);
+    const bundleOverrides = await loadBundleOverrides();
     const bundles = (bundleManifest.bundles || [])
       .map(normalizeBundle)
+      .map((bundle) => applyBundleOverrideToManifest(bundle, bundleOverrides[bundle.id]))
       .filter((bundle) => bundle.enabled)
       .sort((left, right) => {
         return (left.order ?? 0) - (right.order ?? 0);
@@ -515,7 +626,10 @@
     const rules = [];
 
     for (const bundle of bundles) {
-      const definition = await loadJson5Resource(bundle.path);
+      const definition = mergeBundleDefinition(
+        await loadJson5Resource(bundle.path),
+        bundleOverrides[bundle.id]
+      );
       const bundleRules = extractBundleRules(bundle, definition);
       rules.push(...bundleRules);
     }

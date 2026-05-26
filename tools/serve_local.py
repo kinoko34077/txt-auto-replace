@@ -1,5 +1,7 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socket import timeout as SocketTimeout
+import errno
 
 
 HOST = "127.0.0.1"
@@ -21,6 +23,31 @@ class StaticHandler(SimpleHTTPRequestHandler):
         if path.endswith(".json5"):
             return "application/json"
         return super().guess_type(path)
+
+    def copyfile(self, source, outputfile):
+        try:
+            super().copyfile(source, outputfile)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, SocketTimeout, OSError) as error:
+            if not self._is_ignorable_disconnect(error):
+                raise
+
+    def log_message(self, format, *args):
+        # Keep the localhost server quiet unless there is a real problem.
+        return
+
+    @staticmethod
+    def _is_ignorable_disconnect(error):
+        if isinstance(error, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, SocketTimeout)):
+            return True
+
+        if isinstance(error, OSError):
+            return error.errno in {
+                errno.EPIPE,
+                errno.ECONNABORTED,
+                errno.ECONNRESET,
+            }
+
+        return False
 
 
 def main():

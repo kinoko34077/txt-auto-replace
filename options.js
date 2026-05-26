@@ -203,7 +203,12 @@
   };
 
   const applyBundlePayloadToState = (bundlePayload) => {
-    const importedBundles = bundlePayload?.bundles;
+    const importedRoot = (
+      bundlePayload?.bundles ? bundlePayload
+        : bundlePayload?.[STORAGE_KEY]?.bundles ? bundlePayload[STORAGE_KEY]
+          : null
+    );
+    const importedBundles = importedRoot?.bundles;
     if (!importedBundles || typeof importedBundles !== "object" || Array.isArray(importedBundles)) {
       throw new Error("bundles オブジェクトが見つかりません");
     }
@@ -316,6 +321,19 @@
       }
 
       return entries.map(([key, nestedValue]) => {
+        if (Array.isArray(nestedValue) && nestedValue.length === 0) {
+          return `${pad}${quoteYamlKey(key)}: []`;
+        }
+
+        if (
+          nestedValue &&
+          typeof nestedValue === "object" &&
+          !Array.isArray(nestedValue) &&
+          Object.keys(nestedValue).length === 0
+        ) {
+          return `${pad}${quoteYamlKey(key)}: {}`;
+        }
+
         if (nestedValue && typeof nestedValue === "object") {
           return `${pad}${quoteYamlKey(key)}:\n${serializeYamlValue(nestedValue, indent + 2)}`;
         }
@@ -430,8 +448,14 @@
         return null;
       }
 
-      if (lines[index].trimStart().startsWith("- ")) {
+      const trimmed = lines[index].trim();
+      if (trimmed.startsWith("- ")) {
         return parseArray(indent);
+      }
+
+      if (!trimmed.includes(":")) {
+        index += 1;
+        return parseYamlScalar(trimmed);
       }
 
       return parseObject(indent);

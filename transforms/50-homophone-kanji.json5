@@ -6,6 +6,18 @@
 {
   id: "homophone-kanji",
   label: "同音漢字置換",
-  kind: "token-rules",
-  rules: [],
+  kind: "dictionary-rules",
+  phrase_rules: [
+    // 固定熟語・固定語彙の同音漢字置換をここへ追加する。
+    // 例:
+    // {
+    //   from: "決別",
+    //   to: "訣別",
+    //   priority: 90,
+    // },
+  ],
+  character_map_priority: 10,
+  character_map: {
+    // 単漢字単位で安全に扱えるものだけを追加する。
+  },
 }

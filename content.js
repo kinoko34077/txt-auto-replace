@@ -96,6 +96,9 @@
 
     return {
       ...rule,
+      character_map: rule.character_map && typeof rule.character_map === "object"
+        ? { ...rule.character_map }
+        : null,
       sequence: Array.isArray(rule.sequence)
         ? rule.sequence.map(normalizeCondition)
         : null,
@@ -174,6 +177,25 @@
     return tokenMatchesCondition(token, matcher);
   };
 
+  const transformSurfaceWithCharacterMap = (surface, characterMap) => {
+    if (!surface || !characterMap) {
+      return surface;
+    }
+
+    let changed = false;
+    const transformed = Array.from(surface, (character) => {
+      const mappedCharacter = characterMap[character];
+      if (mappedCharacter && mappedCharacter !== character) {
+        changed = true;
+        return mappedCharacter;
+      }
+
+      return character;
+    }).join("");
+
+    return changed ? transformed : surface;
+  };
+
   const sequenceMatches = (tokens, index, rule) => {
     if (!Array.isArray(rule.sequence) || rule.sequence.length === 0) {
       return null;
@@ -227,6 +249,28 @@
   };
 
   const ruleMatches = (tokens, index, rule) => {
+    if (rule.character_map) {
+      const token = tokens[index];
+      if (!token) {
+        return null;
+      }
+
+      const transformedSurface = transformSurfaceWithCharacterMap(token.surface_form, rule.character_map);
+      if (transformedSurface === token.surface_form) {
+        return null;
+      }
+
+      if (!surroundingConditionsMatch(tokens, index, 1, rule)) {
+        return null;
+      }
+
+      return {
+        start: index,
+        length: 1,
+        replacement: transformedSurface
+      };
+    }
+
     const sequenceMatch = sequenceMatches(tokens, index, rule);
     if (sequenceMatch) {
       if (!surroundingConditionsMatch(tokens, sequenceMatch.start, sequenceMatch.length, rule)) {
@@ -291,7 +335,7 @@
           .slice(match.start, match.start + match.length)
           .map((matchedToken) => matchedToken.surface_form);
 
-        outputTokens[match.start].surface_form = rule.to;
+        outputTokens[match.start].surface_form = match.replacement ?? rule.to;
 
         for (let offset = 1; offset < match.length; offset++) {
           outputTokens[match.start + offset].surface_form = "";
@@ -420,18 +464,43 @@
   };
 
   const extractBundleRules = (bundle, definition) => {
+    if (!definition) {
+      throw new Error(`空のバンドル定義です: ${bundle.id}`);
+    }
+
+    if (definition.kind === "token-rules") {
+      const rules = Array.isArray(definition.rules) ? definition.rules : [];
+
+      return rules
+        .filter((rule) => rule && rule.enabled !== false)
+        .map((rule) => withBundleMetadata(rule, bundle))
+        .sort((left, right) => {
+          return (right.priority || 0) - (left.priority || 0);
+        });
+    }
+
+    if (definition.kind === "dictionary-rules") {
+      const phraseRules = Array.isArray(definition.phrase_rules) ? definition.phrase_rules : [];
+      const rules = phraseRules
+        .filter((rule) => rule && rule.enabled !== false)
+        .map((rule) => withBundleMetadata(rule, bundle));
+
+      if (definition.character_map && Object.keys(definition.character_map).length > 0) {
+        rules.push(withBundleMetadata({
+          type: "character-map",
+          priority: definition.character_map_priority ?? 0,
+          character_map: definition.character_map
+        }, bundle));
+      }
+
+      return rules.sort((left, right) => {
+        return (right.priority || 0) - (left.priority || 0);
+      });
+    }
+
     if (!definition || definition.kind !== "token-rules") {
       throw new Error(`未対応のバンドル種別です: ${bundle.id}`);
     }
-
-    const rules = Array.isArray(definition.rules) ? definition.rules : [];
-
-    return rules
-      .filter((rule) => rule && rule.enabled !== false)
-      .map((rule) => withBundleMetadata(rule, bundle))
-      .sort((left, right) => {
-        return (right.priority || 0) - (left.priority || 0);
-      });
   };
 
   const loadRules = async () => {

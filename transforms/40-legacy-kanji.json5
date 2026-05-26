@@ -6,6 +6,21 @@
 {
   id: "legacy-kanji",
   label: "旧字変換",
-  kind: "token-rules",
-  rules: [],
+  kind: "dictionary-rules",
+  phrase_rules: [
+    // 熟語単位の例外や優先語彙をここへ追加する。
+    // 例:
+    // {
+    //   from: "総合",
+    //   to: "綜合",
+    //   priority: 80,
+    // },
+  ],
+  character_map_priority: 10,
+  character_map: {
+    // 単漢字単位の旧字変換をここへ追加する。
+    // 例:
+    // "両": "兩",
+    // "乗": "乘",
+  },
 }

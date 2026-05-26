@@ -28,7 +28,7 @@
 
 ### 3.1 変換バンドルの構造
 
-変換規則は 1 ファイルに集約せず、`transform-bundles.json5` と `transforms/*.json5` に分けて管理する。`transform-bundles.json5` では適用順と有効状態を定義し、各バンドルファイルには実際の規則を置く。
+変換規則は 1 ファイルに集約せず、`transform-bundles.json5` と `transforms/*.json5` に分けて管理する。`transform-bundles.json5` では適用順と有効状態を定義し、各バンドルファイルには実際の規則を置く。バンドル形式は、通常の `token-rules` と、固定辞書向けの `dictionary-rules` を使い分ける。
 
 ```js
 {
@@ -69,6 +69,24 @@
   ],
   to: "面倒事",
   priority: 90,
+}
+```
+
+旧字変換や同音漢字置換のように、固定熟語と単漢字を分けて積みたい場合は `dictionary-rules` を使う。
+
+```js
+{
+  id: "legacy-kanji",
+  label: "旧字変換",
+  kind: "dictionary-rules",
+  phrase_rules: [
+    { from: "総合", to: "綜合", priority: 80 }
+  ],
+  character_map_priority: 10,
+  character_map: {
+    "両": "兩",
+    "乗": "乘",
+  }
 }
 ```
 

@@ -14,30 +14,33 @@
     },
     {
       // 面倒ごと系
-      from: "ごと",
+      sequence: [
+        {
+          surface: "面倒",
+          pos: "名詞",
+        },
+        {
+          surface: "ごと",
+          pos: "名詞",
+        },
+      ],
       to: "事",
       priority: 90,
-      conditions: {
-        prev: [
-          {
-            pos_detail_1: "形容動詞語幹",
-          },
-        ],
-      },
     },
     {
       // 時ごと系
-      from: "ごと",
-      to: "毎",
+      sequence: [
+        {
+          surface: "時",
+          pos: "名詞",
+        },
+        {
+          surface: "ごと",
+          pos: "名詞",
+        },
+      ],
+      to: "時毎",
       priority: 80,
-      conditions: {
-        prev: [
-          {
-            pos: "名詞",
-            pos_detail_1: "一般",
-          },
-        ],
-      },
     },
     {
       from: "それ",

@@ -70,6 +70,9 @@
 
     return {
       ...rule,
+      sequence: Array.isArray(rule.sequence)
+        ? rule.sequence.map(normalizeCondition)
+        : null,
       conditions: {
         current: normalizeConditionList(conditions.current),
         prev: normalizeConditionList(conditions.prev),
@@ -141,27 +144,84 @@
     return conditionList.some((condition) => tokenMatchesCondition(token, condition));
   };
 
-  const ruleMatches = (tokens, index, rule) => {
+  const tokenSatisfiesMatcher = (token, matcher) => {
+    return tokenMatchesCondition(token, matcher);
+  };
+
+  const sequenceMatches = (tokens, index, rule) => {
+    if (!Array.isArray(rule.sequence) || rule.sequence.length === 0) {
+      return null;
+    }
+
+    for (let offset = 0; offset < rule.sequence.length; offset++) {
+      const token = tokens[index + offset];
+      const matcher = rule.sequence[offset];
+
+      if (!token || !tokenSatisfiesMatcher(token, matcher)) {
+        return null;
+      }
+    }
+
+    return {
+      start: index,
+      length: rule.sequence.length
+    };
+  };
+
+  const singleTokenMatches = (tokens, index, rule) => {
     const token = tokens[index];
     if (!token || token.surface_form !== rule.from) {
       return false;
     }
 
+    return true;
+  };
+
+  const surroundingConditionsMatch = (tokens, index, length, rule) => {
+    const currentTokens = tokens.slice(index, index + length);
+    const currentToken = currentTokens[0];
+    const prevToken = tokens[index - 1];
+    const nextToken = tokens[index + length];
+
     const { current, prev, next } = rule.conditions;
 
-    if (current && !anyConditionMatches(token, current)) {
+    if (current && !anyConditionMatches(currentToken, current)) {
       return false;
     }
 
-    if (prev && !anyConditionMatches(tokens[index - 1], prev)) {
+    if (prev && !anyConditionMatches(prevToken, prev)) {
       return false;
     }
 
-    if (next && !anyConditionMatches(tokens[index + 1], next)) {
+    if (next && !anyConditionMatches(nextToken, next)) {
       return false;
     }
 
     return true;
+  };
+
+  const ruleMatches = (tokens, index, rule) => {
+    const sequenceMatch = sequenceMatches(tokens, index, rule);
+    if (sequenceMatch) {
+      if (!surroundingConditionsMatch(tokens, sequenceMatch.start, sequenceMatch.length, rule)) {
+        return null;
+      }
+
+      return sequenceMatch;
+    }
+
+    if (!singleTokenMatches(tokens, index, rule)) {
+      return null;
+    }
+
+    if (!surroundingConditionsMatch(tokens, index, 1, rule)) {
+      return null;
+    }
+
+    return {
+      start: index,
+      length: 1
+    };
   };
 
   const tokenLabel = (token) => {
@@ -196,16 +256,25 @@
       }
 
       for (const rule of rules) {
-        if (!ruleMatches(outputTokens, index, rule)) {
+        const match = ruleMatches(outputTokens, index, rule);
+        if (!match) {
           continue;
         }
 
-        const before = outputTokens[index].surface_form;
-        outputTokens[index].surface_form = rule.to;
+        const matchedTokens = outputTokens
+          .slice(match.start, match.start + match.length)
+          .map((matchedToken) => matchedToken.surface_form);
+
+        outputTokens[match.start].surface_form = rule.to;
+
+        for (let offset = 1; offset < match.length; offset++) {
+          outputTokens[match.start + offset].surface_form = "";
+        }
 
         if (DEBUG) {
           log("変換", {
-            from: before,
+            from: matchedTokens.join(""),
+            matchedTokens,
             to: rule.to,
             rule,
             bundle: {
@@ -213,12 +282,13 @@
               label: rule.bundle_label,
               order: rule.bundle_order
             },
-            prev: tokenLabel(outputTokens[index - 1]),
-            current: tokenLabel(outputTokens[index]),
-            next: tokenLabel(outputTokens[index + 1])
+            prev: tokenLabel(outputTokens[match.start - 1]),
+            current: tokenLabel(outputTokens[match.start]),
+            next: tokenLabel(outputTokens[match.start + match.length])
           });
         }
 
+        index = match.start + match.length - 1;
         break;
       }
     }

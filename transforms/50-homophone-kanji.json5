@@ -1,5 +1,7 @@
 // transforms/50-homophone-kanji.json5
 // 同音漢字置換専用バンドル。
+// 基本は固定語彙・固定熟語の単純置換で管理し、
+// 誤爆しやすいものだけ条件付きルールや sequence に逃がす。
 // 現段階では箱だけを分離し、個別ルールは未投入。
 {
   id: "homophone-kanji",

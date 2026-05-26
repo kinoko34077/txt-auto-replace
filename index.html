@@ -3,41 +3,217 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>形態素解析テスト</title>
     <script src="./lib/kuromoji.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            line-height: 1.7;
+            background: #f6f6f3;
+            color: #1f1f1c;
+        }
+
+        header {
+            padding: 24px 28px;
+            background: #1f1f1c;
+            color: #fffdf7;
+        }
+
+        main {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 24px 16px 48px;
+        }
+
+        section {
+            background: #fffdf9;
+            border: 1px solid #d8d2c6;
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        h1,
+        h2 {
+            margin-top: 0;
+        }
+
+        .note {
+            color: #5f5a52;
+            font-size: 14px;
+        }
+
+        .controls {
+            display: grid;
+            gap: 12px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            box-sizing: border-box;
+            padding: 12px;
+            font: inherit;
+            border: 1px solid #bdb4a5;
+            border-radius: 10px;
+            background: #fff;
+        }
+
+        .button-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        button {
+            padding: 9px 14px;
+            font: inherit;
+            border: 1px solid #7d7467;
+            border-radius: 999px;
+            background: #f3ede0;
+            color: #1f1f1c;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #e7dece;
+        }
+
+        .test-text {
+            padding: 12px 14px;
+            margin: 10px 0;
+            border-left: 4px solid #8e8477;
+            background: #faf7ef;
+            border-radius: 8px;
+        }
+
+        .grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        @media (min-width: 900px) {
+            .grid {
+                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                align-items: start;
+            }
+        }
+
+        pre {
+            overflow: auto;
+            padding: 14px;
+            border-radius: 10px;
+            background: #181818;
+            color: #e7f6ec;
+            font-size: 13px;
+        }
+    </style>
 </head>
 
 <body>
-    <h1>形態素解析テスト</h1>
+    <header>
+        <h1>形態素解析テスト</h1>
+        <p>入力文の追加と形態素解析結果の確認を同じページで行うためのテストページ</p>
+    </header>
 
-    <textarea id="input" rows="4" cols="60">文章を変換したい。</textarea>
-    <button id="tokenizeBtn">解析実行</button>
+    <main>
+        <section>
+            <h2>1. 入力と操作</h2>
+            <p class="note">入力した文をテスト用の本文エリアへ追加できます。Chrome 拡張を有効にしていれば、追加後の文にも変換がかかります。</p>
+            <div class="controls">
+                <textarea id="input">奇跡が起きた。両者は乗り越えることにした。面倒ごとを書き出す。</textarea>
+                <div class="button-row">
+                    <button id="addTextBtn">入力文を本文へ追加</button>
+                    <button id="tokenizeBtn">入力文を解析</button>
+                    <button id="clearBtn">追加文をクリア</button>
+                </div>
+            </div>
+        </section>
 
-    <pre id="output"></pre>
+        <div class="grid">
+            <section>
+                <h2>2. 本文テストエリア</h2>
+                <p class="note">ここへ追加された文は Text Node として DOM に入ります。拡張の変換結果確認用です。</p>
+                <div id="dynamicArea">
+                    <div class="test-text">初期文です。それをやることにした。</div>
+                    <div class="test-text">奇跡が起きた。両者は乗り越えることにした。</div>
+                </div>
+            </section>
+
+            <section>
+                <h2>3. 形態素解析結果</h2>
+                <p class="note">入力欄の内容を kuromoji で解析して表示します。</p>
+                <pre id="output">解析結果はここに表示されます。</pre>
+            </section>
+        </div>
+    </main>
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            const btn = document.getElementById("tokenizeBtn");
+            const input = document.getElementById("input");
+            const addTextBtn = document.getElementById("addTextBtn");
+            const tokenizeBtn = document.getElementById("tokenizeBtn");
+            const clearBtn = document.getElementById("clearBtn");
+            const dynamicArea = document.getElementById("dynamicArea");
+            const output = document.getElementById("output");
 
-            btn.addEventListener("click", () => {
-                const text = document.getElementById("input").value;
+            let tokenizerPromise = null;
 
-                if (typeof kuromoji === "undefined") {
-                    console.error("kuromojiがまだ読み込まれていません！");
-                    return;
+            const getTokenizer = () => {
+                if (tokenizerPromise) {
+                    return tokenizerPromise;
                 }
 
-                kuromoji.builder({ dicPath: "./dict/" }).build((err, tokenizer) => {
-                    if (err) {
-                        console.error("kuromoji辞書読み込み失敗:", err);
+                tokenizerPromise = new Promise((resolve, reject) => {
+                    if (typeof kuromoji === "undefined") {
+                        reject(new Error("kuromoji がまだ読み込まれていません。"));
                         return;
                     }
 
+                    kuromoji.builder({ dicPath: "./dict/" }).build((err, tokenizer) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+
+                        resolve(tokenizer);
+                    });
+                });
+
+                return tokenizerPromise;
+            };
+
+            addTextBtn.addEventListener("click", () => {
+                const text = input.value.trim();
+                if (!text) {
+                    return;
+                }
+
+                const block = document.createElement("div");
+                block.className = "test-text";
+                block.textContent = text;
+                dynamicArea.appendChild(block);
+            });
+
+            tokenizeBtn.addEventListener("click", async () => {
+                const text = input.value;
+
+                try {
+                    const tokenizer = await getTokenizer();
                     const tokens = tokenizer.tokenize(text);
                     console.log("解析結果:", tokens);
-                    document.getElementById("output").textContent =
-                        JSON.stringify(tokens, null, 2);
-                });
+                    output.textContent = JSON.stringify(tokens, null, 2);
+                } catch (error) {
+                    console.error("kuromoji 辞書読み込み失敗:", error);
+                    output.textContent = `解析失敗: ${error.message}`;
+                }
+            });
+
+            clearBtn.addEventListener("click", () => {
+                dynamicArea.innerHTML = "";
+                output.textContent = "解析結果はここに表示されます。";
             });
         });
     </script>

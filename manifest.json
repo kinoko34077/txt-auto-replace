@@ -1,7 +1,7 @@
 {
   "name": "省略変換器",
   "description": "日本語を簡潔に書き換える拡張機能。JSON5ルールとkuromoji.jsによる形態素解析を使用。",
-  "version": "1.1",
+  "version": "1.2",
   "manifest_version": 3,
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
@@ -18,7 +18,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "rules.json5",
+        "transform-bundles.json5",
+        "transforms/**",
         "dict/**"
       ],
       "matches": ["<all_urls>"]

@@ -6,7 +6,7 @@
   "use strict";
 
   const DEBUG = true;
-  const RULES_PATH = "rules.json5";
+  const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
   const DICT_PATH = "dict/";
   const SKIP_TAGS = new Set([
     "SCRIPT",
@@ -75,6 +75,15 @@
         prev: normalizeConditionList(conditions.prev),
         next: normalizeConditionList(conditions.next)
       }
+    };
+  };
+
+  const withBundleMetadata = (rule, bundle) => {
+    return {
+      ...normalizeRule(rule),
+      bundle_id: bundle.id,
+      bundle_label: bundle.label,
+      bundle_order: bundle.order ?? 0
     };
   };
 
@@ -199,6 +208,11 @@
             from: before,
             to: rule.to,
             rule,
+            bundle: {
+              id: rule.bundle_id,
+              label: rule.bundle_label,
+              order: rule.bundle_order
+            },
             prev: tokenLabel(outputTokens[index - 1]),
             current: tokenLabel(outputTokens[index]),
             next: tokenLabel(outputTokens[index + 1])
@@ -280,30 +294,70 @@
     });
   };
 
-  const loadRules = async () => {
+  const loadJson5Resource = async (path) => {
     if (typeof JSON5 === "undefined") {
       throw new Error("JSON5 が未読込です。manifest.json の content_scripts の順序を確認してください。");
     }
 
-    const url = chrome.runtime.getURL(RULES_PATH) + `?t=${Date.now()}`;
+    const url = chrome.runtime.getURL(path) + `?t=${Date.now()}`;
     const text = await fetch(url, { cache: "no-store" }).then((response) => {
       if (!response.ok) {
-        throw new Error(`rules.json5 読込失敗: ${response.status}`);
+        throw new Error(`${path} 読込失敗: ${response.status}`);
       }
 
       return response.text();
     });
 
-    const rules = JSON5.parse(text);
-    const normalizedRules = rules
+    log("JSON5 読込", { path, url });
+    return JSON5.parse(text);
+  };
+
+  const normalizeBundle = (bundle) => {
+    return {
+      id: bundle.id,
+      label: bundle.label ?? bundle.id,
+      path: bundle.path,
+      order: bundle.order ?? 0,
+      enabled: bundle.enabled !== false
+    };
+  };
+
+  const extractBundleRules = (bundle, definition) => {
+    if (!definition || definition.kind !== "token-rules") {
+      throw new Error(`未対応のバンドル種別です: ${bundle.id}`);
+    }
+
+    const rules = Array.isArray(definition.rules) ? definition.rules : [];
+
+    return rules
       .filter((rule) => rule && rule.enabled !== false)
-      .map(normalizeRule)
-      .sort((left, right) => (right.priority || 0) - (left.priority || 0));
+      .map((rule) => withBundleMetadata(rule, bundle))
+      .sort((left, right) => {
+        return (right.priority || 0) - (left.priority || 0);
+      });
+  };
 
-    log("rules.json5 URL", url);
-    log("読込 rules", normalizedRules);
+  const loadRules = async () => {
+    const bundleManifest = await loadJson5Resource(TRANSFORM_BUNDLES_PATH);
+    const bundles = (bundleManifest.bundles || [])
+      .map(normalizeBundle)
+      .filter((bundle) => bundle.enabled)
+      .sort((left, right) => {
+        return (left.order ?? 0) - (right.order ?? 0);
+      });
 
-    return normalizedRules;
+    const rules = [];
+
+    for (const bundle of bundles) {
+      const definition = await loadJson5Resource(bundle.path);
+      const bundleRules = extractBundleRules(bundle, definition);
+      rules.push(...bundleRules);
+    }
+
+    log("読込バンドル", bundles);
+    log("読込 rules", rules);
+
+    return rules;
   };
 
   const transformText = (text) => {

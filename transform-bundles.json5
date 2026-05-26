@@ -1,0 +1,42 @@
+// transform-bundles.json5
+// 拡張機能内の変換バンドル定義。
+// order が小さいものから順に適用される。
+{
+  bundles: [
+    {
+      id: "surface-normalization",
+      label: "表層正規化",
+      path: "transforms/10-surface-normalization.json5",
+      enabled: true,
+      order: 10,
+    },
+    {
+      id: "lexical-replacements",
+      label: "語彙置換",
+      path: "transforms/20-lexical-replacements.json5",
+      enabled: true,
+      order: 20,
+    },
+    {
+      id: "okurigana-abbreviation",
+      label: "送り仮名省略",
+      path: "transforms/30-okurigana-abbreviation.json5",
+      enabled: true,
+      order: 30,
+    },
+    {
+      id: "legacy-kanji",
+      label: "旧字変換",
+      path: "transforms/40-legacy-kanji.json5",
+      enabled: true,
+      order: 40,
+    },
+    {
+      id: "homophone-kanji",
+      label: "同音漢字置換",
+      path: "transforms/50-homophone-kanji.json5",
+      enabled: true,
+      order: 50,
+    },
+  ],
+}

@@ -1,0 +1,9 @@
+// transforms/40-legacy-kanji.json5
+// 旧字変換専用バンドル。
+// 現段階では箱だけを分離し、個別ルールは未投入。
+{
+  id: "legacy-kanji",
+  label: "旧字変換",
+  kind: "token-rules",
+  rules: [],
+}

@@ -1,0 +1,20 @@
+// transforms/10-surface-normalization.json5
+{
+  id: "surface-normalization",
+  label: "表層正規化",
+  kind: "token-rules",
+  rules: [
+    {
+      from: "、",
+      to: "､",
+      type: "symbol",
+      priority: 10,
+    },
+    {
+      from: "。",
+      to: "｡",
+      type: "symbol",
+      priority: 10,
+    },
+  ],
+}

@@ -33,6 +33,32 @@
     }
   };
 
+  const readNodeValueSafely = (node) => {
+    try {
+      return typeof node?.nodeValue === "string" ? node.nodeValue : "";
+    } catch (error) {
+      return "";
+    }
+  };
+
+  const describeNodeSafely = (node) => {
+    try {
+      return {
+        nodeType: node?.nodeType,
+        nodeName: node?.nodeName,
+        parentTagName: node?.parentElement?.tagName ?? null,
+        nodeValue: readNodeValueSafely(node)
+      };
+    } catch (error) {
+      return {
+        nodeType: null,
+        nodeName: null,
+        parentTagName: null,
+        nodeValue: ""
+      };
+    }
+  };
+
   const normalizeCondition = (condition) => {
     if (!condition || typeof condition !== "object" || Array.isArray(condition)) {
       return condition;
@@ -310,7 +336,8 @@
       return true;
     }
 
-    if (!node.nodeValue || !node.nodeValue.trim()) {
+    const nodeValue = readNodeValueSafely(node);
+    if (!nodeValue || !nodeValue.trim()) {
       return true;
     }
 
@@ -444,7 +471,7 @@
       return false;
     }
 
-    const original = textNode.nodeValue;
+    const original = readNodeValueSafely(textNode);
     if (!original) {
       return false;
     }
@@ -488,7 +515,7 @@
           changedCount++;
         }
       } catch (error) {
-        console.error("省略変換器: 変換失敗", error, textNode.nodeValue);
+        console.error("省略変換器: 変換失敗", error, describeNodeSafely(textNode));
       }
     }
 

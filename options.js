@@ -19,6 +19,10 @@
   const statusNode = document.getElementById("status");
   const saveAllButton = document.getElementById("save-all");
   const reloadDefaultsButton = document.getElementById("reload-defaults");
+  const importSettingsButton = document.getElementById("import-settings");
+  const exportJsonButton = document.getElementById("export-json");
+  const exportYamlButton = document.getElementById("export-yaml");
+  const importFileInput = document.getElementById("import-file");
 
   const setStatus = (message, type = "info") => {
     statusNode.textContent = message;
@@ -150,7 +154,7 @@
     );
   };
 
-  const buildStoragePayload = () => {
+  const buildBundlePayload = () => {
     const bundles = {};
 
     for (const bundleId of state.bundleOrder) {
@@ -182,16 +186,32 @@
       bundles[bundleId] = {
         enabled: bundleState.enabled !== false,
         phrase_rules: phraseRules,
-        character_map_priority: bundleState.character_map_priority,
+        character_map_priority: Number.isFinite(bundleState.character_map_priority)
+          ? bundleState.character_map_priority
+          : Number(bundleState.character_map_priority) || 10,
         character_map: characterMap
       };
     }
 
+    return { bundles };
+  };
+
+  const buildStoragePayload = () => {
     return {
-      [STORAGE_KEY]: {
-        bundles
-      }
+      [STORAGE_KEY]: buildBundlePayload()
     };
+  };
+
+  const applyBundlePayloadToState = (bundlePayload) => {
+    const importedBundles = bundlePayload?.bundles;
+    if (!importedBundles || typeof importedBundles !== "object" || Array.isArray(importedBundles)) {
+      throw new Error("bundles オブジェクトが見つかりません");
+    }
+
+    for (const bundleId of state.bundleOrder) {
+      const importedBundle = normalizeStoredOverride(importedBundles[bundleId]);
+      state.currentById[bundleId] = buildBundleState(state.baseById[bundleId], importedBundle);
+    }
   };
 
   const saveAll = async () => {
@@ -200,8 +220,11 @@
 
     for (const bundleId of state.bundleOrder) {
       const currentBundle = state.currentById[bundleId];
-      currentBundle.characterRows = cloneCharacterRows(storagePayload[STORAGE_KEY].bundles[bundleId].character_map);
-      currentBundle.phraseRules = clonePhraseRules(storagePayload[STORAGE_KEY].bundles[bundleId].phrase_rules);
+      const savedBundle = storagePayload[STORAGE_KEY].bundles[bundleId];
+      currentBundle.characterRows = cloneCharacterRows(savedBundle.character_map);
+      currentBundle.phraseRules = clonePhraseRules(savedBundle.phrase_rules);
+      currentBundle.enabled = savedBundle.enabled !== false;
+      currentBundle.character_map_priority = savedBundle.character_map_priority;
     }
 
     renderBundles();
@@ -212,9 +235,11 @@
     const storagePayload = buildStoragePayload();
     await storageSet(storagePayload);
 
-    const payload = storagePayload[STORAGE_KEY].bundles[bundleId];
-    state.currentById[bundleId].characterRows = cloneCharacterRows(payload.character_map);
-    state.currentById[bundleId].phraseRules = clonePhraseRules(payload.phrase_rules);
+    const savedBundle = storagePayload[STORAGE_KEY].bundles[bundleId];
+    state.currentById[bundleId].characterRows = cloneCharacterRows(savedBundle.character_map);
+    state.currentById[bundleId].phraseRules = clonePhraseRules(savedBundle.phrase_rules);
+    state.currentById[bundleId].enabled = savedBundle.enabled !== false;
+    state.currentById[bundleId].character_map_priority = savedBundle.character_map_priority;
 
     renderBundles();
     setStatus(`${state.currentById[bundleId].label} を保存しました。`, "success");
@@ -234,6 +259,346 @@
     button.textContent = label;
     button.addEventListener("click", onClick);
     return button;
+  };
+
+  const quoteYamlString = (value) => {
+    return JSON.stringify(String(value));
+  };
+
+  const quoteYamlKey = (key) => {
+    return /^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key);
+  };
+
+  const serializeYamlValue = (value, indent = 0) => {
+    const pad = " ".repeat(indent);
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return `${pad}[]`;
+      }
+
+      return value.map((item) => {
+        if (item && typeof item === "object" && !Array.isArray(item)) {
+          const entries = Object.entries(item);
+          if (entries.length === 0) {
+            return `${pad}- {}`;
+          }
+
+          const [firstKey, firstValue] = entries[0];
+          const lines = [];
+          if (firstValue && typeof firstValue === "object") {
+            lines.push(`${pad}- ${quoteYamlKey(firstKey)}:`);
+            lines.push(serializeYamlValue(firstValue, indent + 4));
+          } else {
+            lines.push(`${pad}- ${quoteYamlKey(firstKey)}: ${serializeYamlScalar(firstValue)}`);
+          }
+
+          for (const [nextKey, nextValue] of entries.slice(1)) {
+            if (nextValue && typeof nextValue === "object") {
+              lines.push(`${" ".repeat(indent + 2)}${quoteYamlKey(nextKey)}:`);
+              lines.push(serializeYamlValue(nextValue, indent + 4));
+            } else {
+              lines.push(`${" ".repeat(indent + 2)}${quoteYamlKey(nextKey)}: ${serializeYamlScalar(nextValue)}`);
+            }
+          }
+
+          return lines.join("\n");
+        }
+
+        return `${pad}- ${serializeYamlScalar(item)}`;
+      }).join("\n");
+    }
+
+    if (value && typeof value === "object") {
+      const entries = Object.entries(value);
+      if (entries.length === 0) {
+        return `${pad}{}`;
+      }
+
+      return entries.map(([key, nestedValue]) => {
+        if (nestedValue && typeof nestedValue === "object") {
+          return `${pad}${quoteYamlKey(key)}:\n${serializeYamlValue(nestedValue, indent + 2)}`;
+        }
+
+        return `${pad}${quoteYamlKey(key)}: ${serializeYamlScalar(nestedValue)}`;
+      }).join("\n");
+    }
+
+    return `${pad}${serializeYamlScalar(value)}`;
+  };
+
+  const serializeYamlScalar = (value) => {
+    if (typeof value === "string") {
+      return quoteYamlString(value);
+    }
+
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? String(value) : "0";
+    }
+
+    if (typeof value === "boolean") {
+      return value ? "true" : "false";
+    }
+
+    if (value === null || value === undefined) {
+      return "null";
+    }
+
+    return quoteYamlString(JSON.stringify(value));
+  };
+
+  const parseYamlScalar = (value) => {
+    const trimmed = value.trim();
+    if (trimmed === "true") {
+      return true;
+    }
+    if (trimmed === "false") {
+      return false;
+    }
+    if (trimmed === "null") {
+      return null;
+    }
+    if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+      return Number(trimmed);
+    }
+    if (
+      (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      if (trimmed.startsWith("\"")) {
+        return JSON.parse(trimmed);
+      }
+      return trimmed.slice(1, -1).replace(/''/g, "'");
+    }
+    if (trimmed === "[]") {
+      return [];
+    }
+    if (trimmed === "{}") {
+      return {};
+    }
+    return trimmed;
+  };
+
+  const splitYamlKeyValue = (text) => {
+    let inSingle = false;
+    let inDouble = false;
+
+    for (let index = 0; index < text.length; index++) {
+      const char = text[index];
+      const prev = text[index - 1];
+
+      if (char === "\"" && !inSingle && prev !== "\\") {
+        inDouble = !inDouble;
+        continue;
+      }
+
+      if (char === "'" && !inDouble) {
+        inSingle = !inSingle;
+        continue;
+      }
+
+      if (char === ":" && !inSingle && !inDouble) {
+        return {
+          key: text.slice(0, index).trim(),
+          value: text.slice(index + 1).trim()
+        };
+      }
+    }
+
+    throw new Error(`YAML の行を解釈できません: ${text}`);
+  };
+
+  const normalizeYamlKey = (key) => {
+    return parseYamlScalar(key);
+  };
+
+  const parseYamlDocument = (text) => {
+    const lines = text
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .filter((line) => !/^\s*$/.test(line) && !/^\s*#/.test(line));
+
+    let index = 0;
+
+    const parseNode = (indent) => {
+      if (index >= lines.length) {
+        return null;
+      }
+
+      const currentIndent = countIndent(lines[index]);
+      if (currentIndent < indent) {
+        return null;
+      }
+
+      if (lines[index].trimStart().startsWith("- ")) {
+        return parseArray(indent);
+      }
+
+      return parseObject(indent);
+    };
+
+    const parseObject = (indent) => {
+      const result = {};
+
+      while (index < lines.length) {
+        const line = lines[index];
+        const lineIndent = countIndent(line);
+        if (lineIndent < indent) {
+          break;
+        }
+        if (lineIndent !== indent) {
+          throw new Error(`YAML のインデントが不正です: ${line}`);
+        }
+
+        const trimmed = line.trim();
+        if (trimmed.startsWith("- ")) {
+          break;
+        }
+
+        const { key, value } = splitYamlKeyValue(trimmed);
+        index += 1;
+
+        if (value) {
+          result[normalizeYamlKey(key)] = parseYamlScalar(value);
+          continue;
+        }
+
+        const nextLine = lines[index];
+        if (!nextLine || countIndent(nextLine) <= indent) {
+          result[normalizeYamlKey(key)] = null;
+          continue;
+        }
+
+        result[normalizeYamlKey(key)] = parseNode(indent + 2);
+      }
+
+      return result;
+    };
+
+    const parseArray = (indent) => {
+      const result = [];
+
+      while (index < lines.length) {
+        const line = lines[index];
+        const lineIndent = countIndent(line);
+        if (lineIndent < indent) {
+          break;
+        }
+        if (lineIndent !== indent) {
+          throw new Error(`YAML のインデントが不正です: ${line}`);
+        }
+
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("- ")) {
+          break;
+        }
+
+        const itemText = trimmed.slice(2).trim();
+        index += 1;
+
+        if (!itemText) {
+          result.push(parseNode(indent + 2));
+          continue;
+        }
+
+        if (itemText.includes(":")) {
+          const item = {};
+          const firstPair = splitYamlKeyValue(itemText);
+          if (firstPair.value) {
+            item[normalizeYamlKey(firstPair.key)] = parseYamlScalar(firstPair.value);
+          } else {
+            item[normalizeYamlKey(firstPair.key)] = parseNode(indent + 4);
+          }
+
+          while (index < lines.length) {
+            const nextLine = lines[index];
+            const nextIndent = countIndent(nextLine);
+            if (nextIndent < indent + 2) {
+              break;
+            }
+            if (nextIndent === indent && nextLine.trimStart().startsWith("- ")) {
+              break;
+            }
+            if (nextIndent !== indent + 2) {
+              throw new Error(`YAML のインデントが不正です: ${nextLine}`);
+            }
+
+            const nextPair = splitYamlKeyValue(nextLine.trim());
+            index += 1;
+            if (nextPair.value) {
+              item[normalizeYamlKey(nextPair.key)] = parseYamlScalar(nextPair.value);
+            } else {
+              item[normalizeYamlKey(nextPair.key)] = parseNode(indent + 4);
+            }
+          }
+
+          result.push(item);
+          continue;
+        }
+
+        result.push(parseYamlScalar(itemText));
+      }
+
+      return result;
+    };
+
+    const countIndent = (line) => {
+      const matched = line.match(/^ */);
+      return matched ? matched[0].length : 0;
+    };
+
+    return parseNode(0);
+  };
+
+  const downloadText = (filename, text, mimeType) => {
+    const blob = new Blob([text], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportSettingsAsJson = () => {
+    const payload = buildBundlePayload();
+    downloadText(
+      "transform-settings.json",
+      `${JSON.stringify(payload, null, 2)}\n`,
+      "application/json"
+    );
+    setStatus("JSON を書き出しました。", "success");
+  };
+
+  const exportSettingsAsYaml = () => {
+    const payload = buildBundlePayload();
+    downloadText(
+      "transform-settings.yaml",
+      `${serializeYamlValue(payload)}\n`,
+      "text/yaml"
+    );
+    setStatus("YAML を書き出しました。", "success");
+  };
+
+  const importSettingsFromText = async (text, fileName) => {
+    const lowerName = fileName.toLowerCase();
+    let parsed;
+
+    if (lowerName.endsWith(".json")) {
+      parsed = JSON5.parse(text);
+    } else if (lowerName.endsWith(".yaml") || lowerName.endsWith(".yml")) {
+      parsed = parseYamlDocument(text);
+    } else {
+      try {
+        parsed = JSON5.parse(text);
+      } catch (jsonError) {
+        parsed = parseYamlDocument(text);
+      }
+    }
+
+    applyBundlePayloadToState(parsed);
+    renderBundles();
+    setStatus(`${fileName} を読込しました。保存すると反映されます。`, "success");
   };
 
   const bindFilter = (section, bundleId) => {
@@ -488,6 +853,43 @@
     } catch (error) {
       console.error(error);
       setStatus(`再読込に失敗しました: ${error.message}`, "error");
+    }
+  });
+
+  importSettingsButton.addEventListener("click", () => {
+    importFileInput.value = "";
+    importFileInput.click();
+  });
+
+  importFileInput.addEventListener("change", async () => {
+    const file = importFileInput.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      await importSettingsFromText(await file.text(), file.name);
+    } catch (error) {
+      console.error(error);
+      setStatus(`読込に失敗しました: ${error.message}`, "error");
+    }
+  });
+
+  exportJsonButton.addEventListener("click", () => {
+    try {
+      exportSettingsAsJson();
+    } catch (error) {
+      console.error(error);
+      setStatus(`JSON 書出に失敗しました: ${error.message}`, "error");
+    }
+  });
+
+  exportYamlButton.addEventListener("click", () => {
+    try {
+      exportSettingsAsYaml();
+    } catch (error) {
+      console.error(error);
+      setStatus(`YAML 書出に失敗しました: ${error.message}`, "error");
     }
   });
 

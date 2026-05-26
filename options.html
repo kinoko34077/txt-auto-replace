@@ -13,7 +13,6 @@
       --muted: #635949;
       --line: #d8c7aa;
       --accent: #7c2d12;
-      --accent-soft: #f5d6b3;
       --danger: #9f1239;
       --shadow: 0 16px 38px rgba(60, 36, 8, 0.08);
       --radius: 18px;
@@ -322,12 +321,17 @@
       <div class="toolbar-actions">
         <button id="save-all" class="primary" type="button">全体を保存</button>
         <button id="reload-defaults" class="secondary" type="button">既定を再読込</button>
+        <button id="import-settings" class="secondary" type="button">JSON/YAML 読込</button>
+        <button id="export-json" class="ghost" type="button">JSON 書出</button>
+        <button id="export-yaml" class="ghost" type="button">YAML 書出</button>
       </div>
       <div id="status" class="status" aria-live="polite"></div>
     </section>
 
     <main id="bundle-root" class="bundle-grid" aria-live="polite"></main>
   </div>
+
+  <input id="import-file" type="file" accept=".json,.yaml,.yml,application/json,text/yaml,text/x-yaml" hidden>
 
   <script src="lib/json5.min.js"></script>
   <script src="options.js"></script>

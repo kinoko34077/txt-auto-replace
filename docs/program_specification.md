@@ -54,7 +54,7 @@ jpn-transform-ext/
 | **manifest.json** | 拡張機能名・バージョン・必要な権限・読み込むスクリプトを定義する。`content_scripts` にはページ上で実行する JavaScript を指定し、`web_accessible_resources` には外部読み込みを許可するファイルを列挙する。 |
 | **content.js** | ページロード時に実行されるコンテンツスクリプト。変換バンドル定義の読込・形態素解析器初期化・テキストノード変換・動的 DOM 監視を担当する。 |
 | **transform-bundles.json5** | 変換バンドルの順序と有効状態を記述する。拡張機能という大きな箱の中で、どの変換箱をどの順序で適用するかを制御する。 |
-| **options.html / options.js** | 拡張機能の設定ページ。`chrome.storage.local` に保存したバンドル上書き設定を編集する。 |
+| **options.html / options.js** | 拡張機能の設定ページ。`chrome.storage.local` に保存したバンドル上書き設定を編集し、同じ構造の JSON / YAML として入出力する。 |
 | **transforms/*.json5** | バンドルごとの変換定義ファイル。`token-rules` と `dictionary-rules` の 2 種類を持てる。旧字変換や同音漢字置換のように固定資産化しやすいものを分離して管理する。 |
 | **lib/json5.min.js** | JSON5 をパースするライブラリ。`import` ではなく content script から読み込むため、`manifest.json` で `content_scripts` に含める必要がある。 |
 | **lib/kuromoji.js** | 形態素解析ライブラリ。辞書ファイルを用いて日本語文を単語単位に分割し、品詞（`pos`）・細分類（`pos_detail_1`）・活用形（`conjugated_form`）などの情報を提供する。 |

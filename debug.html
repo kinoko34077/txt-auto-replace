@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>省略変換器 Debug Site</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            line-height: 1.8;
+            margin: 0;
+            background: #f7f7f7;
+            color: #222;
+        }
+
+        header {
+            background: #222;
+            color: white;
+            padding: 24px 32px;
+        }
+
+        main {
+            max-width: 960px;
+            margin: 24px auto;
+            padding: 0 16px 48px;
+        }
+
+        section {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        h1,
+        h2 {
+            margin-top: 0;
+        }
+
+        .test-text {
+            padding: 12px 16px;
+            background: #fafafa;
+            border-left: 4px solid #999;
+            margin: 12px 0;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            font-size: 16px;
+            line-height: 1.7;
+            box-sizing: border-box;
+            padding: 12px;
+        }
+
+        button {
+            margin-top: 12px;
+            padding: 8px 14px;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        code {
+            background: #eee;
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+
+        .note {
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>省略変換器 Debug Site</h1>
+        <p>Chrome拡張による日本語変換の挙動確認用ページ</p>
+    </header>
+
+    <main>
+        <section>
+            <h2>1. 固定置換テスト</h2>
+            <p class="note">rules.json5 の literal 系ルールが効くか確認します。</p>
+
+            <div class="test-text">それをやることにした。</div>
+            <div class="test-text">やっぱりそれは分かる。</div>
+            <div class="test-text">それについて書き出す。</div>
+        </section>
+
+        <section>
+            <h2>2. 動詞・連用形テスト</h2>
+            <p class="note">「分かる」「当たる」「悩み」「書き出す」などの変換確認用。</p>
+
+            <div class="test-text">文章を変換したい。</div>
+            <div class="test-text">意味が分かる文章にしたい。</div>
+            <div class="test-text">面倒ごとに当たる。</div>
+            <div class="test-text">悩みを書き出す。</div>
+        </section>
+
+        <section>
+            <h2>3. 「こと」条件テスト</h2>
+            <p class="note">前トークン条件が正しく効くか確認します。</p>
+
+            <div class="test-text">日記を書くことにした。</div>
+            <div class="test-text">変換することができる。</div>
+            <div class="test-text">大事なことを忘れた。</div>
+            <div class="test-text">そのことについて考える。</div>
+        </section>
+
+        <section>
+            <h2>4. 句読点・記号テスト</h2>
+            <p class="note">将来的に「、→､」「。→｡」などを入れた時の確認欄。</p>
+
+            <div class="test-text">これは、テストです。さらに、確認します。</div>
+            <div class="test-text">9時から14時半まで作業した。</div>
+        </section>
+
+        <section>
+            <h2>5. 動的DOM追加テスト</h2>
+            <p class="note">ボタンを押すと後から文章を追加します。MutationObserver導入後の確認に使います。</p>
+            <button id="addTextBtn">テスト文を追加</button>
+            <div id="dynamicArea"></div>
+        </section>
+
+        <section>
+            <h2>6. textarea入力欄</h2>
+            <p class="note">通常のcontent scriptは、text nodeは変換しますが、textareaのvalueは別処理が必要です。</p>
+            <textarea>それをやることにした。やっぱり分かる。悩みを書き出す。</textarea>
+        </section>
+
+        <section>
+            <h2>7. 確認ポイント</h2>
+            <ul>
+                <li>ページ表示後、本文中の「それ」が「其」へ変換されるか。</li>
+                <li>「やっぱり」が「矢ッ張」へ変換されるか。</li>
+                <li>「分かる」が「分る」へ変換されるか。</li>
+                <li>「書くこと」「変換すること」だけが「ヿ」になるか。</li>
+                <li>「大事なこと」「そのこと」が誤変換されないか。</li>
+                <li>Consoleに <code>変換完了</code> が出るか。</li>
+            </ul>
+        </section>
+    </main>
+
+    <script>
+        document.getElementById("addTextBtn").addEventListener("click", () => {
+            const p = document.createElement("p");
+            p.className = "test-text";
+            p.textContent = "後から追加された文章です。それを書くことにしました。やっぱり分かる。";
+            document.getElementById("dynamicArea").appendChild(p);
+        });
+    </script>
+</body>
+
+</html>

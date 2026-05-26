@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>形態素解析テスト</title>
+    <script src="./lib/kuromoji.js"></script>
+</head>
+
+<body>
+    <h1>形態素解析テスト</h1>
+
+    <textarea id="input" rows="4" cols="60">文章を変換したい。</textarea>
+    <button id="tokenizeBtn">解析実行</button>
+
+    <pre id="output"></pre>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const btn = document.getElementById("tokenizeBtn");
+
+            btn.addEventListener("click", () => {
+                const text = document.getElementById("input").value;
+
+                if (typeof kuromoji === "undefined") {
+                    console.error("kuromojiがまだ読み込まれていません！");
+                    return;
+                }
+
+                kuromoji.builder({ dicPath: "./dict/" }).build((err, tokenizer) => {
+                    if (err) {
+                        console.error("kuromoji辞書読み込み失敗:", err);
+                        return;
+                    }
+
+                    const tokens = tokenizer.tokenize(text);
+                    console.log("解析結果:", tokens);
+                    document.getElementById("output").textContent =
+                        JSON.stringify(tokens, null, 2);
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>

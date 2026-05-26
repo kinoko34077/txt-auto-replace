@@ -2,19 +2,17 @@
 // 同音漢字置換専用バンドル。
 // 基本は固定語彙・固定熟語の単純置換で管理し、
 // 誤爆しやすいものだけ条件付きルールや sequence に逃がす。
-// 現段階では箱だけを分離し、個別ルールは未投入。
+// 現段階では熟語例として「奇跡 → 奇蹟」のみ投入。
 {
   id: "homophone-kanji",
   label: "同音漢字置換",
   kind: "dictionary-rules",
   phrase_rules: [
-    // 固定熟語・固定語彙の同音漢字置換をここへ追加する。
-    // 例:
-    // {
-    //   from: "決別",
-    //   to: "訣別",
-    //   priority: 90,
-    // },
+    {
+      from: "奇跡",
+      to: "奇蹟",
+      priority: 90,
+    },
   ],
   character_map_priority: 10,
   character_map: {

@@ -105,8 +105,8 @@
         </section>
 
         <section>
-            <h2>3. 「こと」条件テスト</h2>
-            <p class="note">前トークン条件が正しく効くか確認します。</p>
+            <h2>3. 「こと」単独トークン変換テスト</h2>
+            <p class="note">単独トークンとして解析される「こと」が一律で「ヿ」に変換されることを確認します。</p>
 
             <div class="test-text">日記を書くことにした。</div>
             <div class="test-text">変換することができる。</div>
@@ -124,7 +124,7 @@
 
         <section>
             <h2>5. 動的DOM追加テスト</h2>
-            <p class="note">ボタンを押すと後から文章を追加します。MutationObserver導入後の確認に使います。</p>
+            <p class="note">ボタンを押して後から追加された文章にも、自動で変換が適用されることを確認します。</p>
             <button id="addTextBtn">テスト文を追加</button>
             <div id="dynamicArea"></div>
         </section>
@@ -141,9 +141,10 @@
                 <li>ページ表示後、本文中の「それ」が「其」へ変換されるか。</li>
                 <li>「やっぱり」が「矢ッ張」へ変換されるか。</li>
                 <li>「分かる」が「分る」へ変換されるか。</li>
-                <li>「書くこと」「変換すること」だけが「ヿ」になるか。</li>
-                <li>「大事なこと」「そのこと」が誤変換されないか。</li>
-                <li>Consoleに <code>変換完了</code> が出るか。</li>
+                <li>単独トークンとして解析された「こと」が「ヿ」へ変換されるか。</li>
+                <li>「ことば」のような別トークン語が巻き込まれないか。</li>
+                <li>後から追加した文章にも自動で変換が反映されるか。</li>
+                <li>Console に <code>変換初期化完了</code> と MutationObserver 開始ログが出るか。</li>
             </ul>
         </section>
     </main>

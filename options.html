@@ -14,8 +14,9 @@
       --line: #d8c7aa;
       --accent: #7c2d12;
       --danger: #9f1239;
+      --warn: #a16207;
       --shadow: 0 16px 38px rgba(60, 36, 8, 0.08);
-      --radius: 18px;
+      --radius: 16px;
       --mono: "BIZ UDPGothic", "Yu Gothic UI", monospace;
       --sans: "BIZ UDPGothic", "Yu Gothic UI", sans-serif;
     }
@@ -35,272 +36,312 @@
     }
 
     .shell {
-      width: min(1200px, calc(100% - 32px));
-      margin: 24px auto 40px;
+      width: min(1400px, calc(100% - 14px));
+      margin: 8px auto 18px;
     }
 
     .hero,
     .toolbar,
-    .bundle-card {
+    .tabbar,
+    .bundle-card,
+    .diagnostics-card,
+    .group-card,
+    .panel-block {
       background: var(--panel);
       border: 1px solid rgba(124, 45, 18, 0.12);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
     }
 
+    .hero,
+    .toolbar,
+    .tabbar,
+    .bundle-card,
+    .diagnostics-card,
+    .group-card,
+    .panel-block {
+      padding: 8px 10px;
+    }
+
     .hero {
-      padding: 24px 28px;
-      margin-bottom: 16px;
+      margin-bottom: 8px;
     }
 
     .hero h1 {
-      margin: 0 0 10px;
-      font-size: clamp(24px, 4vw, 34px);
+      margin: 0 0 6px;
+      font-size: clamp(22px, 3.8vw, 30px);
       line-height: 1.1;
     }
 
     .hero p,
     .hero li,
-    .status {
+    .status,
+    .count,
+    .diag-summary {
       color: var(--muted);
-      line-height: 1.6;
+      line-height: 1.5;
     }
 
     .hero ul {
-      margin: 10px 0 0;
+      margin: 6px 0 0;
       padding-left: 18px;
     }
 
     .toolbar {
       position: sticky;
-      top: 12px;
+      top: 10px;
       z-index: 10;
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 8px;
       align-items: center;
       justify-content: space-between;
-      padding: 14px 18px;
-      margin-bottom: 16px;
+      margin-bottom: 8px;
       backdrop-filter: blur(10px);
     }
 
     .toolbar-actions,
     .bundle-actions,
-    .search-row {
+    .group-actions,
+    .panel-actions,
+    .bundle-title,
+    .group-title {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 6px;
       align-items: center;
     }
 
     .status {
-      min-height: 24px;
-      font-size: 14px;
+      min-height: 22px;
+      font-size: 13px;
     }
 
-    .bundle-grid {
+    .status[data-type="success"] {
+      color: #166534;
+    }
+
+    .status[data-type="error"] {
+      color: #b91c1c;
+    }
+
+    .tabbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .tab-panel[hidden] {
+      display: none;
+    }
+
+    .bundle-grid,
+    .diagnostics-grid,
+    .bundle-body {
       display: grid;
-      gap: 18px;
+      gap: 8px;
     }
 
-    .bundle-card {
-      padding: 20px;
-    }
-
-    .bundle-head {
+    .bundle-head,
+    .group-head,
+    .panel-head {
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 6px;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 14px;
+      margin-bottom: 6px;
     }
 
-    .bundle-title {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      align-items: center;
+    .bundle-title h2,
+    .group-title h3,
+    .panel-head h4,
+    .diagnostics-card h2,
+    .diag-item h3 {
+      margin: 0;
     }
 
     .bundle-title h2 {
-      margin: 0;
-      font-size: 22px;
+      font-size: 20px;
+    }
+
+    .group-title h3 {
+      font-size: 17px;
     }
 
     .chip {
       display: inline-flex;
       align-items: center;
-      padding: 4px 10px;
+      padding: 2px 8px;
       border-radius: 999px;
       background: var(--panel-strong);
       color: var(--muted);
-      font-size: 12px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.03em;
     }
 
-    .bundle-body {
-      display: grid;
-      gap: 16px;
+    .title-button {
+      appearance: none;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: text;
     }
 
-    .control-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid rgba(29, 26, 22, 0.12);
+      border-radius: 10px;
+      background: #fff8ec;
+      color: var(--ink);
+      padding: 5px 9px;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff9f2;
+    }
+
+    button.secondary {
+      background: #f3eadc;
+    }
+
+    button.ghost {
+      background: transparent;
+    }
+
+    button.warn {
+      border-color: rgba(161, 98, 7, 0.3);
+      color: #92400e;
+    }
+
+    button.danger {
+      border-color: rgba(159, 18, 57, 0.25);
+      color: #9f1239;
+    }
+
+    .tab-button[aria-selected="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff9f2;
+    }
+
+    .toggle {
+      display: inline-flex;
+      gap: 4px;
       align-items: center;
-      justify-content: space-between;
-    }
-
-    .control-row .count {
       color: var(--muted);
       font-size: 13px;
     }
 
-    .panel-block {
-      background: rgba(255, 255, 255, 0.72);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 14px;
-    }
-
-    .panel-block h3 {
-      margin: 0 0 10px;
-      font-size: 16px;
-    }
-
     .scroll-area {
-      max-height: 320px;
-      overflow: auto;
-      border: 1px solid rgba(99, 89, 73, 0.18);
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.82);
+      overflow-x: auto;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
+      min-width: 560px;
     }
 
     th,
     td {
-      padding: 10px;
-      border-bottom: 1px solid rgba(99, 89, 73, 0.12);
+      padding: 4px 5px;
+      border-bottom: 1px solid rgba(216, 199, 170, 0.7);
+      text-align: left;
       vertical-align: middle;
+      white-space: nowrap;
     }
 
     th {
-      position: sticky;
-      top: 0;
-      background: #f9f2e5;
-      text-align: left;
-      font-size: 13px;
       color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .check-col {
+      width: 1%;
+      text-align: center;
+    }
+
+    .action-col {
+      width: 1%;
     }
 
     input[type="text"],
     input[type="number"] {
-      width: 100%;
-      padding: 9px 10px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: #fffdf8;
+      min-width: 0;
+      padding: 4px 6px;
+      border: 1px solid rgba(29, 26, 22, 0.16);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.9);
       color: var(--ink);
-      font: inherit;
     }
 
-    input[type="text"]:focus,
-    input[type="number"]:focus {
-      outline: 2px solid rgba(124, 45, 18, 0.2);
-      border-color: var(--accent);
+    .cell-input {
+      width: auto;
+      min-width: 6ch;
+      max-width: 30ch;
     }
 
-    input.compact {
-      width: 76px;
-      text-align: center;
-      font-family: var(--mono);
+    .cell-input.compact {
+      min-width: 5ch;
+      max-width: 8ch;
     }
 
-    .search-input {
-      min-width: min(320px, 100%);
+    .title-editor {
+      min-width: 8ch;
+      max-width: 28ch;
     }
 
-    .toggle {
-      display: inline-flex;
+    input[type="checkbox"] {
+      inline-size: 15px;
+      block-size: 15px;
+    }
+
+    .diag-list {
+      display: grid;
       gap: 8px;
-      align-items: center;
-      color: var(--muted);
-      font-size: 14px;
     }
 
-    button {
-      border: 0;
-      border-radius: 999px;
-      padding: 10px 14px;
-      font: inherit;
-      cursor: pointer;
-      transition: transform 120ms ease, opacity 120ms ease, background-color 120ms ease;
+    .diag-item {
+      border: 1px solid rgba(161, 98, 7, 0.2);
+      background: rgba(255, 251, 235, 0.9);
+      border-radius: 12px;
+      padding: 8px;
     }
 
-    button:hover {
-      transform: translateY(-1px);
-    }
-
-    button.primary {
-      background: var(--accent);
-      color: #fff9f2;
-    }
-
-    button.secondary {
-      background: var(--panel-strong);
-      color: var(--ink);
-    }
-
-    button.ghost {
-      background: transparent;
-      border: 1px solid rgba(124, 45, 18, 0.18);
-      color: var(--muted);
-    }
-
-    button.danger {
-      background: rgba(159, 18, 57, 0.12);
-      color: var(--danger);
-    }
-
-    .row-delete {
-      width: 44px;
-      min-width: 44px;
-      padding-inline: 0;
-    }
-
-    .hint {
-      margin: 0;
-      color: var(--muted);
+    .diag-occurrence,
+    code {
+      font-family: var(--mono);
       font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .hidden-row {
-      display: none;
+      line-height: 1.6;
     }
 
     @media (max-width: 780px) {
       .shell {
-        width: min(100% - 18px, 100%);
-        margin-top: 12px;
+        width: min(100% - 8px, 100%);
       }
 
       .hero,
       .toolbar,
-      .bundle-card {
-        padding-inline: 16px;
-      }
-
-      th:nth-child(4),
-      td:nth-child(4) {
-        min-width: 72px;
+      .tabbar,
+      .bundle-card,
+      .diagnostics-card,
+      .group-card,
+      .panel-block {
+        padding-inline: 8px;
       }
     }
   </style>
@@ -309,18 +350,19 @@
   <div class="shell">
     <section class="hero">
       <h1>日本語表記変換システム 設定</h1>
-      <p>旧字変換・一般単漢字置換・同音熟語置換の辞書を、このブラウザ内だけで個別に編集できます。</p>
+      <p>Bundle と Group を入れ子で管理し、各置換をその場で編集します。名称はダブルクリックで変更できます。</p>
       <ul>
-        <li>保存後は、変換を確認したいページを再読み込みしてください。</li>
-        <li>ここでの編集内容は `chrome.storage.local` に保存され、同じ端末のこの拡張にだけ反映されます。</li>
-        <li>既定へ戻すと、その箱だけバンドル定義ファイルの内容に戻ります。</li>
+        <li>保存後は変換対象タブを再読み込みしてください。</li>
+        <li>設定は <code>chrome.storage.local</code> に保存され、拡張本体から参照されます。</li>
+        <li>診断タブでは重複した変更前や同名の箱を確認できます。</li>
       </ul>
     </section>
 
     <section class="toolbar">
       <div class="toolbar-actions">
         <button id="save-all" class="primary" type="button">全体を保存</button>
-        <button id="reload-defaults" class="secondary" type="button">既定を再読込</button>
+        <button id="add-bundle" class="secondary" type="button">Bundle追加</button>
+        <button id="reload-defaults" class="secondary" type="button">既定値を再読込</button>
         <button id="import-settings" class="secondary" type="button">JSON/YAML 読込</button>
         <button id="export-json" class="ghost" type="button">JSON 書出</button>
         <button id="export-yaml" class="ghost" type="button">YAML 書出</button>
@@ -328,7 +370,18 @@
       <div id="status" class="status" aria-live="polite"></div>
     </section>
 
-    <main id="bundle-root" class="bundle-grid" aria-live="polite"></main>
+    <nav class="tabbar" aria-label="設定タブ">
+      <button id="tab-bundles" class="tab-button secondary" type="button" aria-selected="true">Bundle編集</button>
+      <button id="tab-diagnostics" class="tab-button ghost" type="button" aria-selected="false">診断</button>
+    </nav>
+
+    <section id="panel-bundles" class="tab-panel">
+      <main id="bundle-root" class="bundle-grid" aria-live="polite"></main>
+    </section>
+
+    <section id="panel-diagnostics" class="tab-panel" hidden>
+      <div id="diagnostics-root" class="diagnostics-grid" aria-live="polite"></div>
+    </section>
   </div>
 
   <input id="import-file" type="file" accept=".json,.yaml,.yml,application/json,text/yaml,text/x-yaml" hidden>

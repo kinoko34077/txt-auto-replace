@@ -9,11 +9,6 @@
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
   const BUNDLE_OVERRIDE_STORAGE_KEY = "bundleOverrideSettingsV1";
   const DICT_PATH = "dict/";
-  const EDITABLE_BUNDLE_IDS = new Set([
-    "legacy-kanji",
-    "general-character-replacements",
-    "homophone-kanji"
-  ]);
   const SKIP_TAGS = new Set([
     "SCRIPT",
     "STYLE",
@@ -30,7 +25,8 @@
   const pendingTextNodes = new Set();
 
   let flushTimer = null;
-  let activeRules = [];
+  let activeTokenRules = [];
+  let activeStringRules = [];
   let activeTokenizer = null;
 
   const log = (...args) => {
@@ -97,11 +93,185 @@
     return conditionList.map(normalizeCondition);
   };
 
+  const splitReplacementCandidates = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => `${entry ?? ""}`.trim())
+        .filter(Boolean);
+    }
+
+    if (typeof value !== "string") {
+      return [];
+    }
+
+    return value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  };
+
+  const normalizePhraseRuleRecord = (from, rawRule) => {
+    if (typeof rawRule === "string") {
+      const candidates = splitReplacementCandidates(rawRule);
+      return {
+        from,
+        to: candidates[0] ?? "",
+        candidates,
+        priority: 0,
+        enabled: true,
+        regex: false
+      };
+    }
+
+    if (Array.isArray(rawRule)) {
+      const candidates = splitReplacementCandidates(rawRule[0]);
+      return {
+        from,
+        to: candidates[0] ?? "",
+        candidates,
+        priority: Number.isFinite(rawRule[1]) ? rawRule[1] : Number(rawRule[1]) || 0,
+        enabled: rawRule[2] !== false,
+        regex: rawRule[3] === true
+      };
+    }
+
+    if (rawRule && typeof rawRule === "object") {
+      const candidates = splitReplacementCandidates(rawRule.candidates ?? rawRule.to);
+      return {
+        ...rawRule,
+        from: `${rawRule.from ?? from ?? ""}`,
+        to: candidates[0] ?? `${rawRule.to ?? ""}`,
+        candidates,
+        priority: Number.isFinite(rawRule.priority) ? rawRule.priority : Number(rawRule.priority) || 0,
+        enabled: rawRule.enabled !== false,
+        regex: rawRule.regex === true || rawRule.is_regex === true
+      };
+    }
+
+    return null;
+  };
+
+  const normalizePhraseRulesInput = (rules) => {
+    if (Array.isArray(rules)) {
+      return rules
+        .map((rule) => {
+          if (Array.isArray(rule)) {
+            return normalizePhraseRuleRecord(rule[0], [rule[1], rule[2], rule[3]]);
+          }
+
+          return normalizePhraseRuleRecord(rule?.from ?? "", rule);
+        })
+        .filter((rule) => rule && rule.from && rule.to);
+    }
+
+    if (rules && typeof rules === "object") {
+      return Object.entries(rules)
+        .map(([from, rawRule]) => normalizePhraseRuleRecord(from, rawRule))
+        .filter((rule) => rule && rule.from && rule.to);
+    }
+
+    return [];
+  };
+
+  const splitNodeEntries = (entries, fallbackPriority = 10) => {
+    const replaceRules = [];
+
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+
+      const entryType = `${entry.type ?? "replace-rule"}`;
+      if (entryType === "phrase-rule" || entryType === "character-map" || entryType === "replace-rule") {
+        const sequenceLabel = Array.isArray(entry.sequence)
+          ? entry.sequence
+              .map((token) => `${token?.surface ?? token?.basic ?? "*"}`.trim())
+              .filter(Boolean)
+              .join(" ")
+          : "";
+        const from = `${entry.from ?? sequenceLabel ?? ""}`.trim();
+        const to = `${entry.to ?? ""}`.trim();
+        if (!from || !to || entry.enabled === false) {
+          continue;
+        }
+
+        replaceRules.push({
+          id: `${entry.id ?? ""}`.trim() || undefined,
+          type: "replace-rule",
+          from,
+          to,
+          raw: { ...entry },
+          candidates: splitReplacementCandidates(entry.candidates ?? to),
+          regex: entry.regex === true || entry.is_regex === true,
+          priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
+          enabled: entry.enabled !== false
+        });
+      }
+    }
+
+    return replaceRules;
+  };
+
+  const normalizeDictionaryNode = (node, fallbackId = "group", fallbackLabel = "Group") => {
+    const fallbackPriority = Number.isFinite(node?.character_map_priority)
+      ? node.character_map_priority
+      : Number(node?.character_map_priority) || 10;
+    const directEntries = splitNodeEntries(node?.entries, fallbackPriority);
+    const directRules = splitNodeEntries(node?.rules, fallbackPriority);
+    const legacyEntries = [
+      ...normalizePhraseRulesInput(node?.phrase_rules).map((rule) => ({
+        ...rule,
+        type: "replace-rule",
+        regex: rule.regex === true
+      })),
+      ...normalizePhraseRulesInput(node?.replace_rules).map((rule) => ({
+        ...rule,
+        type: "replace-rule",
+        regex: rule.regex === true
+      })),
+      ...(
+        node?.character_map &&
+        typeof node.character_map === "object" &&
+        !Array.isArray(node.character_map)
+      ? Object.entries(node.character_map)
+        .filter(([from, to]) => Boolean(from) && Boolean(to) && from !== to)
+        .map(([from, to]) => ({
+          type: "replace-rule",
+          from,
+          to,
+          candidates: [to],
+          regex: false,
+          priority: fallbackPriority,
+          enabled: true
+        }))
+      : [])
+    ];
+
+    const childSource = Array.isArray(node?.children) && node.children.length > 0
+      ? node.children
+      : Array.isArray(node?.groups) && node.groups.length > 0
+        ? node.groups
+        : [];
+
+    return {
+      id: `${node?.id ?? fallbackId}`.trim() || fallbackId,
+      label: `${node?.label ?? fallbackLabel}`.trim() || fallbackLabel,
+      enabled: node?.enabled !== false,
+      entries: directEntries.length > 0 ? directEntries : (directRules.length > 0 ? directRules : legacyEntries),
+      children: childSource.map((child, index) => {
+        return normalizeDictionaryNode(child, `${fallbackId}-${index + 1}`, `${fallbackLabel} ${index + 1}`);
+      })
+    };
+  };
+
   const normalizeRule = (rule) => {
     const conditions = rule.conditions || {};
+    const candidates = splitReplacementCandidates(rule.candidates ?? rule.to);
 
     return {
       ...rule,
+      to: candidates[0] ?? rule.to,
+      candidates,
       character_map: rule.character_map && typeof rule.character_map === "object"
         ? { ...rule.character_map }
         : null,
@@ -123,6 +293,52 @@
       bundle_label: bundle.label,
       bundle_order: bundle.order ?? 0
     };
+  };
+
+  const withGroupMetadata = (rule, group) => {
+    return {
+      ...rule,
+      group_id: group.id,
+      group_label: group.label
+    };
+  };
+
+  const hashString = (value) => {
+    let hash = 2166136261;
+
+    for (let index = 0; index < value.length; index++) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+
+    return hash >>> 0;
+  };
+
+  const chooseReplacement = (rule, matchedText) => {
+    const candidates = Array.isArray(rule.candidates) && rule.candidates.length > 0
+      ? rule.candidates
+      : splitReplacementCandidates(rule.to);
+
+    if (!candidates.length) {
+      return rule.to;
+    }
+
+    if (candidates.length === 1) {
+      return candidates[0];
+    }
+
+    const seedSource = [
+      location.href,
+      rule.bundle_id ?? "",
+      rule.from ?? matchedText,
+      matchedText
+    ].join("|");
+    const selectedIndex = hashString(seedSource) % candidates.length;
+    return candidates[selectedIndex];
+  };
+
+  const escapeRegex = (value) => {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   };
 
   const valueMatches = (actual, expected) => {
@@ -300,6 +516,35 @@
     };
   };
 
+  const applyStringTransformations = (text, rules) => {
+    let result = text;
+
+    for (const rule of rules) {
+      if (!rule || rule.enabled === false) {
+        continue;
+      }
+
+      if (rule.regex === true) {
+        try {
+          const regex = new RegExp(rule.from, "gu");
+          result = result.replace(regex, (matchedText) => chooseReplacement(rule, matchedText));
+        } catch (error) {
+          log("regex 置換失敗", { rule, error: error.message });
+        }
+        continue;
+      }
+
+      if (!rule.from) {
+        continue;
+      }
+
+      const replacement = chooseReplacement(rule, rule.from);
+      result = result.replace(new RegExp(escapeRegex(rule.from), "gu"), replacement);
+    }
+
+    return result;
+  };
+
   const tokenLabel = (token) => {
     if (!token) {
       return null;
@@ -341,7 +586,8 @@
           .slice(match.start, match.start + match.length)
           .map((matchedToken) => matchedToken.surface_form);
 
-        outputTokens[match.start].surface_form = match.replacement ?? rule.to;
+        const matchedText = matchedTokens.join("");
+        outputTokens[match.start].surface_form = match.replacement ?? chooseReplacement(rule, matchedText);
 
         for (let offset = 1; offset < match.length; offset++) {
           outputTokens[match.start + offset].surface_form = "";
@@ -349,9 +595,9 @@
 
         if (DEBUG) {
           log("変換", {
-            from: matchedTokens.join(""),
+            from: matchedText,
             matchedTokens,
-            to: rule.to,
+            to: outputTokens[match.start].surface_form,
             rule,
             bundle: {
               id: rule.bundle_id,
@@ -463,22 +709,26 @@
     return {
       id: bundle.id,
       label: bundle.label ?? bundle.id,
-      path: bundle.path,
+      kind: bundle.kind ?? null,
+      path: bundle.path ?? null,
       order: bundle.order ?? 0,
       enabled: bundle.enabled !== false
     };
   };
 
-  const normalizeStoredRule = (rule) => {
-    if (!rule || typeof rule !== "object") {
-      return null;
-    }
-
+  const buildVirtualBundleDefinition = (bundle) => {
     return {
-      ...rule,
-      enabled: rule.enabled !== false,
-      priority: Number.isFinite(rule.priority) ? rule.priority : Number(rule.priority) || 0
+      id: bundle.id,
+      label: bundle.label,
+      kind: bundle.kind ?? "dictionary-rules",
+      enabled: bundle.enabled !== false,
+      entries: Array.isArray(bundle.entries) ? bundle.entries : [],
+      children: Array.isArray(bundle.children) ? bundle.children : []
     };
+  };
+
+  const normalizeStoredRule = (rule) => {
+    return normalizePhraseRuleRecord(rule?.from ?? "", rule);
   };
 
   const normalizeStoredBundleOverride = (override) => {
@@ -486,31 +736,23 @@
       return null;
     }
 
-    const phraseRules = Array.isArray(override.phrase_rules)
-      ? override.phrase_rules
-        .map(normalizeStoredRule)
-        .filter(Boolean)
-      : null;
-
-    const characterMap = (
-      override.character_map &&
-      typeof override.character_map === "object" &&
-      !Array.isArray(override.character_map)
-    )
-      ? Object.fromEntries(
-        Object.entries(override.character_map).filter(([from, to]) => {
-          return Boolean(from) && Boolean(to) && from !== to;
-        })
-      )
-      : null;
+    const normalizedRoot = normalizeDictionaryNode({
+      ...override,
+      id: override.id ?? "bundle",
+      label: override.label ?? override.id ?? "Bundle"
+    }, "bundle", "Bundle");
+    normalizedRoot.entries = normalizedRoot.entries.filter((rule) => {
+      return Boolean(rule.from) && Boolean(rule.to) && rule.from !== rule.to;
+    });
 
     return {
+      id: normalizedRoot.id,
+      label: normalizedRoot.label,
+      kind: typeof override.kind === "string" ? override.kind : normalizedRoot.kind,
+      order: Number.isFinite(override.order) ? override.order : Number(override.order) || null,
       enabled: typeof override.enabled === "boolean" ? override.enabled : null,
-      phrase_rules: phraseRules,
-      character_map_priority: Number.isFinite(override.character_map_priority)
-        ? override.character_map_priority
-        : Number(override.character_map_priority) || null,
-      character_map: characterMap
+      entries: normalizedRoot.entries,
+      children: normalizedRoot.children
     };
   };
 
@@ -531,6 +773,16 @@
       });
     });
 
+    const storedRoots = Array.isArray(storedValue?.roots) ? storedValue.roots : null;
+    if (storedRoots) {
+      return Object.fromEntries(
+        storedRoots
+          .filter((root) => root?.id)
+          .map((root) => [root.id, normalizeStoredBundleOverride(root)])
+          .filter(([, override]) => override)
+      );
+    }
+
     const storedBundles = storedValue?.bundles;
     if (!storedBundles || typeof storedBundles !== "object" || Array.isArray(storedBundles)) {
       return {};
@@ -538,20 +790,23 @@
 
     return Object.fromEntries(
       Object.entries(storedBundles)
-        .filter(([bundleId]) => EDITABLE_BUNDLE_IDS.has(bundleId))
+        .filter(([bundleId]) => bundleId)
         .map(([bundleId, override]) => [bundleId, normalizeStoredBundleOverride(override)])
         .filter(([, override]) => override)
     );
   };
 
   const applyBundleOverrideToManifest = (bundle, override) => {
-    if (!override || typeof override.enabled !== "boolean") {
+    if (!override) {
       return bundle;
     }
 
     return {
       ...bundle,
-      enabled: override.enabled
+      label: override.label ?? bundle.label,
+      kind: override.kind ?? bundle.kind,
+      order: override.order ?? bundle.order,
+      enabled: override.enabled ?? bundle.enabled
     };
   };
 
@@ -561,14 +816,52 @@
     }
 
     if (definition.kind !== "dictionary-rules") {
+      if (definition.kind === "token-rules" && (Array.isArray(override.entries) || Array.isArray(override.children))) {
+        const flattenNodesToRules = (node) => {
+          const rules = [];
+          if (Array.isArray(node.entries)) {
+            for (const entry of node.entries) {
+              if (!entry || !entry.from || !entry.to) {
+                continue;
+              }
+              const baseRule = entry.raw && typeof entry.raw === "object"
+                ? { ...entry.raw }
+                : {};
+              rules.push({
+                ...baseRule,
+                id: entry.id ?? baseRule.id,
+                from: entry.from,
+                to: entry.to,
+                priority: entry.priority,
+                enabled: entry.enabled !== false,
+                regex: entry.regex === true
+              });
+            }
+          }
+          if (Array.isArray(node.children)) {
+            for (const child of node.children) {
+              rules.push(...flattenNodesToRules(child));
+            }
+          }
+          return rules;
+        };
+
+        return {
+          ...definition,
+          label: override.label ?? definition.label,
+          enabled: override.enabled ?? definition.enabled,
+          rules: flattenNodesToRules(override)
+        };
+      }
       return definition;
     }
 
     return {
       ...definition,
-      phrase_rules: override.phrase_rules ?? definition.phrase_rules ?? [],
-      character_map_priority: override.character_map_priority ?? definition.character_map_priority,
-      character_map: override.character_map ?? definition.character_map ?? {}
+      label: override.label ?? definition.label,
+      enabled: override.enabled ?? definition.enabled,
+      entries: Array.isArray(override.entries) ? override.entries : (definition.entries ?? []),
+      children: Array.isArray(override.children) ? override.children : (definition.children ?? [])
     };
   };
 
@@ -589,18 +882,36 @@
     }
 
     if (definition.kind === "dictionary-rules") {
-      const phraseRules = Array.isArray(definition.phrase_rules) ? definition.phrase_rules : [];
-      const rules = phraseRules
-        .filter((rule) => rule && rule.enabled !== false)
-        .map((rule) => withBundleMetadata(rule, bundle));
+      const rules = [];
+      const rootNode = normalizeDictionaryNode({
+        id: definition.id ?? bundle.id,
+        label: definition.label ?? bundle.label,
+        enabled: definition.enabled !== false,
+        entries: definition.entries,
+        children: definition.children,
+        groups: definition.groups,
+        phrase_rules: definition.phrase_rules,
+        replace_rules: definition.replace_rules,
+        character_map_priority: definition.character_map_priority,
+        character_map: definition.character_map
+      }, bundle.id, bundle.label ?? bundle.id);
 
-      if (definition.character_map && Object.keys(definition.character_map).length > 0) {
-        rules.push(withBundleMetadata({
-          type: "character-map",
-          priority: definition.character_map_priority ?? 0,
-          character_map: definition.character_map
-        }, bundle));
-      }
+      const collectNodeRules = (node) => {
+        if (node.enabled === false) {
+          return;
+        }
+
+        const nodeRules = node.entries
+          .filter((rule) => rule && rule.enabled !== false)
+          .map((rule) => withGroupMetadata(withBundleMetadata(rule, bundle), node));
+        rules.push(...nodeRules);
+
+        for (const child of node.children) {
+          collectNodeRules(child);
+        }
+      };
+
+      collectNodeRules(rootNode);
 
       return rules.sort((left, right) => {
         return (right.priority || 0) - (left.priority || 0);
@@ -615,29 +926,46 @@
   const loadRules = async () => {
     const bundleManifest = await loadJson5Resource(TRANSFORM_BUNDLES_PATH);
     const bundleOverrides = await loadBundleOverrides();
-    const bundles = (bundleManifest.bundles || [])
-      .map(normalizeBundle)
+    const manifestBundles = (bundleManifest.bundles || []).map(normalizeBundle);
+    const manifestBundleIds = new Set(manifestBundles.map((bundle) => bundle.id));
+    const virtualBundles = Object.values(bundleOverrides)
+      .filter((override) => override?.id && !manifestBundleIds.has(override.id))
+      .map((override) => normalizeBundle({
+      id: override.id,
+      label: override.label ?? override.id,
+      kind: override.kind ?? "dictionary-rules",
+      path: null,
+      order: override.order ?? 0,
+      enabled: override.enabled !== false
+      }));
+    const bundles = [...manifestBundles, ...virtualBundles]
       .map((bundle) => applyBundleOverrideToManifest(bundle, bundleOverrides[bundle.id]))
       .filter((bundle) => bundle.enabled)
       .sort((left, right) => {
         return (left.order ?? 0) - (right.order ?? 0);
       });
 
-    const rules = [];
+    const stringRules = [];
+    const tokenRules = [];
 
     for (const bundle of bundles) {
       const definition = mergeBundleDefinition(
-        await loadJson5Resource(bundle.path),
+        bundle.path ? await loadJson5Resource(bundle.path) : buildVirtualBundleDefinition(bundleOverrides[bundle.id]),
         bundleOverrides[bundle.id]
       );
       const bundleRules = extractBundleRules(bundle, definition);
-      rules.push(...bundleRules);
+      if (definition.kind === "dictionary-rules") {
+        stringRules.push(...bundleRules);
+      } else {
+        tokenRules.push(...bundleRules);
+      }
     }
 
     log("読込バンドル", bundles);
-    log("読込 rules", rules);
+    log("読込 string rules", stringRules);
+    log("読込 token rules", tokenRules);
 
-    return rules;
+    return { stringRules, tokenRules };
   };
 
   const transformText = (text) => {
@@ -645,8 +973,13 @@
       return text;
     }
 
-    const tokens = activeTokenizer.tokenize(text);
-    return applyTransformations(tokens, activeRules);
+    const stringTransformed = applyStringTransformations(text, activeStringRules);
+    if (!activeTokenizer || activeTokenRules.length === 0) {
+      return stringTransformed;
+    }
+
+    const tokens = activeTokenizer.tokenize(stringTransformed);
+    return applyTransformations(tokens, activeTokenRules);
   };
 
   const processTextNode = (textNode) => {
@@ -678,7 +1011,7 @@
   const flushPendingTextNodes = () => {
     flushTimer = null;
 
-    if (!activeTokenizer || !activeRules.length || pendingTextNodes.size === 0) {
+    if ((!activeTokenizer && activeTokenRules.length > 0) || (activeStringRules.length === 0 && activeTokenRules.length === 0) || pendingTextNodes.size === 0) {
       pendingTextNodes.clear();
       return;
     }
@@ -765,7 +1098,10 @@
       throw new Error("document.body が利用できません。");
     }
 
-    [activeRules, activeTokenizer] = await Promise.all([loadRules(), buildTokenizer()]);
+    const loaded = await loadRules();
+    activeStringRules = loaded.stringRules;
+    activeTokenRules = loaded.tokenRules;
+    activeTokenizer = activeTokenRules.length > 0 ? await buildTokenizer() : null;
 
     const initialNodes = collectProcessableTextNodes(document.body);
     log("対象 textNode 数", initialNodes.length);
@@ -775,7 +1111,10 @@
 
   initialize()
     .then(() => {
-      log("変換初期化完了", { rules: activeRules.length });
+      log("変換初期化完了", {
+        stringRules: activeStringRules.length,
+        tokenRules: activeTokenRules.length
+      });
     })
     .catch((error) => {
       console.error("省略変換器: 初期化失敗", error);

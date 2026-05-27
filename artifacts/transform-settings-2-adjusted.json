@@ -1,0 +1,3203 @@
+{
+  "schema_version": 2,
+  "roots": [
+    {
+      "id": "legacy-kanji",
+      "label": "????",
+      "kind": "container",
+      "enabled": true,
+      "order": 1,
+      "children": [
+        {
+          "id": "default",
+          "label": "?????",
+          "kind": "container",
+          "enabled": true,
+          "order": 1,
+          "character_map_priority": 10,
+          "entries": [
+            {
+              "id": "char-1",
+              "type": "character-map",
+              "from": "亜",
+              "to": "亞",
+              "enabled": true
+            },
+            {
+              "id": "char-2",
+              "type": "character-map",
+              "from": "悪",
+              "to": "惡",
+              "enabled": true
+            },
+            {
+              "id": "char-3",
+              "type": "character-map",
+              "from": "圧",
+              "to": "壓",
+              "enabled": true
+            },
+            {
+              "id": "char-4",
+              "type": "character-map",
+              "from": "囲",
+              "to": "圍",
+              "enabled": true
+            },
+            {
+              "id": "char-5",
+              "type": "character-map",
+              "from": "為",
+              "to": "爲",
+              "enabled": true
+            },
+            {
+              "id": "char-6",
+              "type": "character-map",
+              "from": "医",
+              "to": "醫",
+              "enabled": true
+            },
+            {
+              "id": "char-7",
+              "type": "character-map",
+              "from": "壱",
+              "to": "壹",
+              "enabled": true
+            },
+            {
+              "id": "char-8",
+              "type": "character-map",
+              "from": "逸",
+              "to": "逸",
+              "enabled": true
+            },
+            {
+              "id": "char-9",
+              "type": "character-map",
+              "from": "稲",
+              "to": "稻",
+              "enabled": true
+            },
+            {
+              "id": "char-10",
+              "type": "character-map",
+              "from": "飲",
+              "to": "飮",
+              "enabled": true
+            },
+            {
+              "id": "char-11",
+              "type": "character-map",
+              "from": "隠",
+              "to": "隱",
+              "enabled": true
+            },
+            {
+              "id": "char-12",
+              "type": "character-map",
+              "from": "羽",
+              "to": "羽",
+              "enabled": true
+            },
+            {
+              "id": "char-13",
+              "type": "character-map",
+              "from": "営",
+              "to": "營",
+              "enabled": true
+            },
+            {
+              "id": "char-14",
+              "type": "character-map",
+              "from": "栄",
+              "to": "榮",
+              "enabled": true
+            },
+            {
+              "id": "char-15",
+              "type": "character-map",
+              "from": "衛",
+              "to": "衞",
+              "enabled": true
+            },
+            {
+              "id": "char-16",
+              "type": "character-map",
+              "from": "鋭",
+              "to": "銳",
+              "enabled": true
+            },
+            {
+              "id": "char-17",
+              "type": "character-map",
+              "from": "益",
+              "to": "益",
+              "enabled": true
+            },
+            {
+              "id": "char-18",
+              "type": "character-map",
+              "from": "駅",
+              "to": "驛",
+              "enabled": true
+            },
+            {
+              "id": "char-19",
+              "type": "character-map",
+              "from": "悦",
+              "to": "悅",
+              "enabled": true
+            },
+            {
+              "id": "char-20",
+              "type": "character-map",
+              "from": "謁",
+              "to": "謁",
+              "enabled": true
+            },
+            {
+              "id": "char-21",
+              "type": "character-map",
+              "from": "閲",
+              "to": "閱",
+              "enabled": true
+            },
+            {
+              "id": "char-22",
+              "type": "character-map",
+              "from": "円",
+              "to": "圓",
+              "enabled": true
+            },
+            {
+              "id": "char-23",
+              "type": "character-map",
+              "from": "縁",
+              "to": "緣",
+              "enabled": true
+            },
+            {
+              "id": "char-24",
+              "type": "character-map",
+              "from": "艶",
+              "to": "艷",
+              "enabled": true
+            },
+            {
+              "id": "char-25",
+              "type": "character-map",
+              "from": "塩",
+              "to": "鹽",
+              "enabled": true
+            },
+            {
+              "id": "char-26",
+              "type": "character-map",
+              "from": "奥",
+              "to": "奧",
+              "enabled": true
+            },
+            {
+              "id": "char-27",
+              "type": "character-map",
+              "from": "応",
+              "to": "應",
+              "enabled": true
+            },
+            {
+              "id": "char-28",
+              "type": "character-map",
+              "from": "横",
+              "to": "橫",
+              "enabled": true
+            },
+            {
+              "id": "char-29",
+              "type": "character-map",
+              "from": "欧",
+              "to": "歐",
+              "enabled": true
+            },
+            {
+              "id": "char-30",
+              "type": "character-map",
+              "from": "殴",
+              "to": "毆",
+              "enabled": true
+            },
+            {
+              "id": "char-31",
+              "type": "character-map",
+              "from": "黄",
+              "to": "黃",
+              "enabled": true
+            },
+            {
+              "id": "char-32",
+              "type": "character-map",
+              "from": "温",
+              "to": "溫",
+              "enabled": true
+            },
+            {
+              "id": "char-33",
+              "type": "character-map",
+              "from": "穏",
+              "to": "穩",
+              "enabled": true
+            },
+            {
+              "id": "char-34",
+              "type": "character-map",
+              "from": "仮",
+              "to": "假",
+              "enabled": true
+            },
+            {
+              "id": "char-35",
+              "type": "character-map",
+              "from": "価",
+              "to": "價",
+              "enabled": true
+            },
+            {
+              "id": "char-36",
+              "type": "character-map",
+              "from": "禍",
+              "to": "禍",
+              "enabled": true
+            },
+            {
+              "id": "char-37",
+              "type": "character-map",
+              "from": "画",
+              "to": "畫",
+              "enabled": true
+            },
+            {
+              "id": "char-38",
+              "type": "character-map",
+              "from": "会",
+              "to": "會",
+              "enabled": true
+            },
+            {
+              "id": "char-39",
+              "type": "character-map",
+              "from": "壊",
+              "to": "壞",
+              "enabled": true
+            },
+            {
+              "id": "char-40",
+              "type": "character-map",
+              "from": "悔",
+              "to": "悔",
+              "enabled": true
+            },
+            {
+              "id": "char-41",
+              "type": "character-map",
+              "from": "懐",
+              "to": "懷",
+              "enabled": true
+            },
+            {
+              "id": "char-42",
+              "type": "character-map",
+              "from": "海",
+              "to": "海",
+              "enabled": true
+            },
+            {
+              "id": "char-43",
+              "type": "character-map",
+              "from": "絵",
+              "to": "繪",
+              "enabled": true
+            },
+            {
+              "id": "char-44",
+              "type": "character-map",
+              "from": "慨",
+              "to": "慨",
+              "enabled": true
+            },
+            {
+              "id": "char-45",
+              "type": "character-map",
+              "from": "概",
+              "to": "槪",
+              "enabled": true
+            },
+            {
+              "id": "char-46",
+              "type": "character-map",
+              "from": "拡",
+              "to": "擴",
+              "enabled": true
+            },
+            {
+              "id": "char-47",
+              "type": "character-map",
+              "from": "殻",
+              "to": "殼",
+              "enabled": true
+            },
+            {
+              "id": "char-48",
+              "type": "character-map",
+              "from": "覚",
+              "to": "覺",
+              "enabled": true
+            },
+            {
+              "id": "char-49",
+              "type": "character-map",
+              "from": "学",
+              "to": "學",
+              "enabled": true
+            },
+            {
+              "id": "char-50",
+              "type": "character-map",
+              "from": "岳",
+              "to": "嶽",
+              "enabled": true
+            },
+            {
+              "id": "char-51",
+              "type": "character-map",
+              "from": "楽",
+              "to": "樂",
+              "enabled": true
+            },
+            {
+              "id": "char-52",
+              "type": "character-map",
+              "from": "喝",
+              "to": "喝",
+              "enabled": true
+            },
+            {
+              "id": "char-53",
+              "type": "character-map",
+              "from": "渇",
+              "to": "渴",
+              "enabled": true
+            },
+            {
+              "id": "char-54",
+              "type": "character-map",
+              "from": "褐",
+              "to": "褐",
+              "enabled": true
+            },
+            {
+              "id": "char-55",
+              "type": "character-map",
+              "from": "鎌",
+              "to": "鐮",
+              "enabled": true
+            },
+            {
+              "id": "char-56",
+              "type": "character-map",
+              "from": "勧",
+              "to": "勸",
+              "enabled": true
+            },
+            {
+              "id": "char-57",
+              "type": "character-map",
+              "from": "巻",
+              "to": "卷",
+              "enabled": true
+            },
+            {
+              "id": "char-58",
+              "type": "character-map",
+              "from": "寛",
+              "to": "寬",
+              "enabled": true
+            },
+            {
+              "id": "char-59",
+              "type": "character-map",
+              "from": "歓",
+              "to": "歡",
+              "enabled": true
+            },
+            {
+              "id": "char-60",
+              "type": "character-map",
+              "from": "漢",
+              "to": "漢",
+              "enabled": true
+            },
+            {
+              "id": "char-61",
+              "type": "character-map",
+              "from": "缶",
+              "to": "罐",
+              "enabled": true
+            },
+            {
+              "id": "char-62",
+              "type": "character-map",
+              "from": "観",
+              "to": "觀",
+              "enabled": true
+            },
+            {
+              "id": "char-63",
+              "type": "character-map",
+              "from": "間",
+              "to": "閒",
+              "enabled": true
+            },
+            {
+              "id": "char-64",
+              "type": "character-map",
+              "from": "関",
+              "to": "關",
+              "enabled": true
+            },
+            {
+              "id": "char-65",
+              "type": "character-map",
+              "from": "陥",
+              "to": "陷",
+              "enabled": true
+            },
+            {
+              "id": "char-66",
+              "type": "character-map",
+              "from": "館",
+              "to": "館",
+              "enabled": true
+            },
+            {
+              "id": "char-67",
+              "type": "character-map",
+              "from": "巌",
+              "to": "巖",
+              "enabled": true
+            },
+            {
+              "id": "char-68",
+              "type": "character-map",
+              "from": "顔",
+              "to": "顏",
+              "enabled": true
+            },
+            {
+              "id": "char-69",
+              "type": "character-map",
+              "from": "器",
+              "to": "器",
+              "enabled": true
+            },
+            {
+              "id": "char-70",
+              "type": "character-map",
+              "from": "既",
+              "to": "旣",
+              "enabled": true
+            },
+            {
+              "id": "char-71",
+              "type": "character-map",
+              "from": "帰",
+              "to": "歸",
+              "enabled": true
+            },
+            {
+              "id": "char-72",
+              "type": "character-map",
+              "from": "気",
+              "to": "氣",
+              "enabled": true
+            },
+            {
+              "id": "char-73",
+              "type": "character-map",
+              "from": "祈",
+              "to": "祈",
+              "enabled": true
+            },
+            {
+              "id": "char-74",
+              "type": "character-map",
+              "from": "亀",
+              "to": "龜",
+              "enabled": true
+            },
+            {
+              "id": "char-75",
+              "type": "character-map",
+              "from": "偽",
+              "to": "僞",
+              "enabled": true
+            },
+            {
+              "id": "char-76",
+              "type": "character-map",
+              "from": "戯",
+              "to": "戲",
+              "enabled": true
+            },
+            {
+              "id": "char-77",
+              "type": "character-map",
+              "from": "犠",
+              "to": "犧",
+              "enabled": true
+            },
+            {
+              "id": "char-78",
+              "type": "character-map",
+              "from": "却",
+              "to": "卻",
+              "enabled": true
+            },
+            {
+              "id": "char-79",
+              "type": "character-map",
+              "from": "旧",
+              "to": "舊",
+              "enabled": true
+            },
+            {
+              "id": "char-80",
+              "type": "character-map",
+              "from": "拠",
+              "to": "據",
+              "enabled": true
+            },
+            {
+              "id": "char-81",
+              "type": "character-map",
+              "from": "挙",
+              "to": "擧",
+              "enabled": true
+            },
+            {
+              "id": "char-82",
+              "type": "character-map",
+              "from": "虚",
+              "to": "虛",
+              "enabled": true
+            },
+            {
+              "id": "char-83",
+              "type": "character-map",
+              "from": "峡",
+              "to": "峽",
+              "enabled": true
+            },
+            {
+              "id": "char-84",
+              "type": "character-map",
+              "from": "強",
+              "to": "强",
+              "enabled": true
+            },
+            {
+              "id": "char-85",
+              "type": "character-map",
+              "from": "挟",
+              "to": "挾",
+              "enabled": true
+            },
+            {
+              "id": "char-86",
+              "type": "character-map",
+              "from": "教",
+              "to": "敎",
+              "enabled": true
+            },
+            {
+              "id": "char-87",
+              "type": "character-map",
+              "from": "狭",
+              "to": "狹",
+              "enabled": true
+            },
+            {
+              "id": "char-88",
+              "type": "character-map",
+              "from": "郷",
+              "to": "鄕",
+              "enabled": true
+            },
+            {
+              "id": "char-89",
+              "type": "character-map",
+              "from": "響",
+              "to": "響",
+              "enabled": true
+            },
+            {
+              "id": "char-90",
+              "type": "character-map",
+              "from": "尭",
+              "to": "堯",
+              "enabled": true
+            },
+            {
+              "id": "char-91",
+              "type": "character-map",
+              "from": "暁",
+              "to": "曉",
+              "enabled": true
+            },
+            {
+              "id": "char-92",
+              "type": "character-map",
+              "from": "勤",
+              "to": "勤",
+              "enabled": true
+            },
+            {
+              "id": "char-93",
+              "type": "character-map",
+              "from": "謹",
+              "to": "謹",
+              "enabled": true
+            },
+            {
+              "id": "char-94",
+              "type": "character-map",
+              "from": "区",
+              "to": "區",
+              "enabled": true
+            },
+            {
+              "id": "char-95",
+              "type": "character-map",
+              "from": "駆",
+              "to": "驅",
+              "enabled": true
+            },
+            {
+              "id": "char-96",
+              "type": "character-map",
+              "from": "勲",
+              "to": "勳",
+              "enabled": true
+            },
+            {
+              "id": "char-97",
+              "type": "character-map",
+              "from": "薫",
+              "to": "薰",
+              "enabled": true
+            },
+            {
+              "id": "char-98",
+              "type": "character-map",
+              "from": "契",
+              "to": "契",
+              "enabled": true
+            },
+            {
+              "id": "char-99",
+              "type": "character-map",
+              "from": "径",
+              "to": "徑",
+              "enabled": true
+            },
+            {
+              "id": "char-100",
+              "type": "character-map",
+              "from": "恵",
+              "to": "惠",
+              "enabled": true
+            },
+            {
+              "id": "char-101",
+              "type": "character-map",
+              "from": "掲",
+              "to": "揭",
+              "enabled": true
+            },
+            {
+              "id": "char-102",
+              "type": "character-map",
+              "from": "渓",
+              "to": "溪",
+              "enabled": true
+            },
+            {
+              "id": "char-103",
+              "type": "character-map",
+              "from": "経",
+              "to": "經",
+              "enabled": true
+            },
+            {
+              "id": "char-104",
+              "type": "character-map",
+              "from": "継",
+              "to": "繼",
+              "enabled": true
+            },
+            {
+              "id": "char-105",
+              "type": "character-map",
+              "from": "茎",
+              "to": "莖",
+              "enabled": true
+            },
+            {
+              "id": "char-106",
+              "type": "character-map",
+              "from": "蛍",
+              "to": "螢",
+              "enabled": true
+            },
+            {
+              "id": "char-107",
+              "type": "character-map",
+              "from": "軽",
+              "to": "輕",
+              "enabled": true
+            },
+            {
+              "id": "char-108",
+              "type": "character-map",
+              "from": "鶏",
+              "to": "鷄",
+              "enabled": true
+            },
+            {
+              "id": "char-109",
+              "type": "character-map",
+              "from": "芸",
+              "to": "藝",
+              "enabled": true
+            },
+            {
+              "id": "char-110",
+              "type": "character-map",
+              "from": "撃",
+              "to": "擊",
+              "enabled": true
+            },
+            {
+              "id": "char-111",
+              "type": "character-map",
+              "from": "欠",
+              "to": "缺",
+              "enabled": true
+            },
+            {
+              "id": "char-112",
+              "type": "character-map",
+              "from": "倹",
+              "to": "儉",
+              "enabled": true
+            },
+            {
+              "id": "char-113",
+              "type": "character-map",
+              "from": "剣",
+              "to": "劍",
+              "enabled": true
+            },
+            {
+              "id": "char-114",
+              "type": "character-map",
+              "from": "圏",
+              "to": "圈",
+              "enabled": true
+            },
+            {
+              "id": "char-115",
+              "type": "character-map",
+              "from": "検",
+              "to": "檢",
+              "enabled": true
+            },
+            {
+              "id": "char-116",
+              "type": "character-map",
+              "from": "権",
+              "to": "權",
+              "enabled": true
+            },
+            {
+              "id": "char-117",
+              "type": "character-map",
+              "from": "献",
+              "to": "獻",
+              "enabled": true
+            },
+            {
+              "id": "char-118",
+              "type": "character-map",
+              "from": "研",
+              "to": "硏",
+              "enabled": true
+            },
+            {
+              "id": "char-119",
+              "type": "character-map",
+              "from": "県",
+              "to": "縣",
+              "enabled": true
+            },
+            {
+              "id": "char-120",
+              "type": "character-map",
+              "from": "険",
+              "to": "險",
+              "enabled": true
+            },
+            {
+              "id": "char-121",
+              "type": "character-map",
+              "from": "顕",
+              "to": "顯",
+              "enabled": true
+            },
+            {
+              "id": "char-122",
+              "type": "character-map",
+              "from": "験",
+              "to": "驗",
+              "enabled": true
+            },
+            {
+              "id": "char-123",
+              "type": "character-map",
+              "from": "厳",
+              "to": "嚴",
+              "enabled": true
+            },
+            {
+              "id": "char-124",
+              "type": "character-map",
+              "from": "戸",
+              "to": "戶",
+              "enabled": true
+            },
+            {
+              "id": "char-125",
+              "type": "character-map",
+              "from": "呉",
+              "to": "吳",
+              "enabled": true
+            },
+            {
+              "id": "char-126",
+              "type": "character-map",
+              "from": "娯",
+              "to": "娛",
+              "enabled": true
+            },
+            {
+              "id": "char-127",
+              "type": "character-map",
+              "from": "効",
+              "to": "效",
+              "enabled": true
+            },
+            {
+              "id": "char-128",
+              "type": "character-map",
+              "from": "広",
+              "to": "廣",
+              "enabled": true
+            },
+            {
+              "id": "char-129",
+              "type": "character-map",
+              "from": "恒",
+              "to": "恆",
+              "enabled": true
+            },
+            {
+              "id": "char-130",
+              "type": "character-map",
+              "from": "鉱",
+              "to": "鑛",
+              "enabled": true
+            },
+            {
+              "id": "char-131",
+              "type": "character-map",
+              "from": "号",
+              "to": "號",
+              "enabled": true
+            },
+            {
+              "id": "char-132",
+              "type": "character-map",
+              "from": "告",
+              "to": "吿",
+              "enabled": true
+            },
+            {
+              "id": "char-133",
+              "type": "character-map",
+              "from": "国",
+              "to": "國",
+              "enabled": true
+            },
+            {
+              "id": "char-134",
+              "type": "character-map",
+              "from": "穀",
+              "to": "穀",
+              "enabled": true
+            },
+            {
+              "id": "char-135",
+              "type": "character-map",
+              "from": "黒",
+              "to": "黑",
+              "enabled": true
+            },
+            {
+              "id": "char-136",
+              "type": "character-map",
+              "from": "歳",
+              "to": "歲",
+              "enabled": true
+            },
+            {
+              "id": "char-137",
+              "type": "character-map",
+              "from": "済",
+              "to": "濟",
+              "enabled": true
+            },
+            {
+              "id": "char-138",
+              "type": "character-map",
+              "from": "砕",
+              "to": "碎",
+              "enabled": true
+            },
+            {
+              "id": "char-139",
+              "type": "character-map",
+              "from": "斎",
+              "to": "齋",
+              "enabled": true
+            },
+            {
+              "id": "char-140",
+              "type": "character-map",
+              "from": "剤",
+              "to": "劑",
+              "enabled": true
+            },
+            {
+              "id": "char-141",
+              "type": "character-map",
+              "from": "桜",
+              "to": "櫻",
+              "enabled": true
+            },
+            {
+              "id": "char-142",
+              "type": "character-map",
+              "from": "冊",
+              "to": "册",
+              "enabled": true
+            },
+            {
+              "id": "char-143",
+              "type": "character-map",
+              "from": "殺",
+              "to": "殺",
+              "enabled": true
+            },
+            {
+              "id": "char-144",
+              "type": "character-map",
+              "from": "雑",
+              "to": "雜",
+              "enabled": true
+            },
+            {
+              "id": "char-145",
+              "type": "character-map",
+              "from": "参",
+              "to": "參",
+              "enabled": true
+            },
+            {
+              "id": "char-146",
+              "type": "character-map",
+              "from": "惨",
+              "to": "慘",
+              "enabled": true
+            },
+            {
+              "id": "char-147",
+              "type": "character-map",
+              "from": "桟",
+              "to": "棧",
+              "enabled": true
+            },
+            {
+              "id": "char-148",
+              "type": "character-map",
+              "from": "産",
+              "to": "產",
+              "enabled": true
+            },
+            {
+              "id": "char-149",
+              "type": "character-map",
+              "from": "蚕",
+              "to": "蠶",
+              "enabled": true
+            },
+            {
+              "id": "char-150",
+              "type": "character-map",
+              "from": "賛",
+              "to": "贊",
+              "enabled": true
+            },
+            {
+              "id": "char-151",
+              "type": "character-map",
+              "from": "残",
+              "to": "殘",
+              "enabled": true
+            },
+            {
+              "id": "char-152",
+              "type": "character-map",
+              "from": "祉",
+              "to": "祉",
+              "enabled": true
+            },
+            {
+              "id": "char-153",
+              "type": "character-map",
+              "from": "糸",
+              "to": "絲",
+              "enabled": true
+            },
+            {
+              "id": "char-154",
+              "type": "character-map",
+              "from": "視",
+              "to": "視",
+              "enabled": true
+            },
+            {
+              "id": "char-155",
+              "type": "character-map",
+              "from": "飼",
+              "to": "飼",
+              "enabled": true
+            },
+            {
+              "id": "char-156",
+              "type": "character-map",
+              "from": "歯",
+              "to": "齒",
+              "enabled": true
+            },
+            {
+              "id": "char-157",
+              "type": "character-map",
+              "from": "児",
+              "to": "兒",
+              "enabled": true
+            },
+            {
+              "id": "char-158",
+              "type": "character-map",
+              "from": "辞",
+              "to": "辭",
+              "enabled": true
+            },
+            {
+              "id": "char-159",
+              "type": "character-map",
+              "from": "湿",
+              "to": "濕",
+              "enabled": true
+            },
+            {
+              "id": "char-160",
+              "type": "character-map",
+              "from": "実",
+              "to": "實",
+              "enabled": true
+            },
+            {
+              "id": "char-161",
+              "type": "character-map",
+              "from": "舎",
+              "to": "舍",
+              "enabled": true
+            },
+            {
+              "id": "char-162",
+              "type": "character-map",
+              "from": "写",
+              "to": "寫",
+              "enabled": true
+            },
+            {
+              "id": "char-163",
+              "type": "character-map",
+              "from": "煮",
+              "to": "煮",
+              "enabled": true
+            },
+            {
+              "id": "char-164",
+              "type": "character-map",
+              "from": "社",
+              "to": "社",
+              "enabled": true
+            },
+            {
+              "id": "char-165",
+              "type": "character-map",
+              "from": "者",
+              "to": "者",
+              "enabled": true
+            },
+            {
+              "id": "char-166",
+              "type": "character-map",
+              "from": "釈",
+              "to": "釋",
+              "enabled": true
+            },
+            {
+              "id": "char-167",
+              "type": "character-map",
+              "from": "寿",
+              "to": "壽",
+              "enabled": true
+            },
+            {
+              "id": "char-168",
+              "type": "character-map",
+              "from": "収",
+              "to": "收",
+              "enabled": true
+            },
+            {
+              "id": "char-169",
+              "type": "character-map",
+              "from": "臭",
+              "to": "臭",
+              "enabled": true
+            },
+            {
+              "id": "char-170",
+              "type": "character-map",
+              "from": "従",
+              "to": "從",
+              "enabled": true
+            },
+            {
+              "id": "char-171",
+              "type": "character-map",
+              "from": "渋",
+              "to": "澁",
+              "enabled": true
+            },
+            {
+              "id": "char-172",
+              "type": "character-map",
+              "from": "獣",
+              "to": "獸",
+              "enabled": true
+            },
+            {
+              "id": "char-173",
+              "type": "character-map",
+              "from": "縦",
+              "to": "縱",
+              "enabled": true
+            },
+            {
+              "id": "char-174",
+              "type": "character-map",
+              "from": "祝",
+              "to": "祝",
+              "enabled": true
+            },
+            {
+              "id": "char-175",
+              "type": "character-map",
+              "from": "粛",
+              "to": "肅",
+              "enabled": true
+            },
+            {
+              "id": "char-176",
+              "type": "character-map",
+              "from": "処",
+              "to": "處",
+              "enabled": true
+            },
+            {
+              "id": "char-177",
+              "type": "character-map",
+              "from": "暑",
+              "to": "暑",
+              "enabled": true
+            },
+            {
+              "id": "char-178",
+              "type": "character-map",
+              "from": "渚",
+              "to": "渚",
+              "enabled": true
+            },
+            {
+              "id": "char-179",
+              "type": "character-map",
+              "from": "緒",
+              "to": "緖",
+              "enabled": true
+            },
+            {
+              "id": "char-180",
+              "type": "character-map",
+              "from": "署",
+              "to": "署",
+              "enabled": true
+            },
+            {
+              "id": "char-181",
+              "type": "character-map",
+              "from": "諸",
+              "to": "諸",
+              "enabled": true
+            },
+            {
+              "id": "char-182",
+              "type": "character-map",
+              "from": "叙",
+              "to": "敍",
+              "enabled": true
+            },
+            {
+              "id": "char-183",
+              "type": "character-map",
+              "from": "奨",
+              "to": "奬",
+              "enabled": true
+            },
+            {
+              "id": "char-184",
+              "type": "character-map",
+              "from": "将",
+              "to": "將",
+              "enabled": true
+            },
+            {
+              "id": "char-185",
+              "type": "character-map",
+              "from": "尚",
+              "to": "尙",
+              "enabled": true
+            },
+            {
+              "id": "char-186",
+              "type": "character-map",
+              "from": "渉",
+              "to": "涉",
+              "enabled": true
+            },
+            {
+              "id": "char-187",
+              "type": "character-map",
+              "from": "焼",
+              "to": "燒",
+              "enabled": true
+            },
+            {
+              "id": "char-188",
+              "type": "character-map",
+              "from": "祥",
+              "to": "祥",
+              "enabled": true
+            },
+            {
+              "id": "char-189",
+              "type": "character-map",
+              "from": "称",
+              "to": "稱",
+              "enabled": true
+            },
+            {
+              "id": "char-190",
+              "type": "character-map",
+              "from": "証",
+              "to": "證",
+              "enabled": true
+            },
+            {
+              "id": "char-191",
+              "type": "character-map",
+              "from": "乗",
+              "to": "乘",
+              "enabled": true
+            },
+            {
+              "id": "char-192",
+              "type": "character-map",
+              "from": "剰",
+              "to": "剩",
+              "enabled": true
+            },
+            {
+              "id": "char-193",
+              "type": "character-map",
+              "from": "壌",
+              "to": "壤",
+              "enabled": true
+            },
+            {
+              "id": "char-194",
+              "type": "character-map",
+              "from": "嬢",
+              "to": "孃",
+              "enabled": true
+            },
+            {
+              "id": "char-195",
+              "type": "character-map",
+              "from": "条",
+              "to": "條",
+              "enabled": true
+            },
+            {
+              "id": "char-196",
+              "type": "character-map",
+              "from": "浄",
+              "to": "淨",
+              "enabled": true
+            },
+            {
+              "id": "char-197",
+              "type": "character-map",
+              "from": "状",
+              "to": "狀",
+              "enabled": true
+            },
+            {
+              "id": "char-198",
+              "type": "character-map",
+              "from": "畳",
+              "to": "疊",
+              "enabled": true
+            },
+            {
+              "id": "char-199",
+              "type": "character-map",
+              "from": "穣",
+              "to": "穰",
+              "enabled": true
+            },
+            {
+              "id": "char-200",
+              "type": "character-map",
+              "from": "譲",
+              "to": "讓",
+              "enabled": true
+            },
+            {
+              "id": "char-201",
+              "type": "character-map",
+              "from": "醸",
+              "to": "釀",
+              "enabled": true
+            },
+            {
+              "id": "char-202",
+              "type": "character-map",
+              "from": "嘱",
+              "to": "囑",
+              "enabled": true
+            },
+            {
+              "id": "char-203",
+              "type": "character-map",
+              "from": "触",
+              "to": "觸",
+              "enabled": true
+            },
+            {
+              "id": "char-204",
+              "type": "character-map",
+              "from": "寝",
+              "to": "寢",
+              "enabled": true
+            },
+            {
+              "id": "char-205",
+              "type": "character-map",
+              "from": "慎",
+              "to": "愼",
+              "enabled": true
+            },
+            {
+              "id": "char-206",
+              "type": "character-map",
+              "from": "晋",
+              "to": "晉",
+              "enabled": true
+            },
+            {
+              "id": "char-207",
+              "type": "character-map",
+              "from": "真",
+              "to": "眞",
+              "enabled": true
+            },
+            {
+              "id": "char-208",
+              "type": "character-map",
+              "from": "神",
+              "to": "神",
+              "enabled": true
+            },
+            {
+              "id": "char-209",
+              "type": "character-map",
+              "from": "尽",
+              "to": "盡",
+              "enabled": true
+            },
+            {
+              "id": "char-210",
+              "type": "character-map",
+              "from": "図",
+              "to": "圖",
+              "enabled": true
+            },
+            {
+              "id": "char-211",
+              "type": "character-map",
+              "from": "粋",
+              "to": "粹",
+              "enabled": true
+            },
+            {
+              "id": "char-212",
+              "type": "character-map",
+              "from": "酔",
+              "to": "醉",
+              "enabled": true
+            },
+            {
+              "id": "char-213",
+              "type": "character-map",
+              "from": "随",
+              "to": "隨",
+              "enabled": true
+            },
+            {
+              "id": "char-214",
+              "type": "character-map",
+              "from": "髄",
+              "to": "髓",
+              "enabled": true
+            },
+            {
+              "id": "char-215",
+              "type": "character-map",
+              "from": "数",
+              "to": "數",
+              "enabled": true
+            },
+            {
+              "id": "char-216",
+              "type": "character-map",
+              "from": "枢",
+              "to": "樞",
+              "enabled": true
+            },
+            {
+              "id": "char-217",
+              "type": "character-map",
+              "from": "瀬",
+              "to": "瀨",
+              "enabled": true
+            },
+            {
+              "id": "char-218",
+              "type": "character-map",
+              "from": "晴",
+              "to": "晴",
+              "enabled": true
+            },
+            {
+              "id": "char-219",
+              "type": "character-map",
+              "from": "清",
+              "to": "淸",
+              "enabled": true
+            },
+            {
+              "id": "char-220",
+              "type": "character-map",
+              "from": "精",
+              "to": "精",
+              "enabled": true
+            },
+            {
+              "id": "char-221",
+              "type": "character-map",
+              "from": "声",
+              "to": "聲",
+              "enabled": true
+            },
+            {
+              "id": "char-222",
+              "type": "character-map",
+              "from": "青",
+              "to": "靑",
+              "enabled": true
+            },
+            {
+              "id": "char-223",
+              "type": "character-map",
+              "from": "静",
+              "to": "靜",
+              "enabled": true
+            },
+            {
+              "id": "char-224",
+              "type": "character-map",
+              "from": "斉",
+              "to": "齊",
+              "enabled": true
+            },
+            {
+              "id": "char-225",
+              "type": "character-map",
+              "from": "税",
+              "to": "稅",
+              "enabled": true
+            },
+            {
+              "id": "char-226",
+              "type": "character-map",
+              "from": "摂",
+              "to": "攝",
+              "enabled": true
+            },
+            {
+              "id": "char-227",
+              "type": "character-map",
+              "from": "窃",
+              "to": "竊",
+              "enabled": true
+            },
+            {
+              "id": "char-228",
+              "type": "character-map",
+              "from": "節",
+              "to": "節",
+              "enabled": true
+            },
+            {
+              "id": "char-229",
+              "type": "character-map",
+              "from": "説",
+              "to": "說",
+              "enabled": true
+            },
+            {
+              "id": "char-230",
+              "type": "character-map",
+              "from": "絶",
+              "to": "絕",
+              "enabled": true
+            },
+            {
+              "id": "char-231",
+              "type": "character-map",
+              "from": "専",
+              "to": "專",
+              "enabled": true
+            },
+            {
+              "id": "char-232",
+              "type": "character-map",
+              "from": "戦",
+              "to": "戰",
+              "enabled": true
+            },
+            {
+              "id": "char-233",
+              "type": "character-map",
+              "from": "浅",
+              "to": "淺",
+              "enabled": true
+            },
+            {
+              "id": "char-234",
+              "type": "character-map",
+              "from": "潜",
+              "to": "潛",
+              "enabled": true
+            },
+            {
+              "id": "char-235",
+              "type": "character-map",
+              "from": "繊",
+              "to": "纖",
+              "enabled": true
+            },
+            {
+              "id": "char-236",
+              "type": "character-map",
+              "from": "践",
+              "to": "踐",
+              "enabled": true
+            },
+            {
+              "id": "char-237",
+              "type": "character-map",
+              "from": "銭",
+              "to": "錢",
+              "enabled": true
+            },
+            {
+              "id": "char-238",
+              "type": "character-map",
+              "from": "禅",
+              "to": "禪",
+              "enabled": true
+            },
+            {
+              "id": "char-239",
+              "type": "character-map",
+              "from": "曽",
+              "to": "曾",
+              "enabled": true
+            },
+            {
+              "id": "char-240",
+              "type": "character-map",
+              "from": "祖",
+              "to": "祖",
+              "enabled": true
+            },
+            {
+              "id": "char-241",
+              "type": "character-map",
+              "from": "僧",
+              "to": "僧",
+              "enabled": true
+            },
+            {
+              "id": "char-242",
+              "type": "character-map",
+              "from": "双",
+              "to": "雙",
+              "enabled": true
+            },
+            {
+              "id": "char-243",
+              "type": "character-map",
+              "from": "壮",
+              "to": "壯",
+              "enabled": true
+            },
+            {
+              "id": "char-244",
+              "type": "character-map",
+              "from": "層",
+              "to": "層",
+              "enabled": true
+            },
+            {
+              "id": "char-245",
+              "type": "character-map",
+              "from": "捜",
+              "to": "搜",
+              "enabled": true
+            },
+            {
+              "id": "char-246",
+              "type": "character-map",
+              "from": "挿",
+              "to": "插",
+              "enabled": true
+            },
+            {
+              "id": "char-247",
+              "type": "character-map",
+              "from": "巣",
+              "to": "巢",
+              "enabled": true
+            },
+            {
+              "id": "char-248",
+              "type": "character-map",
+              "from": "争",
+              "to": "爭",
+              "enabled": true
+            },
+            {
+              "id": "char-249",
+              "type": "character-map",
+              "from": "痩",
+              "to": "瘦",
+              "enabled": true
+            },
+            {
+              "id": "char-250",
+              "type": "character-map",
+              "from": "総",
+              "to": "總",
+              "enabled": true
+            },
+            {
+              "id": "char-251",
+              "type": "character-map",
+              "from": "聡",
+              "to": "聰",
+              "enabled": true
+            },
+            {
+              "id": "char-252",
+              "type": "character-map",
+              "from": "荘",
+              "to": "莊",
+              "enabled": true
+            },
+            {
+              "id": "char-253",
+              "type": "character-map",
+              "from": "装",
+              "to": "裝",
+              "enabled": true
+            },
+            {
+              "id": "char-254",
+              "type": "character-map",
+              "from": "騒",
+              "to": "騷",
+              "enabled": true
+            },
+            {
+              "id": "char-255",
+              "type": "character-map",
+              "from": "増",
+              "to": "增",
+              "enabled": true
+            },
+            {
+              "id": "char-256",
+              "type": "character-map",
+              "from": "憎",
+              "to": "憎",
+              "enabled": true
+            },
+            {
+              "id": "char-257",
+              "type": "character-map",
+              "from": "臓",
+              "to": "臟",
+              "enabled": true
+            },
+            {
+              "id": "char-258",
+              "type": "character-map",
+              "from": "蔵",
+              "to": "藏",
+              "enabled": true
+            },
+            {
+              "id": "char-259",
+              "type": "character-map",
+              "from": "贈",
+              "to": "贈",
+              "enabled": true
+            },
+            {
+              "id": "char-260",
+              "type": "character-map",
+              "from": "即",
+              "to": "卽",
+              "enabled": true
+            },
+            {
+              "id": "char-261",
+              "type": "character-map",
+              "from": "属",
+              "to": "屬",
+              "enabled": true
+            },
+            {
+              "id": "char-262",
+              "type": "character-map",
+              "from": "続",
+              "to": "續",
+              "enabled": true
+            },
+            {
+              "id": "char-263",
+              "type": "character-map",
+              "from": "堕",
+              "to": "墮",
+              "enabled": true
+            },
+            {
+              "id": "char-264",
+              "type": "character-map",
+              "from": "体",
+              "to": "體",
+              "enabled": true
+            },
+            {
+              "id": "char-265",
+              "type": "character-map",
+              "from": "対",
+              "to": "對",
+              "enabled": true
+            },
+            {
+              "id": "char-266",
+              "type": "character-map",
+              "from": "帯",
+              "to": "帶",
+              "enabled": true
+            },
+            {
+              "id": "char-267",
+              "type": "character-map",
+              "from": "滞",
+              "to": "滯",
+              "enabled": true
+            },
+            {
+              "id": "char-268",
+              "type": "character-map",
+              "from": "台",
+              "to": "臺",
+              "enabled": true
+            },
+            {
+              "id": "char-269",
+              "type": "character-map",
+              "from": "滝",
+              "to": "瀧",
+              "enabled": true
+            },
+            {
+              "id": "char-270",
+              "type": "character-map",
+              "from": "択",
+              "to": "擇",
+              "enabled": true
+            },
+            {
+              "id": "char-271",
+              "type": "character-map",
+              "from": "沢",
+              "to": "澤",
+              "enabled": true
+            },
+            {
+              "id": "char-272",
+              "type": "character-map",
+              "from": "琢",
+              "to": "琢",
+              "enabled": true
+            },
+            {
+              "id": "char-273",
+              "type": "character-map",
+              "from": "脱",
+              "to": "脫",
+              "enabled": true
+            },
+            {
+              "id": "char-274",
+              "type": "character-map",
+              "from": "単",
+              "to": "單",
+              "enabled": true
+            },
+            {
+              "id": "char-275",
+              "type": "character-map",
+              "from": "嘆",
+              "to": "嘆",
+              "enabled": true
+            },
+            {
+              "id": "char-276",
+              "type": "character-map",
+              "from": "担",
+              "to": "擔",
+              "enabled": true
+            },
+            {
+              "id": "char-277",
+              "type": "character-map",
+              "from": "胆",
+              "to": "膽",
+              "enabled": true
+            },
+            {
+              "id": "char-278",
+              "type": "character-map",
+              "from": "団",
+              "to": "團",
+              "enabled": true
+            },
+            {
+              "id": "char-279",
+              "type": "character-map",
+              "from": "弾",
+              "to": "彈",
+              "enabled": true
+            },
+            {
+              "id": "char-280",
+              "type": "character-map",
+              "from": "断",
+              "to": "斷",
+              "enabled": true
+            },
+            {
+              "id": "char-281",
+              "type": "character-map",
+              "from": "痴",
+              "to": "癡",
+              "enabled": true
+            },
+            {
+              "id": "char-282",
+              "type": "character-map",
+              "from": "遅",
+              "to": "遲",
+              "enabled": true
+            },
+            {
+              "id": "char-283",
+              "type": "character-map",
+              "from": "昼",
+              "to": "晝",
+              "enabled": true
+            },
+            {
+              "id": "char-284",
+              "type": "character-map",
+              "from": "虫",
+              "to": "蟲",
+              "enabled": true
+            },
+            {
+              "id": "char-285",
+              "type": "character-map",
+              "from": "鋳",
+              "to": "鑄",
+              "enabled": true
+            },
+            {
+              "id": "char-286",
+              "type": "character-map",
+              "from": "猪",
+              "to": "猪",
+              "enabled": true
+            },
+            {
+              "id": "char-287",
+              "type": "character-map",
+              "from": "著",
+              "to": "著",
+              "enabled": true
+            },
+            {
+              "id": "char-288",
+              "type": "character-map",
+              "from": "庁",
+              "to": "廳",
+              "enabled": true
+            },
+            {
+              "id": "char-289",
+              "type": "character-map",
+              "from": "徴",
+              "to": "徵",
+              "enabled": true
+            },
+            {
+              "id": "char-290",
+              "type": "character-map",
+              "from": "懲",
+              "to": "懲",
+              "enabled": true
+            },
+            {
+              "id": "char-291",
+              "type": "character-map",
+              "from": "聴",
+              "to": "聽",
+              "enabled": true
+            },
+            {
+              "id": "char-292",
+              "type": "character-map",
+              "from": "勅",
+              "to": "敕",
+              "enabled": true
+            },
+            {
+              "id": "char-293",
+              "type": "character-map",
+              "from": "鎮",
+              "to": "鎭",
+              "enabled": true
+            },
+            {
+              "id": "char-294",
+              "type": "character-map",
+              "from": "塚",
+              "to": "塚",
+              "enabled": true
+            },
+            {
+              "id": "char-295",
+              "type": "character-map",
+              "from": "禎",
+              "to": "禎",
+              "enabled": true
+            },
+            {
+              "id": "char-296",
+              "type": "character-map",
+              "from": "逓",
+              "to": "遞",
+              "enabled": true
+            },
+            {
+              "id": "char-297",
+              "type": "character-map",
+              "from": "鉄",
+              "to": "鐵",
+              "enabled": true
+            },
+            {
+              "id": "char-298",
+              "type": "character-map",
+              "from": "転",
+              "to": "轉",
+              "enabled": true
+            },
+            {
+              "id": "char-299",
+              "type": "character-map",
+              "from": "点",
+              "to": "點",
+              "enabled": true
+            },
+            {
+              "id": "char-300",
+              "type": "character-map",
+              "from": "伝",
+              "to": "傳",
+              "enabled": true
+            },
+            {
+              "id": "char-301",
+              "type": "character-map",
+              "from": "都",
+              "to": "都",
+              "enabled": true
+            },
+            {
+              "id": "char-302",
+              "type": "character-map",
+              "from": "党",
+              "to": "黨",
+              "enabled": true
+            },
+            {
+              "id": "char-303",
+              "type": "character-map",
+              "from": "盗",
+              "to": "盜",
+              "enabled": true
+            },
+            {
+              "id": "char-304",
+              "type": "character-map",
+              "from": "灯",
+              "to": "燈",
+              "enabled": true
+            },
+            {
+              "id": "char-305",
+              "type": "character-map",
+              "from": "当",
+              "to": "當",
+              "enabled": true
+            },
+            {
+              "id": "char-306",
+              "type": "character-map",
+              "from": "闘",
+              "to": "鬭",
+              "enabled": true
+            },
+            {
+              "id": "char-307",
+              "type": "character-map",
+              "from": "徳",
+              "to": "德",
+              "enabled": true
+            },
+            {
+              "id": "char-308",
+              "type": "character-map",
+              "from": "独",
+              "to": "獨",
+              "enabled": true
+            },
+            {
+              "id": "char-309",
+              "type": "character-map",
+              "from": "読",
+              "to": "讀",
+              "enabled": true
+            },
+            {
+              "id": "char-310",
+              "type": "character-map",
+              "from": "突",
+              "to": "突",
+              "enabled": true
+            },
+            {
+              "id": "char-311",
+              "type": "character-map",
+              "from": "届",
+              "to": "屆",
+              "enabled": true
+            },
+            {
+              "id": "char-312",
+              "type": "character-map",
+              "from": "内",
+              "to": "內",
+              "enabled": true
+            },
+            {
+              "id": "char-313",
+              "type": "character-map",
+              "from": "縄",
+              "to": "繩",
+              "enabled": true
+            },
+            {
+              "id": "char-314",
+              "type": "character-map",
+              "from": "難",
+              "to": "難",
+              "enabled": true
+            },
+            {
+              "id": "char-315",
+              "type": "character-map",
+              "from": "弐",
+              "to": "貳",
+              "enabled": true
+            },
+            {
+              "id": "char-316",
+              "type": "character-map",
+              "from": "悩",
+              "to": "惱",
+              "enabled": true
+            },
+            {
+              "id": "char-317",
+              "type": "character-map",
+              "from": "脳",
+              "to": "腦",
+              "enabled": true
+            },
+            {
+              "id": "char-318",
+              "type": "character-map",
+              "from": "覇",
+              "to": "霸",
+              "enabled": true
+            },
+            {
+              "id": "char-319",
+              "type": "character-map",
+              "from": "廃",
+              "to": "廢",
+              "enabled": true
+            },
+            {
+              "id": "char-320",
+              "type": "character-map",
+              "from": "拝",
+              "to": "拜",
+              "enabled": true
+            },
+            {
+              "id": "char-321",
+              "type": "character-map",
+              "from": "梅",
+              "to": "梅",
+              "enabled": true
+            },
+            {
+              "id": "char-322",
+              "type": "character-map",
+              "from": "売",
+              "to": "賣",
+              "enabled": true
+            },
+            {
+              "id": "char-323",
+              "type": "character-map",
+              "from": "麦",
+              "to": "麥",
+              "enabled": true
+            },
+            {
+              "id": "char-324",
+              "type": "character-map",
+              "from": "発",
+              "to": "發",
+              "enabled": true
+            },
+            {
+              "id": "char-325",
+              "type": "character-map",
+              "from": "髪",
+              "to": "髮",
+              "enabled": true
+            },
+            {
+              "id": "char-326",
+              "type": "character-map",
+              "from": "抜",
+              "to": "拔",
+              "enabled": true
+            },
+            {
+              "id": "char-327",
+              "type": "character-map",
+              "from": "繁",
+              "to": "繁",
+              "enabled": true
+            },
+            {
+              "id": "char-328",
+              "type": "character-map",
+              "from": "飯",
+              "to": "飯",
+              "enabled": true
+            },
+            {
+              "id": "char-329",
+              "type": "character-map",
+              "from": "晩",
+              "to": "晚",
+              "enabled": true
+            },
+            {
+              "id": "char-330",
+              "type": "character-map",
+              "from": "蛮",
+              "to": "蠻",
+              "enabled": true
+            },
+            {
+              "id": "char-331",
+              "type": "character-map",
+              "from": "卑",
+              "to": "卑",
+              "enabled": true
+            },
+            {
+              "id": "char-332",
+              "type": "character-map",
+              "from": "碑",
+              "to": "碑",
+              "enabled": true
+            },
+            {
+              "id": "char-333",
+              "type": "character-map",
+              "from": "秘",
+              "to": "祕",
+              "enabled": true
+            },
+            {
+              "id": "char-334",
+              "type": "character-map",
+              "from": "彦",
+              "to": "彥",
+              "enabled": true
+            },
+            {
+              "id": "char-335",
+              "type": "character-map",
+              "from": "姫",
+              "to": "姬",
+              "enabled": true
+            },
+            {
+              "id": "char-336",
+              "type": "character-map",
+              "from": "浜",
+              "to": "濱",
+              "enabled": true
+            },
+            {
+              "id": "char-337",
+              "type": "character-map",
+              "from": "賓",
+              "to": "賓",
+              "enabled": true
+            },
+            {
+              "id": "char-338",
+              "type": "character-map",
+              "from": "頻",
+              "to": "頻",
+              "enabled": true
+            },
+            {
+              "id": "char-339",
+              "type": "character-map",
+              "from": "敏",
+              "to": "敏",
+              "enabled": true
+            },
+            {
+              "id": "char-340",
+              "type": "character-map",
+              "from": "瓶",
+              "to": "甁",
+              "enabled": true
+            },
+            {
+              "id": "char-341",
+              "type": "character-map",
+              "from": "侮",
+              "to": "侮",
+              "enabled": true
+            },
+            {
+              "id": "char-342",
+              "type": "character-map",
+              "from": "福",
+              "to": "福",
+              "enabled": true
+            },
+            {
+              "id": "char-343",
+              "type": "character-map",
+              "from": "払",
+              "to": "拂",
+              "enabled": true
+            },
+            {
+              "id": "char-344",
+              "type": "character-map",
+              "from": "仏",
+              "to": "佛",
+              "enabled": true
+            },
+            {
+              "id": "char-345",
+              "type": "character-map",
+              "from": "併",
+              "to": "倂",
+              "enabled": true
+            },
+            {
+              "id": "char-346",
+              "type": "character-map",
+              "from": "塀",
+              "to": "塀",
+              "enabled": true
+            },
+            {
+              "id": "char-347",
+              "type": "character-map",
+              "from": "並",
+              "to": "竝",
+              "enabled": true
+            },
+            {
+              "id": "char-348",
+              "type": "character-map",
+              "from": "変",
+              "to": "變",
+              "enabled": true
+            },
+            {
+              "id": "char-349",
+              "type": "character-map",
+              "from": "辺",
+              "to": "邊",
+              "enabled": true
+            },
+            {
+              "id": "char-350",
+              "type": "character-map",
+              "from": "勉",
+              "to": "勉",
+              "enabled": true
+            },
+            {
+              "id": "char-351",
+              "type": "character-map",
+              "from": "弁",
+              "to": "瓣",
+              "enabled": true
+            },
+            {
+              "id": "char-352",
+              "type": "character-map",
+              "from": "舗",
+              "to": "舖",
+              "enabled": true
+            },
+            {
+              "id": "char-353",
+              "type": "character-map",
+              "from": "歩",
+              "to": "步",
+              "enabled": true
+            },
+            {
+              "id": "char-354",
+              "type": "character-map",
+              "from": "穂",
+              "to": "穗",
+              "enabled": true
+            },
+            {
+              "id": "char-355",
+              "type": "character-map",
+              "from": "宝",
+              "to": "寶",
+              "enabled": true
+            },
+            {
+              "id": "char-356",
+              "type": "character-map",
+              "from": "褒",
+              "to": "襃",
+              "enabled": true
+            },
+            {
+              "id": "char-357",
+              "type": "character-map",
+              "from": "豊",
+              "to": "豐",
+              "enabled": true
+            },
+            {
+              "id": "char-358",
+              "type": "character-map",
+              "from": "墨",
+              "to": "墨",
+              "enabled": true
+            },
+            {
+              "id": "char-359",
+              "type": "character-map",
+              "from": "没",
+              "to": "沒",
+              "enabled": true
+            },
+            {
+              "id": "char-360",
+              "type": "character-map",
+              "from": "翻",
+              "to": "飜",
+              "enabled": true
+            },
+            {
+              "id": "char-361",
+              "type": "character-map",
+              "from": "毎",
+              "to": "每",
+              "enabled": true
+            },
+            {
+              "id": "char-362",
+              "type": "character-map",
+              "from": "槙",
+              "to": "槇",
+              "enabled": true
+            },
+            {
+              "id": "char-363",
+              "type": "character-map",
+              "from": "万",
+              "to": "萬",
+              "enabled": true
+            },
+            {
+              "id": "char-364",
+              "type": "character-map",
+              "from": "満",
+              "to": "滿",
+              "enabled": true
+            },
+            {
+              "id": "char-365",
+              "type": "character-map",
+              "from": "免",
+              "to": "免",
+              "enabled": true
+            },
+            {
+              "id": "char-366",
+              "type": "character-map",
+              "from": "麺",
+              "to": "麵",
+              "enabled": true
+            },
+            {
+              "id": "char-367",
+              "type": "character-map",
+              "from": "黙",
+              "to": "默",
+              "enabled": true
+            },
+            {
+              "id": "char-368",
+              "type": "character-map",
+              "from": "餅",
+              "to": "餠",
+              "enabled": true
+            },
+            {
+              "id": "char-369",
+              "type": "character-map",
+              "from": "戻",
+              "to": "戾",
+              "enabled": true
+            },
+            {
+              "id": "char-370",
+              "type": "character-map",
+              "from": "弥",
+              "to": "彌",
+              "enabled": true
+            },
+            {
+              "id": "char-371",
+              "type": "character-map",
+              "from": "薬",
+              "to": "藥",
+              "enabled": true
+            },
+            {
+              "id": "char-372",
+              "type": "character-map",
+              "from": "訳",
+              "to": "譯",
+              "enabled": true
+            },
+            {
+              "id": "char-373",
+              "type": "character-map",
+              "from": "靖",
+              "to": "靖",
+              "enabled": true
+            },
+            {
+              "id": "char-374",
+              "type": "character-map",
+              "from": "祐",
+              "to": "祐",
+              "enabled": true
+            },
+            {
+              "id": "char-375",
+              "type": "character-map",
+              "from": "予",
+              "to": "豫",
+              "enabled": true
+            },
+            {
+              "id": "char-376",
+              "type": "character-map",
+              "from": "余",
+              "to": "餘",
+              "enabled": true
+            },
+            {
+              "id": "char-377",
+              "type": "character-map",
+              "from": "与",
+              "to": "與",
+              "enabled": true
+            },
+            {
+              "id": "char-378",
+              "type": "character-map",
+              "from": "誉",
+              "to": "譽",
+              "enabled": true
+            },
+            {
+              "id": "char-379",
+              "type": "character-map",
+              "from": "揺",
+              "to": "搖",
+              "enabled": true
+            },
+            {
+              "id": "char-380",
+              "type": "character-map",
+              "from": "様",
+              "to": "樣",
+              "enabled": true
+            },
+            {
+              "id": "char-381",
+              "type": "character-map",
+              "from": "謡",
+              "to": "謠",
+              "enabled": true
+            },
+            {
+              "id": "char-382",
+              "type": "character-map",
+              "from": "遥",
+              "to": "遙",
+              "enabled": true
+            },
+            {
+              "id": "char-383",
+              "type": "character-map",
+              "from": "来",
+              "to": "來",
+              "enabled": true
+            },
+            {
+              "id": "char-384",
+              "type": "character-map",
+              "from": "頼",
+              "to": "賴",
+              "enabled": true
+            },
+            {
+              "id": "char-385",
+              "type": "character-map",
+              "from": "乱",
+              "to": "亂",
+              "enabled": true
+            },
+            {
+              "id": "char-386",
+              "type": "character-map",
+              "from": "欄",
+              "to": "欄",
+              "enabled": true
+            },
+            {
+              "id": "char-387",
+              "type": "character-map",
+              "from": "覧",
+              "to": "覽",
+              "enabled": true
+            },
+            {
+              "id": "char-388",
+              "type": "character-map",
+              "from": "隆",
+              "to": "隆",
+              "enabled": true
+            },
+            {
+              "id": "char-389",
+              "type": "character-map",
+              "from": "竜",
+              "to": "龍",
+              "enabled": true
+            },
+            {
+              "id": "char-390",
+              "type": "character-map",
+              "from": "旅",
+              "to": "旅",
+              "enabled": true
+            },
+            {
+              "id": "char-391",
+              "type": "character-map",
+              "from": "虜",
+              "to": "虜",
+              "enabled": true
+            },
+            {
+              "id": "char-392",
+              "type": "character-map",
+              "from": "両",
+              "to": "兩",
+              "enabled": true
+            },
+            {
+              "id": "char-393",
+              "type": "character-map",
+              "from": "猟",
+              "to": "獵",
+              "enabled": true
+            },
+            {
+              "id": "char-394",
+              "type": "character-map",
+              "from": "緑",
+              "to": "綠",
+              "enabled": true
+            },
+            {
+              "id": "char-395",
+              "type": "character-map",
+              "from": "隣",
+              "to": "鄰",
+              "enabled": true
+            },
+            {
+              "id": "char-396",
+              "type": "character-map",
+              "from": "塁",
+              "to": "壘",
+              "enabled": true
+            },
+            {
+              "id": "char-397",
+              "type": "character-map",
+              "from": "涙",
+              "to": "淚",
+              "enabled": true
+            },
+            {
+              "id": "char-398",
+              "type": "character-map",
+              "from": "類",
+              "to": "類",
+              "enabled": true
+            },
+            {
+              "id": "char-399",
+              "type": "character-map",
+              "from": "励",
+              "to": "勵",
+              "enabled": true
+            },
+            {
+              "id": "char-400",
+              "type": "character-map",
+              "from": "礼",
+              "to": "禮",
+              "enabled": true
+            },
+            {
+              "id": "char-401",
+              "type": "character-map",
+              "from": "隷",
+              "to": "隸",
+              "enabled": true
+            },
+            {
+              "id": "char-402",
+              "type": "character-map",
+              "from": "霊",
+              "to": "靈",
+              "enabled": true
+            },
+            {
+              "id": "char-403",
+              "type": "character-map",
+              "from": "齢",
+              "to": "齡",
+              "enabled": true
+            },
+            {
+              "id": "char-404",
+              "type": "character-map",
+              "from": "暦",
+              "to": "曆",
+              "enabled": true
+            },
+            {
+              "id": "char-405",
+              "type": "character-map",
+              "from": "歴",
+              "to": "歷",
+              "enabled": true
+            },
+            {
+              "id": "char-406",
+              "type": "character-map",
+              "from": "廉",
+              "to": "廉",
+              "enabled": true
+            },
+            {
+              "id": "char-407",
+              "type": "character-map",
+              "from": "恋",
+              "to": "戀",
+              "enabled": true
+            },
+            {
+              "id": "char-408",
+              "type": "character-map",
+              "from": "練",
+              "to": "練",
+              "enabled": true
+            },
+            {
+              "id": "char-409",
+              "type": "character-map",
+              "from": "錬",
+              "to": "鍊",
+              "enabled": true
+            },
+            {
+              "id": "char-410",
+              "type": "character-map",
+              "from": "炉",
+              "to": "爐",
+              "enabled": true
+            },
+            {
+              "id": "char-411",
+              "type": "character-map",
+              "from": "労",
+              "to": "勞",
+              "enabled": true
+            },
+            {
+              "id": "char-412",
+              "type": "character-map",
+              "from": "廊",
+              "to": "廊",
+              "enabled": true
+            },
+            {
+              "id": "char-413",
+              "type": "character-map",
+              "from": "朗",
+              "to": "朗",
+              "enabled": true
+            },
+            {
+              "id": "char-414",
+              "type": "character-map",
+              "from": "楼",
+              "to": "樓",
+              "enabled": true
+            },
+            {
+              "id": "char-415",
+              "type": "character-map",
+              "from": "郎",
+              "to": "郞",
+              "enabled": true
+            },
+            {
+              "id": "char-416",
+              "type": "character-map",
+              "from": "禄",
+              "to": "祿",
+              "enabled": true
+            },
+            {
+              "id": "char-417",
+              "type": "character-map",
+              "from": "録",
+              "to": "錄",
+              "enabled": true
+            },
+            {
+              "id": "char-418",
+              "type": "character-map",
+              "from": "湾",
+              "to": "灣",
+              "enabled": true
+            },
+            {
+              "id": "char-419",
+              "type": "character-map",
+              "from": "瑶",
+              "to": "瑤",
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "homophone-kanji",
+      "label": "??????",
+      "kind": "container",
+      "enabled": true,
+      "order": 2,
+      "children": [
+        {
+          "id": "default",
+          "label": "弁系熟語",
+          "kind": "container",
+          "enabled": true,
+          "order": 1,
+          "character_map_priority": 10,
+          "entries": [
+            {
+              "id": "phrase-1",
+              "type": "phrase-rule",
+              "from": "勘弁",
+              "to": "勘辨",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-2",
+              "type": "phrase-rule",
+              "from": "危弁",
+              "to": "詭弁",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-3",
+              "type": "phrase-rule",
+              "from": "合弁",
+              "to": "合瓣",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-4",
+              "type": "phrase-rule",
+              "from": "奇弁",
+              "to": "詭弁",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-5",
+              "type": "phrase-rule",
+              "from": "安全弁",
+              "to": "安全瓣",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-6",
+              "type": "phrase-rule",
+              "from": "弁",
+              "to": "辡",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-7",
+              "type": "phrase-rule",
+              "from": "弁償",
+              "to": "辦償",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-8",
+              "type": "phrase-rule",
+              "from": "弁別",
+              "to": "辨別",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-9",
+              "type": "phrase-rule",
+              "from": "弁当",
+              "to": "辨當",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-10",
+              "type": "phrase-rule",
+              "from": "弁明",
+              "to": "辨明",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-11",
+              "type": "phrase-rule",
+              "from": "弁理",
+              "to": "辦理",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-12",
+              "type": "phrase-rule",
+              "from": "弁膜",
+              "to": "瓣膜",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-13",
+              "type": "phrase-rule",
+              "from": "弁舌",
+              "to": "辯舌",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-14",
+              "type": "phrase-rule",
+              "from": "弁解",
+              "to": "辯解",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-15",
+              "type": "phrase-rule",
+              "from": "弁証",
+              "to": "辨証",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-16",
+              "type": "phrase-rule",
+              "from": "弁説",
+              "to": "辯説",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-17",
+              "type": "phrase-rule",
+              "from": "弁論",
+              "to": "辯論",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-18",
+              "type": "phrase-rule",
+              "from": "弁護",
+              "to": "辯護",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-19",
+              "type": "phrase-rule",
+              "from": "弁髪",
+              "to": "辮髪",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-20",
+              "type": "phrase-rule",
+              "from": "支弁",
+              "to": "支辨",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-21",
+              "type": "phrase-rule",
+              "from": "熱弁",
+              "to": "熱辨",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-22",
+              "type": "phrase-rule",
+              "from": "花弁",
+              "to": "花瓣",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-23",
+              "type": "phrase-rule",
+              "from": "詭弁",
+              "to": "詭辯",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-24",
+              "type": "phrase-rule",
+              "from": "買弁",
+              "to": "買辦",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-25",
+              "type": "phrase-rule",
+              "from": "雄弁",
+              "to": "雄辯",
+              "priority": 50,
+              "enabled": true
+            },
+            {
+              "id": "phrase-1",
+              "label": "弁系",
+              "type": "phrase-rule",
+              "from": "あ",
+              "to": "あ",
+              "priority": 90,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "general-character-replacements",
+      "label": "一般単漢字置換",
+      "kind": "container",
+      "enabled": true,
+      "order": 3,
+      "children": [
+        {
+          "id": "default",
+          "label": "default",
+          "kind": "container",
+          "enabled": true,
+          "order": 1,
+          "character_map_priority": 10,
+          "entries": []
+        }
+      ]
+    }
+  ]
+}

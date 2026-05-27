@@ -1,21 +1,20 @@
 // transforms/50-homophone-kanji.json5
-// 同音漢字置換専用バンドル。
-// 基本は固定語彙・固定熟語の単純置換で管理し、
-// 誤爆しやすいものだけ条件付きルールや sequence に逃がす。
-// 現段階では熟語例として「奇跡 → 奇蹟」のみ投入。
+// 同音・異表記の固定熟語置換バンドル
+// groups を使うと、同一バンドル内で記号・カタカナ・英字などを束ねて管理できる
 {
   id: "homophone-kanji",
   label: "同音漢字置換",
   kind: "dictionary-rules",
-  phrase_rules: [
+  groups: [
     {
-      from: "奇跡",
-      to: "奇蹟",
-      priority: 90,
+      id: "default",
+      label: "既定",
+      phrase_rules: {
+        "奇跡": ["奇蹟", 90, true],
+        "ドイツ": ["独逸,独乙", 90, true],
+      },
+      character_map_priority: 10,
+      character_map: {},
     },
   ],
-  character_map_priority: 10,
-  character_map: {
-    // 単漢字単位で安全に扱えるものだけを追加する。
-  },
 }

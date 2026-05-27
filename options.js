@@ -3,21 +3,25 @@
 
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
   const STORAGE_KEY = "bundleOverrideSettingsV1";
+  const DICT_PATH = "./dict/";
 
   const state = {
     activeTab: "bundles",
     roots: [],
     baseRoots: [],
     nodeSerial: 0,
-    entrySerial: 0
+    entrySerial: 0,
+    tokenizer: null
   };
 
   const bundleRoot = document.getElementById("bundle-root");
   const diagnosticsRoot = document.getElementById("diagnostics-root");
   const panelBundles = document.getElementById("panel-bundles");
   const panelDiagnostics = document.getElementById("panel-diagnostics");
+  const panelTokenizer = document.getElementById("panel-tokenizer");
   const tabBundlesButton = document.getElementById("tab-bundles");
   const tabDiagnosticsButton = document.getElementById("tab-diagnostics");
+  const tabTokenizerButton = document.getElementById("tab-tokenizer");
   const statusNode = document.getElementById("status");
   const saveAllButton = document.getElementById("save-all");
   const addBundleButton = document.getElementById("add-bundle");
@@ -26,6 +30,9 @@
   const exportJsonButton = document.getElementById("export-json");
   const exportYamlButton = document.getElementById("export-yaml");
   const importFileInput = document.getElementById("import-file");
+  const tokenizerInput = document.getElementById("tokenizer-input");
+  const tokenizerRunButton = document.getElementById("tokenizer-run");
+  const tokenizerResult = document.getElementById("tokenizer-result");
 
   const setStatus = (message, type = "info") => {
     statusNode.textContent = message;
@@ -80,6 +87,63 @@
     }
 
     return JSON5.parse(await response.text());
+  };
+
+  const buildTokenizer = () => {
+    return new Promise((resolve, reject) => {
+      if (typeof kuromoji === "undefined") {
+        reject(new Error("kuromoji が未読込です。"));
+        return;
+      }
+
+      const dicPath = DICT_PATH;
+      const requiredFiles = [
+        "base.dat.gz",
+        "check.dat.gz",
+        "tid.dat.gz",
+        "tid_pos.dat.gz",
+        "tid_map.dat.gz",
+        "cc.dat.gz",
+        "unk.dat.gz",
+        "unk_pos.dat.gz",
+        "unk_map.dat.gz",
+        "unk_char.dat.gz",
+        "unk_compat.dat.gz",
+        "unk_invoke.dat.gz"
+      ];
+
+      Promise.all(requiredFiles.map(async (filename) => {
+        const url = new URL(filename, new URL(DICT_PATH, window.location.href)).href;
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`辞書ファイル取得失敗: ${response.status} ${url}`);
+        }
+        await response.arrayBuffer();
+        return url;
+      }))
+        .then(() => {
+          kuromoji.builder({ dicPath }).build((error, tokenizer) => {
+            if (error) {
+              if (error && typeof error === "object" && error.type) {
+                reject(new Error(`tokenizer build error: ${error.type}`));
+                return;
+              }
+              reject(error instanceof Error ? error : new Error(`${error ?? "tokenizer build error"}`));
+              return;
+            }
+
+            if (!tokenizer) {
+              reject(new Error("tokenizer の初期化結果が空です。辞書パスを確認してください。"));
+              return;
+            }
+
+            resolve(tokenizer);
+          });
+        })
+        .catch((error) => {
+          reject(error instanceof Error ? error : new Error(`${error ?? "dictionary probe error"}`));
+        });
+    });
   };
 
   const parseJson5LikeValue = (value) => {
@@ -916,6 +980,63 @@
     return parsed;
   };
 
+  const COMMON_POS_VALUES = ["名詞", "動詞", "助詞", "助動詞", "形容詞", "副詞", "連体詞", "接続詞", "記号"];
+  const COMMON_POS1_VALUES = ["一般", "自立", "非自立", "接尾", "格助詞", "係助詞", "副詞可能", "サ変接続"];
+  const COMMON_CFORM_VALUES = ["基本形", "連体形", "連用形", "未然形", "仮定形", "命令形"];
+  const COMMON_CTYPE_VALUES = ["五段・ラ行", "五段・ワ行促音便", "一段", "サ変・スル", "カ変・クル", "形容詞・イ段"];
+
+  const ensureDatalist = (id, values) => {
+    let datalist = document.getElementById(id);
+    if (datalist) {
+      return datalist;
+    }
+
+    datalist = document.createElement("datalist");
+    datalist.id = id;
+    for (const value of values) {
+      const option = document.createElement("option");
+      option.value = value;
+      datalist.appendChild(option);
+    }
+    document.body.appendChild(datalist);
+    return datalist;
+  };
+
+  const normalizeMatcherDraft = (value) => {
+    if (Array.isArray(value)) {
+      return normalizeMatcherDraft(value[0] ?? null);
+    }
+    if (typeof value === "string") {
+      return { surface: value };
+    }
+    if (value && typeof value === "object") {
+      return cloneValue(value);
+    }
+    return {};
+  };
+
+  const cleanupMatcherDraft = (draft) => {
+    const normalized = {};
+    const keys = ["surface", "basic", "pos", "pos1", "pos2", "pos3", "ctype", "cform", "reading", "pronunciation", "word_type"];
+    for (const key of keys) {
+      const value = `${draft?.[key] ?? ""}`.trim();
+      if (value) {
+        normalized[key] = value;
+      }
+    }
+    return Object.keys(normalized).length > 0 ? normalized : null;
+  };
+
+  const assignConditionSlot = (entry, slot, matcher) => {
+    const nextConditions = { ...(entry.conditions ?? {}) };
+    if (matcher) {
+      nextConditions[slot] = matcher;
+    } else {
+      delete nextConditions[slot];
+    }
+    entry.conditions = Object.keys(nextConditions).length > 0 ? nextConditions : null;
+  };
+
   const setAllRowsSelected = (entries, selected) => {
     for (const entry of entries) {
       entry.selected = selected;
@@ -983,6 +1104,190 @@
     button.addEventListener("dblclick", startEditing);
     heading.appendChild(button);
     return heading;
+  };
+
+  const createMatcherField = (labelText, value, datalistId, datalistValues, onInput) => {
+    const label = document.createElement("label");
+    label.style.display = "grid";
+    label.style.gap = "3px";
+
+    const caption = document.createElement("span");
+    caption.className = "count";
+    caption.textContent = labelText;
+
+    const input = createCompactInput(value, {
+      type: "text",
+      min: 3,
+      max: 16,
+      className: "cell-input"
+    });
+    if (datalistId && Array.isArray(datalistValues)) {
+      ensureDatalist(datalistId, datalistValues);
+      input.setAttribute("list", datalistId);
+    }
+    input.addEventListener("input", () => onInput(input.value));
+
+    label.append(caption, input);
+    return label;
+  };
+
+  const renderConditionEditor = (entry, slot, labelText) => {
+    const wrap = document.createElement("div");
+    wrap.className = "panel-block";
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = labelText;
+    const hint = document.createElement("span");
+    hint.className = "count";
+    hint.textContent = "surface / basic / pos / pos1 / cform";
+    head.append(title, hint);
+
+    const grid = document.createElement("div");
+    grid.style.display = "grid";
+    grid.style.gap = "6px";
+    grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(92px, 1fr))";
+
+    const draft = normalizeMatcherDraft(entry.conditions?.[slot]);
+    const updateField = (key, value) => {
+      draft[key] = value;
+      assignConditionSlot(entry, slot, cleanupMatcherDraft(draft));
+      renderDiagnostics();
+    };
+
+    grid.appendChild(createMatcherField("表層", draft.surface ?? "", null, null, (value) => updateField("surface", value)));
+    grid.appendChild(createMatcherField("原形", draft.basic ?? "", null, null, (value) => updateField("basic", value)));
+    grid.appendChild(createMatcherField("品詞", draft.pos ?? "", "pos-values", COMMON_POS_VALUES, (value) => updateField("pos", value)));
+    grid.appendChild(createMatcherField("品詞1", draft.pos1 ?? "", "pos1-values", COMMON_POS1_VALUES, (value) => updateField("pos1", value)));
+    grid.appendChild(createMatcherField("活用形", draft.cform ?? "", "cform-values", COMMON_CFORM_VALUES, (value) => updateField("cform", value)));
+    grid.appendChild(createMatcherField("活用型", draft.ctype ?? "", "ctype-values", COMMON_CTYPE_VALUES, (value) => updateField("ctype", value)));
+
+    wrap.append(head, grid);
+    return wrap;
+  };
+
+  const renderSequenceEditor = (entry) => {
+    const wrap = document.createElement("div");
+    wrap.className = "panel-block";
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = "sequence";
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(createButton("Token追加", "secondary", () => {
+      const next = Array.isArray(entry.sequence) ? cloneValue(entry.sequence) : [];
+      next.push({ surface: "", pos: "" });
+      entry.sequence = next;
+      renderApp();
+    }));
+    head.append(title, actions);
+
+    const sequence = Array.isArray(entry.sequence) ? entry.sequence : [];
+    if (sequence.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "count";
+      empty.textContent = "未設定";
+      wrap.append(head, empty);
+      return wrap;
+    }
+
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "scroll-area";
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    thead.innerHTML = `
+      <tr>
+        <th>表層</th>
+        <th>原形</th>
+        <th>品詞</th>
+        <th>品詞1</th>
+        <th>活用形</th>
+        <th>活用型</th>
+        <th>操作</th>
+      </tr>
+    `;
+    const tbody = document.createElement("tbody");
+
+    sequence.forEach((matcher, matcherIndex) => {
+      const row = document.createElement("tr");
+      const draft = normalizeMatcherDraft(matcher);
+      const updateMatcher = (key, value) => {
+        const next = Array.isArray(entry.sequence) ? cloneValue(entry.sequence) : [];
+        const matcherDraft = normalizeMatcherDraft(next[matcherIndex]);
+        matcherDraft[key] = value;
+        next[matcherIndex] = cleanupMatcherDraft(matcherDraft) ?? {};
+        entry.sequence = next;
+        renderDiagnostics();
+      };
+
+      const appendCell = (node) => {
+        const td = document.createElement("td");
+        td.appendChild(node);
+        row.appendChild(td);
+      };
+
+      appendCell(createCompactInput(draft.surface ?? "", { min: 3, max: 18 }));
+      row.lastChild.firstChild.addEventListener("input", (event) => updateMatcher("surface", event.currentTarget.value));
+
+      appendCell(createCompactInput(draft.basic ?? "", { min: 3, max: 18 }));
+      row.lastChild.firstChild.addEventListener("input", (event) => updateMatcher("basic", event.currentTarget.value));
+
+      const posInput = createCompactInput(draft.pos ?? "", { min: 3, max: 12 });
+      ensureDatalist("pos-values", COMMON_POS_VALUES);
+      posInput.setAttribute("list", "pos-values");
+      posInput.addEventListener("input", (event) => updateMatcher("pos", event.currentTarget.value));
+      appendCell(posInput);
+
+      const pos1Input = createCompactInput(draft.pos1 ?? "", { min: 3, max: 12 });
+      ensureDatalist("pos1-values", COMMON_POS1_VALUES);
+      pos1Input.setAttribute("list", "pos1-values");
+      pos1Input.addEventListener("input", (event) => updateMatcher("pos1", event.currentTarget.value));
+      appendCell(pos1Input);
+
+      const cformInput = createCompactInput(draft.cform ?? "", { min: 3, max: 12 });
+      ensureDatalist("cform-values", COMMON_CFORM_VALUES);
+      cformInput.setAttribute("list", "cform-values");
+      cformInput.addEventListener("input", (event) => updateMatcher("cform", event.currentTarget.value));
+      appendCell(cformInput);
+
+      const ctypeInput = createCompactInput(draft.ctype ?? "", { min: 3, max: 14 });
+      ensureDatalist("ctype-values", COMMON_CTYPE_VALUES);
+      ctypeInput.setAttribute("list", "ctype-values");
+      ctypeInput.addEventListener("input", (event) => updateMatcher("ctype", event.currentTarget.value));
+      appendCell(ctypeInput);
+
+      const actionTd = document.createElement("td");
+      actionTd.className = "action-col";
+      actionTd.appendChild(createButton("↑", "ghost", () => {
+        if (moveItem(sequence, matcherIndex, -1)) {
+          entry.sequence = cloneValue(sequence);
+          renderApp();
+        }
+      }));
+      actionTd.appendChild(createButton("↓", "ghost", () => {
+        if (moveItem(sequence, matcherIndex, 1)) {
+          entry.sequence = cloneValue(sequence);
+          renderApp();
+        }
+      }));
+      actionTd.appendChild(createButton("削除", "danger", () => {
+        const next = cloneValue(sequence);
+        next.splice(matcherIndex, 1);
+        entry.sequence = next.length > 0 ? next : null;
+        renderApp();
+      }));
+      row.appendChild(actionTd);
+
+      tbody.appendChild(row);
+    });
+
+    table.append(thead, tbody);
+    tableWrap.appendChild(table);
+    wrap.append(head, tableWrap);
+    return wrap;
   };
 
   const renderEntryTable = (node) => {
@@ -1124,60 +1429,10 @@
         const detailGrid = document.createElement("div");
         detailGrid.style.display = "grid";
         detailGrid.style.gap = "6px";
-        detailGrid.style.gridTemplateColumns = "repeat(auto-fit, minmax(180px, 1fr))";
-
-        const makeConditionField = (labelText, value, onInput) => {
-          const label = document.createElement("label");
-          label.style.display = "grid";
-          label.style.gap = "4px";
-
-          const caption = document.createElement("span");
-          caption.className = "count";
-          caption.textContent = labelText;
-
-          const input = createCompactInput(value, {
-            type: "text",
-            min: 8,
-            max: 40,
-            className: "cell-input"
-          });
-          input.style.width = "100%";
-          input.addEventListener("input", () => {
-            try {
-              onInput(input.value);
-              setStatus("条件を更新しました。", "info");
-            } catch (error) {
-              setStatus(error.message, "error");
-            }
-          });
-
-          label.append(caption, input);
-          return label;
-        };
-
-        const conditions = entry.conditions ?? {};
-        detailGrid.appendChild(makeConditionField("前", formatConditionText(conditions.prev), (value) => {
-          const nextConditions = { ...(entry.conditions ?? {}) };
-          nextConditions.prev = parseConditionText(value);
-          entry.conditions = nextConditions;
-          renderDiagnostics();
-        }));
-        detailGrid.appendChild(makeConditionField("現", formatConditionText(conditions.current), (value) => {
-          const nextConditions = { ...(entry.conditions ?? {}) };
-          nextConditions.current = parseConditionText(value);
-          entry.conditions = nextConditions;
-          renderDiagnostics();
-        }));
-        detailGrid.appendChild(makeConditionField("後", formatConditionText(conditions.next), (value) => {
-          const nextConditions = { ...(entry.conditions ?? {}) };
-          nextConditions.next = parseConditionText(value);
-          entry.conditions = nextConditions;
-          renderDiagnostics();
-        }));
-        detailGrid.appendChild(makeConditionField("sequence", formatSequenceText(entry.sequence), (value) => {
-          entry.sequence = parseSequenceText(value);
-          renderDiagnostics();
-        }));
+        detailGrid.appendChild(renderConditionEditor(entry, "prev", "前"));
+        detailGrid.appendChild(renderConditionEditor(entry, "current", "現"));
+        detailGrid.appendChild(renderConditionEditor(entry, "next", "後"));
+        detailGrid.appendChild(renderSequenceEditor(entry));
 
         detailWrap.append(detailHead, detailGrid);
         detailCell.appendChild(detailWrap);
@@ -1421,14 +1676,53 @@
     ));
   };
 
+  const renderTokenizerResult = (tokens) => {
+    tokenizerResult.textContent = "";
+    tokens.forEach((token, index) => {
+      const row = document.createElement("tr");
+      const cells = [
+        String(index + 1),
+        token.surface_form ?? "",
+        token.basic_form ?? "",
+        token.pos ?? "",
+        token.pos_detail_1 ?? "",
+        token.conjugated_form ?? "",
+        token.conjugated_type ?? "",
+        token.reading ?? ""
+      ];
+      for (const value of cells) {
+        const td = document.createElement("td");
+        td.textContent = value;
+        row.appendChild(td);
+      }
+      tokenizerResult.appendChild(row);
+    });
+  };
+
+  const runTokenizerTest = async () => {
+    if (!state.tokenizer) {
+      state.tokenizer = await buildTokenizer();
+    }
+
+    const text = tokenizerInput.value ?? "";
+    const tokens = state.tokenizer.tokenize(text);
+    renderTokenizerResult(tokens);
+    setStatus(`形態素 ${tokens.length} 件を解析しました。`, "success");
+  };
+
   const renderTabState = () => {
     const bundlesActive = state.activeTab === "bundles";
+    const diagnosticsActive = state.activeTab === "diagnostics";
+    const tokenizerActive = state.activeTab === "tokenizer";
     panelBundles.hidden = !bundlesActive;
-    panelDiagnostics.hidden = bundlesActive;
+    panelDiagnostics.hidden = !diagnosticsActive;
+    panelTokenizer.hidden = !tokenizerActive;
     tabBundlesButton.setAttribute("aria-selected", bundlesActive ? "true" : "false");
-    tabDiagnosticsButton.setAttribute("aria-selected", bundlesActive ? "false" : "true");
+    tabDiagnosticsButton.setAttribute("aria-selected", diagnosticsActive ? "true" : "false");
+    tabTokenizerButton.setAttribute("aria-selected", tokenizerActive ? "true" : "false");
     tabBundlesButton.className = bundlesActive ? "tab-button secondary" : "tab-button ghost";
-    tabDiagnosticsButton.className = bundlesActive ? "tab-button ghost" : "tab-button secondary";
+    tabDiagnosticsButton.className = diagnosticsActive ? "tab-button secondary" : "tab-button ghost";
+    tabTokenizerButton.className = tokenizerActive ? "tab-button secondary" : "tab-button ghost";
   };
 
   const renderBundles = () => {
@@ -1528,6 +1822,17 @@
     renderTabState();
   });
 
+  tabTokenizerButton.addEventListener("click", async () => {
+    state.activeTab = "tokenizer";
+    renderTabState();
+    try {
+      await runTokenizerTest();
+    } catch (error) {
+      console.error(error);
+      setStatus(`形態素解析に失敗しました: ${error.message}`, "error");
+    }
+  });
+
   saveAllButton.addEventListener("click", async () => {
     try {
       await saveAll();
@@ -1587,6 +1892,15 @@
     } catch (error) {
       console.error(error);
       setStatus(`YAML 書出に失敗しました: ${error.message}`, "error");
+    }
+  });
+
+  tokenizerRunButton.addEventListener("click", async () => {
+    try {
+      await runTokenizerTest();
+    } catch (error) {
+      console.error(error);
+      setStatus(`形態素解析に失敗しました: ${error.message}`, "error");
     }
   });
 

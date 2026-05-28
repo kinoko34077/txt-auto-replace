@@ -1188,7 +1188,7 @@
     };
 
     grid.appendChild(createMatcherField("表層", draft.surface ?? "", null, null, (value) => updateField("surface", value)));
-    grid.appendChild(createMatcherField("原形", draft.basic ?? "", null, null, (value) => updateField("basic", value)));
+    grid.appendChild(createMatcherField("原形条件", draft.basic ?? "", null, null, (value) => updateField("basic", value)));
     grid.appendChild(createMatcherField("品詞", draft.pos ?? "", "pos-values", COMMON_POS_VALUES, (value) => updateField("pos", value)));
     grid.appendChild(createMatcherField("品詞1", draft.pos1 ?? "", "pos1-values", COMMON_POS1_VALUES, (value) => updateField("pos1", value)));
     grid.appendChild(createMatcherField("活用形", draft.cform ?? "", "cform-values", COMMON_CFORM_VALUES, (value) => updateField("cform", value)));
@@ -1321,7 +1321,7 @@
     return wrap;
   };
 
-  const renderEntryTable = (node) => {
+  const renderEntryTable = (node, effectiveKind) => {
     const wrapper = document.createElement("div");
     wrapper.className = "panel-block";
 
@@ -1331,7 +1331,9 @@
     title.textContent = "項目";
     const count = document.createElement("span");
     count.className = "count";
-    count.textContent = `選択 ${getSelectedCount(node.entries)} 件 / 全 ${node.entries.length} 件`;
+    count.textContent = effectiveKind === "token-rules"
+      ? `token ${node.entries.length} 件 / 選択 ${getSelectedCount(node.entries)} 件`
+      : `dictionary ${node.entries.length} 件 / 選択 ${getSelectedCount(node.entries)} 件`;
     head.append(title, count);
 
     const tableWrap = document.createElement("div");
@@ -1343,7 +1345,7 @@
         <th class="check-col"></th>
         <th class="check-col">有効</th>
         <th class="check-col">正規</th>
-        <th class="check-col">原形</th>
+        <th class="check-col">原形一致</th>
         <th>変更前</th>
         <th>変更後</th>
         <th>優先</th>
@@ -1359,6 +1361,7 @@
     const tbody = document.createElement("tbody");
     node.entries.forEach((entry, entryIndex) => {
       const row = document.createElement("tr");
+      row.id = `entry-${entry.id}`;
       row.dataset.searchValue = `${entry.regex ? "regex" : "plain"} ${entry.from} ${entry.to}`;
 
       const checkTd = document.createElement("td");
@@ -1400,7 +1403,11 @@
       basicTd.className = "check-col";
       const basicCheckbox = document.createElement("input");
       basicCheckbox.type = "checkbox";
-      basicCheckbox.checked = entry.match_target === "basic_form";
+      basicCheckbox.title = effectiveKind === "token-rules"
+        ? "変更前を辞書形 basic_form に対して一致させる"
+        : "dictionary-rules では使用しません";
+      basicCheckbox.checked = effectiveKind === "token-rules" && entry.match_target === "basic_form";
+      basicCheckbox.disabled = effectiveKind !== "token-rules";
       basicCheckbox.addEventListener("change", () => {
         entry.match_target = basicCheckbox.checked ? "basic_form" : null;
         renderDiagnostics();
@@ -1440,10 +1447,15 @@
 
       const actionTd = document.createElement("td");
       actionTd.className = "action-col";
-      actionTd.appendChild(createButton(entry.metaOpen ? "閉じる" : "条件", "ghost", () => {
+      const detailButton = createButton(entry.metaOpen ? "閉じる" : "条件", "ghost", () => {
         entry.metaOpen = !entry.metaOpen;
         renderApp();
-      }));
+      });
+      if (effectiveKind !== "token-rules") {
+        detailButton.disabled = true;
+        detailButton.title = "dictionary-rules では条件・sequence を使いません";
+      }
+      actionTd.appendChild(detailButton);
       actionTd.appendChild(createButton("削除", "danger row-delete", () => {
         node.entries.splice(entryIndex, 1);
         renderApp();
@@ -1452,7 +1464,7 @@
       row.append(checkTd, enabledTd, regexTd, basicTd, fromTd, toTd, priorityTd, actionTd);
       tbody.appendChild(row);
 
-      if (entry.metaOpen) {
+      if (effectiveKind === "token-rules" && entry.metaOpen) {
         const detailRow = document.createElement("tr");
         const detailCell = document.createElement("td");
         detailCell.colSpan = 8;
@@ -1466,7 +1478,7 @@
         detailTitle.textContent = "条件";
         const detailHint = document.createElement("span");
         detailHint.className = "count";
-        detailHint.textContent = "前後条件と sequence を編集";
+        detailHint.textContent = "前後条件・現条件・sequence を編集";
         detailHead.append(detailTitle, detailHint);
 
         const detailGrid = document.createElement("div");
@@ -1496,9 +1508,13 @@
     return wrapper;
   };
 
-  const renderNodeSection = ({ node, parentChildren, index, depth = 0, isRoot = false }) => {
+  const renderNodeSection = ({ node, parentChildren, index, depth = 0, isRoot = false, inheritedKind = null }) => {
     const card = document.createElement("section");
     card.className = isRoot ? "bundle-card" : "group-card";
+    card.id = `node-${node.id}`;
+    const effectiveKind = isRoot
+      ? (node.kind ?? "dictionary-rules")
+      : (inheritedKind ?? node.kind ?? "dictionary-rules");
 
     const header = document.createElement("div");
     header.className = isRoot ? "bundle-head" : "group-head";
@@ -1515,7 +1531,7 @@
     childChip.textContent = `子箱 ${node.children.length}`;
     const kindChip = document.createElement("span");
     kindChip.className = "chip";
-    kindChip.textContent = node.kind === "token-rules" ? "token" : "dictionary";
+    kindChip.textContent = effectiveKind;
     titleWrap.append(entryChip, childChip, kindChip);
 
     const actions = document.createElement("div");
@@ -1533,6 +1549,21 @@
     enabledLabel.append(enabledCheckbox, document.createTextNode("有効"));
     actions.appendChild(enabledLabel);
 
+    if (isRoot) {
+      const kindSelect = document.createElement("select");
+      kindSelect.title = "Bundle の実行種別";
+      kindSelect.innerHTML = `
+        <option value="token-rules">token-rules</option>
+        <option value="dictionary-rules">dictionary-rules</option>
+      `;
+      kindSelect.value = effectiveKind;
+      kindSelect.addEventListener("change", () => {
+        node.kind = kindSelect.value;
+        renderApp();
+      });
+      actions.appendChild(kindSelect);
+    }
+
     actions.appendChild(createButton("↑", "ghost", () => {
       if (moveItem(parentChildren, index, -1)) {
         renderApp();
@@ -1547,6 +1578,7 @@
       node.children.push(normalizeNode({
         id: createNodeId(),
         label: "Group",
+        kind: effectiveKind,
         enabled: true,
         entries: [],
         children: []
@@ -1596,7 +1628,7 @@
     card.appendChild(header);
 
     if (node.entries.length > 0 || node.children.length === 0) {
-      card.appendChild(renderEntryTable(node));
+      card.appendChild(renderEntryTable(node, effectiveKind));
     }
 
     if (node.children.length > 0) {
@@ -1608,7 +1640,8 @@
           parentChildren: node.children,
           index: childIndex,
           depth: depth + 1,
-          isRoot: false
+          isRoot: false,
+          inheritedKind: effectiveKind
         }));
       });
       card.appendChild(childrenWrap);
@@ -1620,6 +1653,8 @@
   const collectDiagnostics = () => {
     const duplicateFromMap = new Map();
     const duplicateNodeLabelMap = new Map();
+    const overlapIssues = [];
+    const plainEntries = [];
 
     walkNodes(state.roots, (node, trail) => {
       const pathText = getNodePathText(trail);
@@ -1638,18 +1673,129 @@
           duplicateFromMap.set(entryKey, []);
         }
         duplicateFromMap.get(entryKey).push({
+          rootId: trail[0]?.id ?? null,
+          nodeId: node.id,
+          entryId: entry.id,
+          from: entry.from,
           pathText,
           to: entry.to,
           priority: entry.priority,
           regex: entry.regex === true
         });
+
+        if (entry.regex !== true) {
+          plainEntries.push({
+            rootId: trail[0]?.id ?? null,
+            nodeId: node.id,
+            entryId: entry.id,
+            from: entry.from,
+            to: entry.to,
+            pathText
+          });
+        }
       }
     });
 
+    for (let leftIndex = 0; leftIndex < plainEntries.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < plainEntries.length; rightIndex += 1) {
+        const left = plainEntries[leftIndex];
+        const right = plainEntries[rightIndex];
+        if (!left.from || !right.from || left.from === right.from) {
+          continue;
+        }
+
+        const leftContainsRight = left.from.includes(right.from);
+        const rightContainsLeft = right.from.includes(left.from);
+        if (!leftContainsRight && !rightContainsLeft) {
+          continue;
+        }
+
+        const longer = left.from.length >= right.from.length ? left : right;
+        const shorter = longer === left ? right : left;
+        overlapIssues.push({
+          longer,
+          shorter
+        });
+      }
+    }
+
     return {
       duplicateFromIssues: [...duplicateFromMap.entries()].filter(([, entries]) => entries.length > 1),
-      duplicateNodeLabelIssues: [...duplicateNodeLabelMap.entries()].filter(([, entries]) => entries.length > 1)
+      duplicateNodeLabelIssues: [...duplicateNodeLabelMap.entries()].filter(([, entries]) => entries.length > 1),
+      overlapIssues
     };
+  };
+
+  const setTemporaryHighlight = (element) => {
+    if (!element) {
+      return;
+    }
+
+    const previousOutline = element.style.outline;
+    const previousOutlineOffset = element.style.outlineOffset;
+    element.style.outline = "2px solid var(--accent)";
+    element.style.outlineOffset = "2px";
+    window.setTimeout(() => {
+      element.style.outline = previousOutline;
+      element.style.outlineOffset = previousOutlineOffset;
+    }, 1800);
+  };
+
+  const findEntryById = (entryId) => {
+    let found = null;
+    walkNodes(state.roots, (node) => {
+      if (found) {
+        return;
+      }
+      const entry = node.entries.find((candidate) => candidate.id === entryId);
+      if (entry) {
+        found = entry;
+      }
+    });
+    return found;
+  };
+
+  const jumpToDiagnosticTarget = (target) => {
+    if (!target) {
+      return;
+    }
+
+    if (target.entryId) {
+      const entry = findEntryById(target.entryId);
+      if (entry) {
+        entry.metaOpen = true;
+      }
+    }
+
+    state.activeTab = "bundles";
+    renderApp();
+
+    window.setTimeout(() => {
+      const selector = target.entryId
+        ? `entry-${target.entryId}`
+        : target.nodeId
+          ? `node-${target.nodeId}`
+          : target.rootId
+            ? `node-${target.rootId}`
+            : null;
+      if (!selector) {
+        return;
+      }
+
+      const element = document.getElementById(selector);
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({ block: "center", behavior: "smooth" });
+      setTemporaryHighlight(element);
+    }, 0);
+  };
+
+  const createJumpButton = (label, target) => {
+    return createButton(label, "ghost", () => {
+      jumpToDiagnosticTarget(target);
+    });
   };
 
   const renderIssueCard = (title, issues, emptyText, renderRow) => {
@@ -1694,9 +1840,38 @@
         heading.textContent = `${from} (${mode === "regex" ? "regex" : "plain"})`;
         const body = document.createElement("div");
         body.className = "diag-occurrence";
-        body.innerHTML = occurrences.map((occurrence) => {
-          return `${occurrence.pathText} -> ${occurrence.to} / priority ${occurrence.priority}`;
-        }).join("<br>");
+        for (const occurrence of occurrences) {
+          const line = document.createElement("div");
+          line.appendChild(createJumpButton("移動", occurrence));
+          line.append(` ${occurrence.pathText} -> ${occurrence.to} / priority ${occurrence.priority}`);
+          body.appendChild(line);
+        }
+        item.append(heading, body);
+        return item;
+      }
+    ));
+
+    diagnosticsRoot.appendChild(renderIssueCard(
+      "包含している変更前",
+      diagnostics.overlapIssues,
+      "包含関係はありません。",
+      ({ longer, shorter }) => {
+        const item = document.createElement("div");
+        item.className = "diag-item";
+        const heading = document.createElement("h3");
+        heading.textContent = `${longer.from} ⊃ ${shorter.from}`;
+        const body = document.createElement("div");
+        body.className = "diag-occurrence";
+
+        const longerLine = document.createElement("div");
+        longerLine.appendChild(createJumpButton("長い方へ移動", longer));
+        longerLine.append(` ${longer.pathText} -> ${longer.to}`);
+
+        const shorterLine = document.createElement("div");
+        shorterLine.appendChild(createJumpButton("短い方へ移動", shorter));
+        shorterLine.append(` ${shorter.pathText} -> ${shorter.to}`);
+
+        body.append(longerLine, shorterLine);
         item.append(heading, body);
         return item;
       }
@@ -1713,7 +1888,26 @@
         heading.textContent = paths[0].split(" / ").slice(-1)[0];
         const body = document.createElement("div");
         body.className = "diag-occurrence";
-        body.innerHTML = paths.join("<br>");
+        for (const pathText of paths) {
+          const targetNode = state.roots
+            .flatMap((root) => {
+              const matches = [];
+              walkNodes([root], (node, trail) => {
+                if (getNodePathText(trail) === pathText) {
+                  matches.push(node);
+                }
+              });
+              return matches;
+            })[0];
+          const line = document.createElement("div");
+          if (targetNode) {
+            line.appendChild(createJumpButton("移動", { nodeId: targetNode.id, rootId: targetNode.id }));
+            line.append(` ${pathText}`);
+          } else {
+            line.textContent = pathText;
+          }
+          body.appendChild(line);
+        }
         item.append(heading, body);
         return item;
       }

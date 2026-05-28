@@ -145,6 +145,47 @@
       .filter(Boolean);
   };
 
+  const GODAN_VERB_ENDINGS = {
+    "う": { a: "わ", i: "い", e: "え", o: "お", te: "って", ta: "った" },
+    "く": { a: "か", i: "き", e: "け", o: "こ", te: "いて", ta: "いた" },
+    "ぐ": { a: "が", i: "ぎ", e: "げ", o: "ご", te: "いで", ta: "いだ" },
+    "す": { a: "さ", i: "し", e: "せ", o: "そ", te: "して", ta: "した" },
+    "つ": { a: "た", i: "ち", e: "て", o: "と", te: "って", ta: "った" },
+    "ぬ": { a: "な", i: "に", e: "ね", o: "の", te: "んで", ta: "んだ" },
+    "ぶ": { a: "ば", i: "び", e: "べ", o: "ぼ", te: "んで", ta: "んだ" },
+    "む": { a: "ま", i: "み", e: "め", o: "も", te: "んで", ta: "んだ" },
+    "る": { a: "ら", i: "り", e: "れ", o: "ろ", te: "って", ta: "った" }
+  };
+
+  const getFinalCharacter = (value) => {
+    const characters = Array.from(`${value ?? ""}`);
+    return characters.length > 0 ? characters[characters.length - 1] : "";
+  };
+
+  const inferGodanEnding = (from, replacementBase) => {
+    const fromEnding = getFinalCharacter(from);
+    const replacementEnding = getFinalCharacter(replacementBase);
+    if (!fromEnding || fromEnding !== replacementEnding) {
+      return null;
+    }
+
+    return GODAN_VERB_ENDINGS[fromEnding] ?? null;
+  };
+
+  const pushUniqueVariant = (variants, from, to) => {
+    const normalizedFrom = `${from ?? ""}`.trim();
+    const normalizedTo = `${to ?? ""}`.trim();
+    if (!normalizedFrom || !normalizedTo || normalizedFrom === normalizedTo) {
+      return;
+    }
+
+    if (variants.some((variant) => variant.from === normalizedFrom && variant.to === normalizedTo)) {
+      return;
+    }
+
+    variants.push({ from: normalizedFrom, to: normalizedTo });
+  };
+
   const normalizePhraseRuleRecord = (from, rawRule) => {
     if (typeof rawRule === "string") {
       const candidates = splitReplacementCandidates(rawRule);
@@ -441,6 +482,10 @@
       return true;
     }
 
+    if (rule?.type === "compound" && inferGodanEnding(rule?.from, rule?.to)) {
+      return true;
+    }
+
     return listifyConditions(rule?.conditions?.current).some((condition) => {
       if (!condition || typeof condition !== "object") {
         return false;
@@ -556,6 +601,74 @@
     }
 
     return `${toStem}${token.surface_form.slice(fromStem.length)}`;
+  };
+
+  const isEligibleForVerbSurfaceFallback = (rule, replacementBase) => {
+    if (!rule || rule.enabled === false || rule.regex === true) {
+      return false;
+    }
+
+    if (!rule.from || !replacementBase || rule.from === replacementBase) {
+      return false;
+    }
+
+    if (Array.isArray(rule.sequence) && rule.sequence.length > 0) {
+      return false;
+    }
+
+    if (rule.conditions?.prev || rule.conditions?.next) {
+      return false;
+    }
+
+    if (!ruleUsesBasicFormMatch(rule)) {
+      return false;
+    }
+
+    return Boolean(inferGodanEnding(rule.from, replacementBase));
+  };
+
+  const buildVerbSurfaceFallbackVariants = (rule, replacementBase) => {
+    if (!isEligibleForVerbSurfaceFallback(rule, replacementBase)) {
+      return [];
+    }
+
+    const endingInfo = inferGodanEnding(rule.from, replacementBase);
+    if (!endingInfo) {
+      return [];
+    }
+
+    const fromStem = rule.from.slice(0, -1);
+    const toStem = replacementBase.slice(0, -1);
+    if (!fromStem || !toStem) {
+      return [];
+    }
+
+    const variants = [];
+    pushUniqueVariant(variants, rule.from, replacementBase);
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.a}`, `${toStem}${endingInfo.a}`);
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.i}`, `${toStem}${endingInfo.i}`);
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.e}`, `${toStem}${endingInfo.e}`);
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.o}`, `${toStem}${endingInfo.o}`);
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.te}`, `${toStem}${endingInfo.te}`);
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.ta}`, `${toStem}${endingInfo.ta}`);
+
+    return variants.sort((left, right) => {
+      return right.from.length - left.from.length;
+    });
+  };
+
+  const applyVerbFallbackTransformations = (text, rules) => {
+    let result = text;
+
+    for (const rule of rules) {
+      const replacementBase = chooseReplacement(rule, rule.from);
+      const variants = buildVerbSurfaceFallbackVariants(rule, replacementBase);
+      for (const variant of variants) {
+        result = result.replace(new RegExp(escapeRegex(variant.from), "gu"), variant.to);
+      }
+    }
+
+    return result;
   };
 
   const resolveTokenReplacement = (token, rule, matchedText) => {
@@ -1255,6 +1368,7 @@
 
         const tokens = activeTokenizer.tokenize(transformedText);
         transformedText = applyTransformations(tokens, stage.rules);
+        transformedText = applyVerbFallbackTransformations(transformedText, stage.rules);
       }
     }
 

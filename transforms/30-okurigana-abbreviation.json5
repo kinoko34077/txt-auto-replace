@@ -19,7 +19,7 @@
     {
       from: "書き出す",
       to: "書出す",
-      type: "compound",
+      type: "verb",
       priority: 70,
     },
     {

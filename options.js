@@ -3,6 +3,7 @@
 
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
   const STORAGE_KEY = "bundleOverrideSettingsV1";
+  const DIAGNOSTIC_UI_STATE_KEY = "diagnosticUiStateV1";
   const DICT_PATH = "./dict/";
 
   const state = {
@@ -11,7 +12,9 @@
     baseRoots: [],
     nodeSerial: 0,
     entrySerial: 0,
-    tokenizer: null
+    tokenizer: null,
+    dismissedDiagnostics: {},
+    dismissedDiagnosticsCollapsed: true
   };
 
   const bundleRoot = document.getElementById("bundle-root");
@@ -40,6 +43,45 @@
   };
 
   const cloneValue = (value) => JSON.parse(JSON.stringify(value));
+
+  const getDismissedDiagnostics = () => {
+    return state.dismissedDiagnostics ?? {};
+  };
+
+  const isDiagnosticDismissed = (issueId) => {
+    return Boolean(getDismissedDiagnostics()[issueId]);
+  };
+
+  const dismissDiagnostic = (issueId, label) => {
+    state.dismissedDiagnostics = {
+      ...getDismissedDiagnostics(),
+      [issueId]: label
+    };
+    saveDiagnosticUiState();
+  };
+
+  const restoreDiagnostic = (issueId) => {
+    const next = { ...getDismissedDiagnostics() };
+    delete next[issueId];
+    state.dismissedDiagnostics = next;
+    saveDiagnosticUiState();
+  };
+
+  const restoreAllDiagnostics = () => {
+    state.dismissedDiagnostics = {};
+    saveDiagnosticUiState();
+  };
+
+  const saveDiagnosticUiState = () => {
+    storageSet({
+      [DIAGNOSTIC_UI_STATE_KEY]: {
+        dismissedDiagnostics: getDismissedDiagnostics(),
+        collapsed: state.dismissedDiagnosticsCollapsed !== false
+      }
+    }).catch((error) => {
+      console.error("診断 UI 状態の保存に失敗しました", error);
+    });
+  };
 
   const createNodeId = () => {
     state.nodeSerial += 1;
@@ -1726,21 +1768,6 @@
     };
   };
 
-  const setTemporaryHighlight = (element) => {
-    if (!element) {
-      return;
-    }
-
-    const previousOutline = element.style.outline;
-    const previousOutlineOffset = element.style.outlineOffset;
-    element.style.outline = "2px solid var(--accent)";
-    element.style.outlineOffset = "2px";
-    window.setTimeout(() => {
-      element.style.outline = previousOutline;
-      element.style.outlineOffset = previousOutlineOffset;
-    }, 1800);
-  };
-
   const findEntryById = (entryId) => {
     let found = null;
     walkNodes(state.roots, (node) => {
@@ -1770,26 +1797,23 @@
     state.activeTab = "bundles";
     renderApp();
 
-    window.setTimeout(() => {
-      const selector = target.entryId
-        ? `entry-${target.entryId}`
-        : target.nodeId
-          ? `node-${target.nodeId}`
-          : target.rootId
-            ? `node-${target.rootId}`
-            : null;
-      if (!selector) {
-        return;
-      }
+    const selector = target.entryId
+      ? `entry-${target.entryId}`
+      : target.nodeId
+        ? `node-${target.nodeId}`
+        : target.rootId
+          ? `node-${target.rootId}`
+          : null;
+    if (!selector) {
+      return;
+    }
 
-      const element = document.getElementById(selector);
-      if (!element) {
-        return;
-      }
+    const element = document.getElementById(selector);
+    if (!element) {
+      return;
+    }
 
-      element.scrollIntoView({ block: "center", behavior: "smooth" });
-      setTemporaryHighlight(element);
-    }, 0);
+    element.scrollIntoView({ block: "nearest" });
   };
 
   const createJumpButton = (label, target) => {
@@ -1798,9 +1822,24 @@
     });
   };
 
-  const renderIssueCard = (title, issues, emptyText, renderRow) => {
+  const createDiagnosticIssueId = (kind, parts) => {
+    return `${kind}:${parts.map((part) => `${part ?? ""}`).join("|")}`;
+  };
+
+  const createDismissButton = (issueId, issueLabel) => {
+    const button = createButton("×", "ghost", () => {
+      dismissDiagnostic(issueId, issueLabel);
+      renderDiagnostics();
+    });
+    button.title = "この診断を非表示";
+    button.setAttribute("aria-label", `${issueLabel} を非表示`);
+    return button;
+  };
+
+  const renderIssueCard = (title, issues, emptyText, getIssueId, getIssueLabel, renderRow) => {
     const card = document.createElement("section");
     card.className = "diagnostics-card";
+    const visibleIssues = issues.filter((issue) => !isDiagnosticDismissed(getIssueId(issue)));
 
     const heading = document.createElement("h2");
     heading.textContent = title;
@@ -1808,17 +1847,82 @@
 
     const summary = document.createElement("p");
     summary.className = "diag-summary";
-    summary.textContent = issues.length === 0 ? emptyText : `${issues.length} 件の問題があります。`;
+    summary.textContent = visibleIssues.length === 0 ? emptyText : `${visibleIssues.length} 件の問題があります。`;
     card.appendChild(summary);
 
-    if (issues.length === 0) {
+    if (visibleIssues.length === 0) {
       return card;
     }
 
     const list = document.createElement("div");
     list.className = "diag-list";
-    for (const issue of issues) {
-      list.appendChild(renderRow(issue));
+    for (const issue of visibleIssues) {
+      const issueId = getIssueId(issue);
+      const issueLabel = getIssueLabel(issue);
+      const row = renderRow(issue);
+      const dismissWrap = document.createElement("div");
+      dismissWrap.className = "panel-actions";
+      dismissWrap.style.justifyContent = "flex-end";
+      dismissWrap.appendChild(createDismissButton(issueId, issueLabel));
+      row.appendChild(dismissWrap);
+      list.appendChild(row);
+    }
+    card.appendChild(list);
+    return card;
+  };
+
+  const renderDismissedDiagnosticsCard = () => {
+    const dismissedEntries = Object.entries(getDismissedDiagnostics());
+    if (dismissedEntries.length === 0) {
+      return null;
+    }
+
+    const card = document.createElement("section");
+    card.className = "diagnostics-card";
+
+    const heading = document.createElement("h2");
+    heading.textContent = "非表示の診断";
+    card.appendChild(heading);
+
+    const summary = document.createElement("p");
+    summary.className = "diag-summary";
+    summary.textContent = `${dismissedEntries.length} 件を非表示中です。`;
+    card.appendChild(summary);
+
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    const list = document.createElement("div");
+    list.className = "diag-list";
+    list.hidden = state.dismissedDiagnosticsCollapsed !== false;
+    const toggleButton = createButton(
+      state.dismissedDiagnosticsCollapsed === false ? "折りたたむ" : "展開",
+      "ghost",
+      () => {
+        state.dismissedDiagnosticsCollapsed = !(state.dismissedDiagnosticsCollapsed === false);
+        saveDiagnosticUiState();
+        list.hidden = state.dismissedDiagnosticsCollapsed !== false;
+        toggleButton.textContent = state.dismissedDiagnosticsCollapsed === false ? "折りたたむ" : "展開";
+      }
+    );
+    actions.appendChild(toggleButton);
+    actions.appendChild(createButton("すべて再表示", "secondary", () => {
+      restoreAllDiagnostics();
+      renderDiagnostics();
+    }));
+    card.appendChild(actions);
+    for (const [issueId, label] of dismissedEntries) {
+      const item = document.createElement("div");
+      item.className = "diag-item";
+      const itemHeading = document.createElement("h3");
+      itemHeading.textContent = label;
+      const itemActions = document.createElement("div");
+      itemActions.className = "panel-actions";
+      itemActions.appendChild(createButton("再表示", "ghost", () => {
+        restoreDiagnostic(issueId);
+        renderDiagnostics();
+      }));
+      item.append(itemHeading, itemActions);
+      list.appendChild(item);
     }
     card.appendChild(list);
     return card;
@@ -1832,6 +1936,11 @@
       "重複した変更前",
       diagnostics.duplicateFromIssues,
       "重複はありません。",
+      ([entryKey, occurrences]) => createDiagnosticIssueId("duplicate-from", [
+        entryKey,
+        ...occurrences.map((occurrence) => `${occurrence.pathText}->${occurrence.to}`)
+      ]),
+      ([entryKey]) => `重複した変更前: ${entryKey}`,
       ([entryKey, occurrences]) => {
         const item = document.createElement("div");
         item.className = "diag-item";
@@ -1855,6 +1964,13 @@
       "包含している変更前",
       diagnostics.overlapIssues,
       "包含関係はありません。",
+      ({ longer, shorter }) => createDiagnosticIssueId("overlap", [
+        longer.pathText,
+        longer.from,
+        shorter.pathText,
+        shorter.from
+      ]),
+      ({ longer, shorter }) => `包含: ${longer.from} ⊃ ${shorter.from}`,
       ({ longer, shorter }) => {
         const item = document.createElement("div");
         item.className = "diag-item";
@@ -1881,6 +1997,8 @@
       "重複したグループ名",
       diagnostics.duplicateNodeLabelIssues,
       "重複はありません。",
+      ([labelKey, paths]) => createDiagnosticIssueId("duplicate-group", [labelKey, ...paths]),
+      ([, paths]) => `重複したグループ名: ${paths[0].split(" / ").slice(-1)[0]}`,
       ([, paths]) => {
         const item = document.createElement("div");
         item.className = "diag-item";
@@ -1912,6 +2030,11 @@
         return item;
       }
     ));
+
+    const dismissedCard = renderDismissedDiagnosticsCard();
+    if (dismissedCard) {
+      diagnosticsRoot.appendChild(dismissedCard);
+    }
   };
 
   const renderTokenizerResult = (tokens) => {
@@ -2027,6 +2150,7 @@
     }
 
     const storedPayload = await storageGet(STORAGE_KEY);
+    const storedDiagnosticUiState = await storageGet(DIAGNOSTIC_UI_STATE_KEY);
     let currentRoots = cloneValue(baseRoots);
     if (storedPayload) {
       const importedRoots = normalizeImportedRoots(storedPayload);
@@ -2045,6 +2169,10 @@
 
     state.baseRoots = cloneValue(baseRoots);
     state.roots = currentRoots;
+    state.dismissedDiagnostics = storedDiagnosticUiState?.dismissedDiagnostics && typeof storedDiagnosticUiState.dismissedDiagnostics === "object"
+      ? storedDiagnosticUiState.dismissedDiagnostics
+      : {};
+    state.dismissedDiagnosticsCollapsed = storedDiagnosticUiState?.collapsed !== false;
     renderApp();
     setStatus("設定を読み込みました。", "info");
   };

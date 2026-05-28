@@ -11,12 +11,6 @@
       priority: 80,
     },
     {
-      from: "分かっ",
-      to: "分っ",
-      type: "verb",
-      priority: 80,
-    },
-    {
       from: "悩み",
       to: "悩",
       type: "renyou",

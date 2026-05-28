@@ -125,7 +125,9 @@
         <section>
             <h2>5. 動的DOM追加テスト</h2>
             <p class="note">ボタンを押して後から追加された文章にも、自動で変換が適用されることを確認します。</p>
-            <button id="addTextBtn">テスト文を追加</button>
+            <textarea id="dynamicInput">後から追加された文章です。それを書くことにしました。やっぱり分かる。</textarea>
+            <button id="addTextBtn">入力文を追加</button>
+            <button id="clearDynamicBtn">追加文をクリア</button>
             <div id="dynamicArea"></div>
         </section>
 
@@ -150,11 +152,18 @@
     </main>
 
     <script>
+        const dynamicInput = document.getElementById("dynamicInput");
+        const dynamicArea = document.getElementById("dynamicArea");
+
         document.getElementById("addTextBtn").addEventListener("click", () => {
             const p = document.createElement("p");
             p.className = "test-text";
-            p.textContent = "後から追加された文章です。それを書くことにしました。やっぱり分かる。";
-            document.getElementById("dynamicArea").appendChild(p);
+            p.textContent = dynamicInput.value.trim() || "後から追加された文章です。それを書くことにしました。やっぱり分かる。";
+            dynamicArea.appendChild(p);
+        });
+
+        document.getElementById("clearDynamicBtn").addEventListener("click", () => {
+            dynamicArea.textContent = "";
         });
     </script>
 </body>

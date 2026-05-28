@@ -20,11 +20,46 @@
     "CODE",
     "PRE"
   ]);
+  const INLINE_RUN_TAGS = new Set([
+    "A",
+    "ABBR",
+    "B",
+    "BDI",
+    "BDO",
+    "CITE",
+    "DATA",
+    "DEL",
+    "DFN",
+    "EM",
+    "I",
+    "INS",
+    "KBD",
+    "LABEL",
+    "MARK",
+    "Q",
+    "RB",
+    "RP",
+    "RT",
+    "RTC",
+    "RUBY",
+    "S",
+    "SAMP",
+    "SMALL",
+    "SPAN",
+    "STRONG",
+    "SUB",
+    "SUP",
+    "TIME",
+    "U",
+    "VAR",
+    "WBR"
+  ]);
 
-  const processedTextByNode = new WeakMap();
-  const pendingTextNodes = new Set();
+  const processedTextByRunAnchor = new WeakMap();
+  const pendingTextRuns = new Map();
 
   let flushTimer = null;
+  let activeTransformStages = [];
   let activeTokenRules = [];
   let activeStringRules = [];
   let activeTokenizer = null;
@@ -181,32 +216,29 @@
         continue;
       }
 
-      const entryType = `${entry.type ?? "replace-rule"}`;
-      if (entryType === "phrase-rule" || entryType === "character-map" || entryType === "replace-rule") {
-        const sequenceLabel = Array.isArray(entry.sequence)
-          ? entry.sequence
-              .map((token) => `${token?.surface ?? token?.basic ?? "*"}`.trim())
-              .filter(Boolean)
-              .join(" ")
-          : "";
-        const from = `${entry.from ?? sequenceLabel ?? ""}`.trim();
-        const to = `${entry.to ?? ""}`.trim();
-        if (!from || !to || entry.enabled === false) {
-          continue;
-        }
-
-        replaceRules.push({
-          id: `${entry.id ?? ""}`.trim() || undefined,
-          type: "replace-rule",
-          from,
-          to,
-          raw: { ...entry },
-          candidates: splitReplacementCandidates(entry.candidates ?? to),
-          regex: entry.regex === true || entry.is_regex === true,
-          priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
-          enabled: entry.enabled !== false
-        });
+      const sequenceLabel = Array.isArray(entry.sequence)
+        ? entry.sequence
+            .map((token) => `${token?.surface ?? token?.basic ?? "*"}`.trim())
+            .filter(Boolean)
+            .join(" ")
+        : "";
+      const from = `${entry.from ?? sequenceLabel ?? ""}`.trim();
+      const to = `${entry.to ?? ""}`.trim();
+      if (!from || !to || entry.enabled === false) {
+        continue;
       }
+
+      replaceRules.push({
+        id: `${entry.id ?? ""}`.trim() || undefined,
+        type: `${entry.type ?? "replace-rule"}`,
+        from,
+        to,
+        raw: { ...entry },
+        candidates: splitReplacementCandidates(entry.candidates ?? to),
+        regex: entry.regex === true || entry.is_regex === true,
+        priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
+        enabled: entry.enabled !== false
+      });
     }
 
     return replaceRules;
@@ -272,6 +304,7 @@
       ...rule,
       to: candidates[0] ?? rule.to,
       candidates,
+      match_target: rule.match_target ?? rule.matchTarget ?? null,
       character_map: rule.character_map && typeof rule.character_map === "object"
         ? { ...rule.character_map }
         : null,
@@ -395,6 +428,33 @@
     return conditionList.some((condition) => tokenMatchesCondition(token, condition));
   };
 
+  const listifyConditions = (conditions) => {
+    if (!conditions) {
+      return [];
+    }
+
+    return Array.isArray(conditions) ? conditions : [conditions];
+  };
+
+  const ruleUsesBasicFormMatch = (rule) => {
+    if (rule?.match_target === "basic_form" || rule?.type === "verb") {
+      return true;
+    }
+
+    return listifyConditions(rule?.conditions?.current).some((condition) => {
+      if (!condition || typeof condition !== "object") {
+        return false;
+      }
+
+      return (
+        condition.basic_form !== undefined ||
+        condition.pos === "動詞" ||
+        condition.conjugated_form !== undefined ||
+        condition.conjugated_type !== undefined
+      );
+    });
+  };
+
   const tokenSatisfiesMatcher = (token, matcher) => {
     return tokenMatchesCondition(token, matcher);
   };
@@ -440,11 +500,67 @@
 
   const singleTokenMatches = (tokens, index, rule) => {
     const token = tokens[index];
-    if (!token || token.surface_form !== rule.from) {
+    if (!token) {
       return false;
     }
 
-    return true;
+    if (token.surface_form === rule.from) {
+      return true;
+    }
+
+    if (ruleUsesBasicFormMatch(rule) && token.basic_form === rule.from) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const getSharedSuffix = (left, right) => {
+    const leftChars = Array.from(left ?? "");
+    const rightChars = Array.from(right ?? "");
+    let index = 0;
+
+    while (
+      index < leftChars.length &&
+      index < rightChars.length &&
+      leftChars[leftChars.length - 1 - index] === rightChars[rightChars.length - 1 - index]
+    ) {
+      index++;
+    }
+
+    return index > 0 ? leftChars.slice(leftChars.length - index).join("") : "";
+  };
+
+  const applyBasicFormReplacement = (token, rule, replacementBase) => {
+    if (!token || !ruleUsesBasicFormMatch(rule) || !rule.from || !replacementBase) {
+      return replacementBase;
+    }
+
+    if (token.basic_form !== rule.from) {
+      return replacementBase;
+    }
+
+    const sharedSuffix = getSharedSuffix(rule.from, replacementBase);
+    if (!sharedSuffix) {
+      return token.surface_form === rule.from ? replacementBase : replacementBase;
+    }
+
+    const fromStem = rule.from.slice(0, rule.from.length - sharedSuffix.length);
+    const toStem = replacementBase.slice(0, replacementBase.length - sharedSuffix.length);
+    if (!fromStem) {
+      return replacementBase;
+    }
+
+    if (!token.surface_form.startsWith(fromStem)) {
+      return token.surface_form === rule.from ? replacementBase : replacementBase;
+    }
+
+    return `${toStem}${token.surface_form.slice(fromStem.length)}`;
+  };
+
+  const resolveTokenReplacement = (token, rule, matchedText) => {
+    const replacement = chooseReplacement(rule, matchedText);
+    return applyBasicFormReplacement(token, rule, replacement);
   };
 
   const surroundingConditionsMatch = (tokens, index, length, rule) => {
@@ -587,7 +703,7 @@
           .map((matchedToken) => matchedToken.surface_form);
 
         const matchedText = matchedTokens.join("");
-        outputTokens[match.start].surface_form = match.replacement ?? chooseReplacement(rule, matchedText);
+        outputTokens[match.start].surface_form = match.replacement ?? resolveTokenReplacement(outputTokens[match.start], rule, matchedText);
 
         for (let offset = 1; offset < match.length; offset++) {
           outputTokens[match.start + offset].surface_form = "";
@@ -640,31 +756,88 @@
     return false;
   };
 
-  const collectProcessableTextNodes = (root) => {
+  const isRunBoundaryElement = (element) => {
+    if (!element || element.nodeType !== Node.ELEMENT_NODE) {
+      return false;
+    }
+
+    if (SKIP_TAGS.has(element.tagName)) {
+      return true;
+    }
+
+    if (INLINE_RUN_TAGS.has(element.tagName)) {
+      return false;
+    }
+
+    const display = window.getComputedStyle(element).display;
+    if (display === "contents") {
+      return false;
+    }
+
+    return !display.startsWith("inline");
+  };
+
+  const collectProcessableTextRuns = (root) => {
     if (!root) {
       return [];
     }
 
     if (root.nodeType === Node.TEXT_NODE) {
-      return isSkippableTextNode(root) ? [] : [root];
+      return isSkippableTextNode(root) ? [] : [[root]];
     }
 
-    const body = root.nodeType === Node.DOCUMENT_NODE ? root.body : root;
-    if (!body) {
-      return [];
-    }
+    const runs = [];
+    let currentRun = [];
 
-    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
-    const nodes = [];
-
-    let currentNode;
-    while ((currentNode = walker.nextNode())) {
-      if (!isSkippableTextNode(currentNode)) {
-        nodes.push(currentNode);
+    const flushRun = () => {
+      if (currentRun.length > 0) {
+        runs.push(currentRun);
+        currentRun = [];
       }
-    }
+    };
 
-    return nodes;
+    const walk = (node, isRoot = false) => {
+      if (!node) {
+        return;
+      }
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (!isSkippableTextNode(node)) {
+          currentRun.push(node);
+        }
+        return;
+      }
+
+      if (node.nodeType === Node.DOCUMENT_NODE) {
+        walk(node.body, true);
+        return;
+      }
+
+      if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
+        return;
+      }
+
+      if (node.nodeType === Node.ELEMENT_NODE && SKIP_TAGS.has(node.tagName)) {
+        return;
+      }
+
+      const boundary = node.nodeType === Node.ELEMENT_NODE && !isRoot && isRunBoundaryElement(node);
+      if (boundary) {
+        flushRun();
+      }
+
+      for (const child of node.childNodes) {
+        walk(child);
+      }
+
+      if (boundary) {
+        flushRun();
+      }
+    };
+
+    walk(root, true);
+    flushRun();
+    return runs;
   };
 
   const buildTokenizer = () => {
@@ -727,6 +900,33 @@
     };
   };
 
+  const resolveBundleKind = (bundle, definition) => {
+    return definition?.kind ?? bundle?.kind ?? "dictionary-rules";
+  };
+
+  const inferStoredBundleKind = (source) => {
+    if (typeof source?.kind === "string" && source.kind.trim()) {
+      return source.kind;
+    }
+
+    if (Array.isArray(source?.rules)) {
+      return "token-rules";
+    }
+
+    if (Array.isArray(source?.entries) && source.entries.some((entry) => {
+      return entry && typeof entry === "object" && (
+        entry.match_target !== undefined ||
+        entry.conditions !== undefined ||
+        entry.sequence !== undefined ||
+        entry.type === "verb"
+      );
+    })) {
+      return "token-rules";
+    }
+
+    return null;
+  };
+
   const normalizeStoredRule = (rule) => {
     return normalizePhraseRuleRecord(rule?.from ?? "", rule);
   };
@@ -736,6 +936,7 @@
       return null;
     }
 
+    const inferredKind = inferStoredBundleKind(override);
     const normalizedRoot = normalizeDictionaryNode({
       ...override,
       id: override.id ?? "bundle",
@@ -748,7 +949,7 @@
     return {
       id: normalizedRoot.id,
       label: normalizedRoot.label,
-      kind: typeof override.kind === "string" ? override.kind : normalizedRoot.kind,
+      kind: inferredKind,
       order: Number.isFinite(override.order) ? override.order : Number(override.order) || null,
       enabled: typeof override.enabled === "boolean" ? override.enabled : null,
       entries: normalizedRoot.entries,
@@ -969,82 +1170,217 @@
   };
 
   const transformText = (text) => {
+    return transformTextWithStages(text);
+  };
+
+  const loadOrderedRules = async () => {
+    const bundleManifest = await loadJson5Resource(TRANSFORM_BUNDLES_PATH);
+    const bundleOverrides = await loadBundleOverrides();
+    const manifestBundles = (bundleManifest.bundles || []).map(normalizeBundle);
+    const manifestBundleIds = new Set(manifestBundles.map((bundle) => bundle.id));
+    const virtualBundles = Object.values(bundleOverrides)
+      .filter((override) => override?.id && !manifestBundleIds.has(override.id))
+      .map((override) => normalizeBundle({
+        id: override.id,
+        label: override.label ?? override.id,
+        kind: override.kind ?? "dictionary-rules",
+        path: null,
+        order: override.order ?? 0,
+        enabled: override.enabled !== false
+      }));
+    const bundles = [...manifestBundles, ...virtualBundles]
+      .map((bundle) => applyBundleOverrideToManifest(bundle, bundleOverrides[bundle.id]))
+      .filter((bundle) => bundle.enabled)
+      .sort((left, right) => {
+        return (left.order ?? 0) - (right.order ?? 0);
+      });
+
+    const stages = [];
+    let stringRuleCount = 0;
+    let tokenRuleCount = 0;
+
+    for (const bundle of bundles) {
+      const mergedDefinition = mergeBundleDefinition(
+        bundle.path ? await loadJson5Resource(bundle.path) : buildVirtualBundleDefinition(bundleOverrides[bundle.id]),
+        bundleOverrides[bundle.id]
+      );
+      const definition = {
+        ...mergedDefinition,
+        kind: resolveBundleKind(bundle, mergedDefinition)
+      };
+      const bundleRules = extractBundleRules(bundle, definition);
+
+      stages.push({
+        id: bundle.id,
+        label: bundle.label,
+        kind: definition.kind,
+        order: bundle.order ?? 0,
+        rules: bundleRules
+      });
+
+      if (definition.kind === "dictionary-rules") {
+        stringRuleCount += bundleRules.length;
+      } else if (definition.kind === "token-rules") {
+        tokenRuleCount += bundleRules.length;
+      }
+    }
+
+    log("隱ｭ霎ｼ ordered bundles", bundles);
+    log("隱ｭ霎ｼ transform stages", stages);
+
+    return { stages, stringRuleCount, tokenRuleCount };
+  };
+
+  const transformTextWithStages = (text) => {
     if (!text || !text.trim()) {
       return text;
     }
 
-    const stringTransformed = applyStringTransformations(text, activeStringRules);
-    if (!activeTokenizer || activeTokenRules.length === 0) {
-      return stringTransformed;
+    let transformedText = text;
+
+    for (const stage of activeTransformStages) {
+      if (!stage || !Array.isArray(stage.rules) || stage.rules.length === 0) {
+        continue;
+      }
+
+      if (stage.kind === "dictionary-rules") {
+        transformedText = applyStringTransformations(transformedText, stage.rules);
+        continue;
+      }
+
+      if (stage.kind === "token-rules") {
+        if (!activeTokenizer) {
+          continue;
+        }
+
+        const tokens = activeTokenizer.tokenize(transformedText);
+        transformedText = applyTransformations(tokens, stage.rules);
+      }
     }
 
-    const tokens = activeTokenizer.tokenize(stringTransformed);
-    return applyTransformations(tokens, activeTokenRules);
+    return transformedText;
   };
 
-  const processTextNode = (textNode) => {
-    if (isSkippableTextNode(textNode)) {
+  const redistributeTransformedText = (textNodes, originalParts, transformed) => {
+    let cursor = 0;
+
+    for (let index = 0; index < textNodes.length; index += 1) {
+      const originalLength = originalParts[index].length;
+      const nextLength = index === textNodes.length - 1
+        ? Math.max(transformed.length - cursor, 0)
+        : Math.min(originalLength, Math.max(transformed.length - cursor, 0));
+      const nextValue = transformed.slice(cursor, cursor + nextLength);
+      textNodes[index].nodeValue = nextValue;
+      cursor += nextLength;
+    }
+  };
+
+  const processTextRun = (textRun) => {
+    if (!Array.isArray(textRun) || textRun.length === 0) {
       return false;
     }
 
-    const original = readNodeValueSafely(textNode);
-    if (!original) {
+    const textNodes = textRun.filter((node) => {
+      return node?.isConnected && !isSkippableTextNode(node);
+    });
+    if (textNodes.length === 0) {
       return false;
     }
 
-    const transformed = transformText(original);
-    processedTextByNode.set(textNode, transformed);
+    const originalParts = textNodes.map((node) => readNodeValueSafely(node));
+    const original = originalParts.join("");
+    if (!original || !original.trim()) {
+      return false;
+    }
+
+    const runAnchor = textNodes[0];
+    const lastProcessed = processedTextByRunAnchor.get(runAnchor);
+    if (lastProcessed !== undefined && lastProcessed === original) {
+      return false;
+    }
+
+    const transformed = transformTextWithStages(original);
+    processedTextByRunAnchor.set(runAnchor, transformed);
 
     if (transformed === original) {
       return false;
     }
 
-    textNode.nodeValue = transformed;
+    redistributeTransformedText(textNodes, originalParts, transformed);
 
     if (DEBUG) {
-      log("textNode 更新", { original, transformed });
+      log("textRun 更新", {
+        original,
+        transformed,
+        nodeCount: textNodes.length
+      });
     }
 
     return true;
   };
 
-  const flushPendingTextNodes = () => {
+  const flushPendingTextRuns = () => {
     flushTimer = null;
 
-    if ((!activeTokenizer && activeTokenRules.length > 0) || (activeStringRules.length === 0 && activeTokenRules.length === 0) || pendingTextNodes.size === 0) {
-      pendingTextNodes.clear();
+    const hasAnyRules = activeTransformStages.some((stage) => {
+      return Array.isArray(stage.rules) && stage.rules.length > 0;
+    });
+    const requiresTokenizer = activeTransformStages.some((stage) => {
+      return stage.kind === "token-rules" && Array.isArray(stage.rules) && stage.rules.length > 0;
+    });
+
+    if ((!activeTokenizer && requiresTokenizer) || !hasAnyRules || pendingTextRuns.size === 0) {
+      pendingTextRuns.clear();
       return;
     }
 
     let changedCount = 0;
+    const processedNodes = new Set();
 
-    for (const textNode of pendingTextNodes) {
-      pendingTextNodes.delete(textNode);
+    for (const [runKey, queuedRun] of pendingTextRuns) {
+      pendingTextRuns.delete(runKey);
 
       try {
-        const lastProcessed = processedTextByNode.get(textNode);
-        if (lastProcessed !== undefined && lastProcessed === textNode.nodeValue) {
+        const textRun = queuedRun.filter((node) => {
+          return node?.isConnected && !isSkippableTextNode(node);
+        });
+        if (textRun.length === 0) {
           continue;
         }
 
-        if (processTextNode(textNode)) {
+        if (textRun.some((node) => processedNodes.has(node))) {
+          continue;
+        }
+
+        if (processTextRun(textRun)) {
           changedCount++;
         }
+
+        for (const node of textRun) {
+          processedNodes.add(node);
+        }
       } catch (error) {
-        console.error("省略変換器: 変換失敗", error, describeNodeSafely(textNode));
+        console.error("省略変換器: 変換失敗", error, {
+          runKey: describeNodeSafely(runKey),
+          textRun: queuedRun.map((node) => describeNodeSafely(node))
+        });
       }
     }
 
     if (changedCount > 0) {
-      log("更新 textNode 数", changedCount);
+      log("更新 textRun 数", changedCount);
     }
   };
 
-  const queueTextNodes = (nodes, options = {}) => {
+  const queueTextRuns = (runs, options = {}) => {
     const { immediate = false } = options;
 
-    for (const node of nodes) {
-      pendingTextNodes.add(node);
+    for (const run of runs) {
+      if (!Array.isArray(run) || run.length === 0) {
+        continue;
+      }
+
+      pendingTextRuns.set(run[0], run);
     }
 
     if (immediate) {
@@ -1053,7 +1389,7 @@
         flushTimer = null;
       }
 
-      flushPendingTextNodes();
+      flushPendingTextRuns();
       return;
     }
 
@@ -1061,26 +1397,26 @@
       return;
     }
 
-    flushTimer = window.setTimeout(flushPendingTextNodes, 0);
+    flushTimer = window.setTimeout(flushPendingTextRuns, 0);
   };
 
   const observeDynamicContent = () => {
     const observer = new MutationObserver((mutations) => {
-      const queuedNodes = [];
+      const queuedRuns = [];
 
       for (const mutation of mutations) {
         if (mutation.type === "characterData") {
-          queuedNodes.push(...collectProcessableTextNodes(mutation.target));
+          queuedRuns.push(...collectProcessableTextRuns(mutation.target));
           continue;
         }
 
         for (const addedNode of mutation.addedNodes) {
-          queuedNodes.push(...collectProcessableTextNodes(addedNode));
+          queuedRuns.push(...collectProcessableTextRuns(addedNode));
         }
       }
 
-      if (queuedNodes.length > 0) {
-        queueTextNodes(queuedNodes);
+      if (queuedRuns.length > 0) {
+        queueTextRuns(queuedRuns);
       }
     });
 
@@ -1098,14 +1434,19 @@
       throw new Error("document.body が利用できません。");
     }
 
-    const loaded = await loadRules();
-    activeStringRules = loaded.stringRules;
-    activeTokenRules = loaded.tokenRules;
+    const loaded = await loadOrderedRules();
+    activeTransformStages = loaded.stages;
+    activeStringRules = activeTransformStages
+      .filter((stage) => stage.kind === "dictionary-rules")
+      .flatMap((stage) => stage.rules);
+    activeTokenRules = activeTransformStages
+      .filter((stage) => stage.kind === "token-rules")
+      .flatMap((stage) => stage.rules);
     activeTokenizer = activeTokenRules.length > 0 ? await buildTokenizer() : null;
 
-    const initialNodes = collectProcessableTextNodes(document.body);
-    log("対象 textNode 数", initialNodes.length);
-    queueTextNodes(initialNodes, { immediate: true });
+    const initialRuns = collectProcessableTextRuns(document.body);
+    log("対象 textRun 数", initialRuns.length);
+    queueTextRuns(initialRuns, { immediate: true });
     observeDynamicContent();
   };
 

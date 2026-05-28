@@ -83,7 +83,7 @@
     const url = chrome.runtime.getURL(path) + `?t=${Date.now()}`;
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
-      throw new Error(`${path} の読込に失敗しました: ${response.status}`);
+      throw new Error(`${path} 邵ｺ・ｮ髫ｱ・ｭ髴趣ｽｼ邵ｺ・ｫ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ ${response.status}`);
     }
 
     return JSON5.parse(await response.text());
@@ -92,7 +92,7 @@
   const buildTokenizer = () => {
     return new Promise((resolve, reject) => {
       if (typeof kuromoji === "undefined") {
-        reject(new Error("kuromoji が未読込です。"));
+        reject(new Error("kuromoji ????????????"));
         return;
       }
 
@@ -116,7 +116,7 @@
         const url = new URL(filename, new URL(DICT_PATH, window.location.href)).href;
         const response = await fetch(url, { cache: "no-store" });
         if (!response.ok) {
-          throw new Error(`辞書ファイル取得失敗: ${response.status} ${url}`);
+          throw new Error(`髴取ｨ雁ｶ檎ｹ晁ｼ斐＜郢ｧ・､郢晢ｽｫ陷ｿ髢・ｾ諤懶ｽ､・ｱ隰ｨ繝ｻ ${response.status} ${url}`);
         }
         await response.arrayBuffer();
         return url;
@@ -133,7 +133,7 @@
             }
 
             if (!tokenizer) {
-              reject(new Error("tokenizer の初期化結果が空です。辞書パスを確認してください。"));
+              reject(new Error("tokenizer ?????????????????????????"));
               return;
             }
 
@@ -351,7 +351,7 @@
       }
     }
 
-    throw new Error(`YAML の行を解釈できません: ${text}`);
+    throw new Error(`YAML 邵ｺ・ｮ髯ｦ蠕鯉ｽ帝囓・｣鬩･蛹ｻ縲堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ・ ${text}`);
   };
 
   const normalizeYamlKey = (key) => parseYamlScalar(key);
@@ -588,6 +588,7 @@
       priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
       enabled: entry.enabled !== false,
       regex: entry.regex === true || entry.is_regex === true,
+      match_target: entry.match_target ?? (entry.type === "verb" ? "basic_form" : null),
       conditions: cloneValue(entry.conditions ?? null),
       sequence: cloneValue(entry.sequence ?? null),
       raw: cloneValue(entry),
@@ -612,6 +613,7 @@
         priority: Number.isFinite(normalizedRawRule[1]) ? normalizedRawRule[1] : Number(normalizedRawRule[1]) || fallbackPriority,
         enabled: normalizedRawRule[2] !== false,
         regex: normalizedRawRule[3] === true,
+        match_target: null,
         conditions: null,
         sequence: null,
         raw: null,
@@ -628,6 +630,7 @@
         priority: fallbackPriority,
         enabled: true,
         regex: false,
+        match_target: null,
         conditions: null,
         sequence: null,
         raw: null,
@@ -712,6 +715,29 @@
     ];
   };
 
+  const inferBundleKind = (source) => {
+    if (typeof source?.kind === "string" && source.kind.trim()) {
+      return source.kind;
+    }
+
+    if (Array.isArray(source?.rules)) {
+      return "token-rules";
+    }
+
+    if (Array.isArray(source?.entries) && source.entries.some((entry) => {
+      return entry && typeof entry === "object" && (
+        entry.match_target !== undefined ||
+        entry.conditions !== undefined ||
+        entry.sequence !== undefined ||
+        entry.type === "verb"
+      );
+    })) {
+      return "token-rules";
+    }
+
+    return "dictionary-rules";
+  };
+
   const normalizeNode = (source, fallbackId = "group", fallbackLabel = "Group") => {
     const childrenSource = Array.isArray(source?.children) && source.children.length > 0
       ? source.children
@@ -722,7 +748,7 @@
     return {
       id: `${source?.id ?? createNodeId()}`.trim() || fallbackId,
       label: `${source?.label ?? fallbackLabel}`.trim() || fallbackLabel,
-      kind: `${source?.kind ?? "dictionary-rules"}`.trim() || "dictionary-rules",
+      kind: `${inferBundleKind(source)}`.trim() || "dictionary-rules",
       enabled: source?.enabled !== false,
       order: Number.isFinite(source?.order) ? source.order : Number(source?.order) || 0,
       entries: normalizeEntries(source),
@@ -734,7 +760,7 @@
 
   const normalizeManifestDefinition = (bundle, definition) => {
     if (!definition || !definition.kind) {
-      throw new Error(`${bundle.id} の定義が不正です`);
+      throw new Error(`${bundle.id} の定義が不正です。`);
     }
     return normalizeNode({
       ...definition,
@@ -784,7 +810,7 @@
       });
     }
 
-    throw new Error("読込データから roots を取得できません");
+    throw new Error("読み込んだデータから roots を構築できません");
   };
 
   const serializeEntry = (entry, index) => {
@@ -797,6 +823,11 @@
     serialized.priority = Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || 0;
     serialized.enabled = entry.enabled !== false;
     serialized.regex = entry.regex === true;
+    if (entry.match_target === "basic_form") {
+      serialized.match_target = "basic_form";
+    } else {
+      delete serialized.match_target;
+    }
     if (entry.conditions && (
       entry.conditions.prev ||
       entry.conditions.current ||
@@ -881,7 +912,7 @@
   const reloadDefaults = () => {
     state.roots = cloneValue(state.baseRoots);
     renderApp();
-    setStatus("既定値を読み直しました。保存すると反映されます。", "info");
+    setStatus("既定値に戻しました。", "info");
   };
 
   const resetRoot = (rootId) => {
@@ -897,7 +928,7 @@
       state.roots.splice(rootIndex, 1);
     }
     renderApp();
-    setStatus("Bundle を初期状態へ戻しました。", "info");
+    setStatus("Bundle を初期化しました。", "info");
   };
 
   const moveItem = (items, index, direction) => {
@@ -1177,7 +1208,7 @@
     title.textContent = "sequence";
     const actions = document.createElement("div");
     actions.className = "panel-actions";
-    actions.appendChild(createButton("Token追加", "secondary", () => {
+    actions.appendChild(createButton("Token髴托ｽｽ陷会｣ｰ", "secondary", () => {
       const next = Array.isArray(entry.sequence) ? cloneValue(entry.sequence) : [];
       next.push({ surface: "", pos: "" });
       entry.sequence = next;
@@ -1189,7 +1220,7 @@
     if (sequence.length === 0) {
       const empty = document.createElement("div");
       empty.className = "count";
-      empty.textContent = "未設定";
+      empty.textContent = "sequence は未設定です。";
       wrap.append(head, empty);
       return wrap;
     }
@@ -1200,13 +1231,13 @@
     const thead = document.createElement("thead");
     thead.innerHTML = `
       <tr>
-        <th>表層</th>
-        <th>原形</th>
-        <th>品詞</th>
-        <th>品詞1</th>
-        <th>活用形</th>
-        <th>活用型</th>
-        <th>操作</th>
+        <th>髯ｦ・ｨ陞ｻ・､</th>
+        <th>陷ｴ貅ｷ・ｽ・｢</th>
+        <th>陷ｩ竏ｬ・ｩ繝ｻ/th>
+        <th>陷ｩ竏ｬ・ｩ繝ｻ</th>
+        <th>雎｢・ｻ騾包ｽｨ陟厄ｽ｢</th>
+        <th>雎｢・ｻ騾包ｽｨ陜吶・/th>
+        <th>隰ｫ蝣ｺ・ｽ繝ｻ/th>
       </tr>
     `;
     const tbody = document.createElement("tbody");
@@ -1297,7 +1328,7 @@
     const head = document.createElement("div");
     head.className = "panel-head";
     const title = document.createElement("h4");
-    title.textContent = "置換";
+    title.textContent = "項目";
     const count = document.createElement("span");
     count.className = "count";
     count.textContent = `選択 ${getSelectedCount(node.entries)} 件 / 全 ${node.entries.length} 件`;
@@ -1311,7 +1342,8 @@
       <tr>
         <th class="check-col"></th>
         <th class="check-col">有効</th>
-        <th class="check-col">正規表現</th>
+        <th class="check-col">正規</th>
+        <th class="check-col">原形</th>
         <th>変更前</th>
         <th>変更後</th>
         <th>優先</th>
@@ -1321,8 +1353,8 @@
 
     const selectAll = document.createElement("input");
     selectAll.type = "checkbox";
-    selectAll.setAttribute("aria-label", "この表を全選択");
-    thead.querySelector("th").appendChild(selectAll);
+    selectAll.setAttribute("aria-label", "全選択");
+    thead.querySelector("th")?.appendChild(selectAll);
 
     const tbody = document.createElement("tbody");
     node.entries.forEach((entry, entryIndex) => {
@@ -1363,6 +1395,17 @@
         renderDiagnostics();
       });
       regexTd.appendChild(regexCheckbox);
+
+      const basicTd = document.createElement("td");
+      basicTd.className = "check-col";
+      const basicCheckbox = document.createElement("input");
+      basicCheckbox.type = "checkbox";
+      basicCheckbox.checked = entry.match_target === "basic_form";
+      basicCheckbox.addEventListener("change", () => {
+        entry.match_target = basicCheckbox.checked ? "basic_form" : null;
+        renderDiagnostics();
+      });
+      basicTd.appendChild(basicCheckbox);
 
       const fromTd = document.createElement("td");
       const fromInput = createCompactInput(entry.from, { min: 2, max: 24 });
@@ -1406,13 +1449,13 @@
         renderApp();
       }));
 
-      row.append(checkTd, enabledTd, regexTd, fromTd, toTd, priorityTd, actionTd);
+      row.append(checkTd, enabledTd, regexTd, basicTd, fromTd, toTd, priorityTd, actionTd);
       tbody.appendChild(row);
 
       if (entry.metaOpen) {
         const detailRow = document.createElement("tr");
         const detailCell = document.createElement("td");
-        detailCell.colSpan = 7;
+        detailCell.colSpan = 8;
 
         const detailWrap = document.createElement("div");
         detailWrap.className = "panel-block";
@@ -1423,7 +1466,7 @@
         detailTitle.textContent = "条件";
         const detailHint = document.createElement("span");
         detailHint.className = "count";
-        detailHint.textContent = "JSON5 風入力可。空欄で無効。";
+        detailHint.textContent = "前後条件と sequence を編集";
         detailHead.append(detailTitle, detailHint);
 
         const detailGrid = document.createElement("div");
@@ -1466,7 +1509,7 @@
 
     const entryChip = document.createElement("span");
     entryChip.className = "chip";
-    entryChip.textContent = `置換 ${node.entries.length}`;
+    entryChip.textContent = `項目 ${node.entries.length}`;
     const childChip = document.createElement("span");
     childChip.className = "chip";
     childChip.textContent = `子箱 ${node.children.length}`;
@@ -1518,6 +1561,7 @@
         priority: 90,
         enabled: true,
         regex: false,
+        match_target: null,
         conditions: null,
         sequence: null,
         raw: null,
@@ -1618,7 +1662,7 @@
 
     const summary = document.createElement("p");
     summary.className = "diag-summary";
-    summary.textContent = issues.length === 0 ? emptyText : `${issues.length} 件の候補があります。`;
+    summary.textContent = issues.length === 0 ? emptyText : `${issues.length} 件の問題があります。`;
     card.appendChild(summary);
 
     if (issues.length === 0) {
@@ -1641,7 +1685,7 @@
     diagnosticsRoot.appendChild(renderIssueCard(
       "重複した変更前",
       diagnostics.duplicateFromIssues,
-      "重複した変更前はありません。",
+      "重複はありません。",
       ([entryKey, occurrences]) => {
         const item = document.createElement("div");
         item.className = "diag-item";
@@ -1651,7 +1695,7 @@
         const body = document.createElement("div");
         body.className = "diag-occurrence";
         body.innerHTML = occurrences.map((occurrence) => {
-          return `${occurrence.pathText} → ${occurrence.to} / priority ${occurrence.priority}`;
+          return `${occurrence.pathText} -> ${occurrence.to} / priority ${occurrence.priority}`;
         }).join("<br>");
         item.append(heading, body);
         return item;
@@ -1659,9 +1703,9 @@
     ));
 
     diagnosticsRoot.appendChild(renderIssueCard(
-      "同名の箱",
+      "重複したグループ名",
       diagnostics.duplicateNodeLabelIssues,
-      "同じ名前の箱はありません。",
+      "重複はありません。",
       ([, paths]) => {
         const item = document.createElement("div");
         item.className = "diag-item";
@@ -1678,10 +1722,9 @@
 
   const renderTokenizerResult = (tokens) => {
     tokenizerResult.textContent = "";
-    tokens.forEach((token, index) => {
+    tokens.forEach((token) => {
       const row = document.createElement("tr");
       const cells = [
-        String(index + 1),
         token.surface_form ?? "",
         token.basic_form ?? "",
         token.pos ?? "",
@@ -1762,14 +1805,14 @@
       try {
         parsed = parseYamlDocument(text);
       } catch (yamlError) {
-        throw new Error(`読込に失敗しました: ${yamlError.message}`);
+        throw new Error(`髫ｱ・ｭ髴趣ｽｼ邵ｺ・ｫ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ ${yamlError.message}`);
       }
     }
 
     const importedRoots = normalizeImportedRoots(parsed);
     state.roots = importedRoots;
     renderApp();
-    setStatus(`${fileName} を読み込みました。保存すると反映されます。`, "success");
+    setStatus(`${fileName} を読み込みました。`, "success");
   };
 
   const initialize = async () => {
@@ -1882,7 +1925,7 @@
       exportSettingsAsJson();
     } catch (error) {
       console.error(error);
-      setStatus(`JSON 書出に失敗しました: ${error.message}`, "error");
+      setStatus(`JSON 書き出しに失敗しました: ${error.message}`, "error");
     }
   });
 
@@ -1891,7 +1934,7 @@
       exportSettingsAsYaml();
     } catch (error) {
       console.error(error);
-      setStatus(`YAML 書出に失敗しました: ${error.message}`, "error");
+      setStatus(`YAML 書き出しに失敗しました: ${error.message}`, "error");
     }
   });
 

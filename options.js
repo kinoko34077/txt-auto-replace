@@ -16,6 +16,7 @@
     runtimeSettings: { ...DEFAULT_RUNTIME_SETTINGS },
     nodeSerial: 0,
     entrySerial: 0,
+    collapsedNodes: {},
     tokenizer: null,
     dismissedDiagnostics: {},
     dismissedDiagnosticsCollapsed: true
@@ -65,6 +66,22 @@
     );
   };
 
+  const getCollapsedNodes = () => {
+    return state.collapsedNodes ?? {};
+  };
+
+  const isNodeCollapsed = (nodeId) => {
+    return Boolean(getCollapsedNodes()[nodeId]);
+  };
+
+  const setNodeCollapsed = (nodeId, collapsed) => {
+    state.collapsedNodes = {
+      ...getCollapsedNodes(),
+      [nodeId]: collapsed === true
+    };
+    saveDiagnosticUiState();
+  };
+
   const getDismissedDiagnostics = () => {
     return state.dismissedDiagnostics ?? {};
   };
@@ -97,7 +114,8 @@
     storageSet({
       [DIAGNOSTIC_UI_STATE_KEY]: {
         dismissedDiagnostics: getDismissedDiagnostics(),
-        collapsed: state.dismissedDiagnosticsCollapsed !== false
+        collapsed: state.dismissedDiagnosticsCollapsed !== false,
+        collapsedNodes: getCollapsedNodes()
       }
     }).catch((error) => {
       console.error("診断 UI 状態の保存に失敗しました", error);
@@ -252,6 +270,103 @@
 
   const quoteYamlString = (value) => JSON.stringify(String(value));
   const quoteYamlKey = (key) => /^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key);
+
+  const parseBooleanLike = (value, fallback = false) => {
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "number") {
+      return value !== 0;
+    }
+    const normalized = `${value ?? ""}`.trim().toLowerCase();
+    if (!normalized) {
+      return fallback;
+    }
+    if (["1", "true", "yes", "on", "enabled", "enable", "有効"].includes(normalized)) {
+      return true;
+    }
+    if (["0", "false", "no", "off", "disabled", "disable", "無効"].includes(normalized)) {
+      return false;
+    }
+    return fallback;
+  };
+
+  const parseDelimitedRow = (line, delimiter) => {
+    const cells = [];
+    let current = "";
+    let quoted = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      if (char === "\"") {
+        if (quoted && line[index + 1] === "\"") {
+          current += "\"";
+          index += 1;
+          continue;
+        }
+        quoted = !quoted;
+        continue;
+      }
+      if (!quoted && char === delimiter) {
+        cells.push(current);
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+
+    cells.push(current);
+    return cells.map((cell) => cell.trim());
+  };
+
+  const detectBulkImportDelimiter = (line) => {
+    return line.includes("\t") ? "\t" : ",";
+  };
+
+  const parseBulkImportText = (text, effectiveKind) => {
+    const entries = [];
+    for (const rawLine of `${text ?? ""}`.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("//") || line.startsWith("#")) {
+        continue;
+      }
+
+      let cells;
+      if (line.includes("->")) {
+        cells = line.split("->").map((cell) => cell.trim());
+      } else if (line.includes("=>")) {
+        cells = line.split("=>").map((cell) => cell.trim());
+      } else if (line.includes("→")) {
+        cells = line.split("→").map((cell) => cell.trim());
+      } else {
+        cells = parseDelimitedRow(line, detectBulkImportDelimiter(line));
+      }
+
+      if (cells.length < 2 || !cells[0] || !cells[1]) {
+        continue;
+      }
+
+      const priority = Number(cells[2]);
+      entries.push({
+        id: createEntryId(),
+        from: cells[0],
+        to: cells[1],
+        priority: Number.isFinite(priority) ? priority : 90,
+        enabled: parseBooleanLike(cells[3], true),
+        regex: parseBooleanLike(cells[4], false),
+        match_target: effectiveKind === "token-rules" && parseBooleanLike(cells[5], false)
+          ? "basic_form"
+          : null,
+        conditions: null,
+        sequence: null,
+        raw: null,
+        metaOpen: false,
+        selected: false
+      });
+    }
+
+    return entries;
+  };
 
   const serializeYamlScalar = (value) => {
     if (typeof value === "string") {
@@ -1386,6 +1501,214 @@
     return wrap;
   };
 
+  const renderConditionEditorV2 = (entry, slot, labelText) => {
+    const wrap = document.createElement("div");
+    wrap.className = "panel-block";
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = labelText;
+    const hint = document.createElement("span");
+    hint.className = "count";
+    hint.textContent = "surface / basic / pos / pos1 / cform / ctype";
+    head.append(title, hint);
+
+    const grid = document.createElement("div");
+    grid.style.display = "grid";
+    grid.style.gap = "6px";
+    grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(92px, 1fr))";
+
+    const draft = normalizeMatcherDraft(entry.conditions?.[slot]);
+    const updateField = (key, value) => {
+      draft[key] = value;
+      assignConditionSlot(entry, slot, cleanupMatcherDraft(draft));
+      renderDiagnostics();
+    };
+
+    grid.appendChild(createMatcherField("表層", draft.surface ?? "", null, null, (value) => updateField("surface", value)));
+    grid.appendChild(createMatcherField("原形条件", draft.basic ?? "", null, null, (value) => updateField("basic", value)));
+    grid.appendChild(createMatcherField("品詞", draft.pos ?? "", "pos-values", COMMON_POS_VALUES, (value) => updateField("pos", value)));
+    grid.appendChild(createMatcherField("品詞1", draft.pos1 ?? "", "pos1-values", COMMON_POS1_VALUES, (value) => updateField("pos1", value)));
+    grid.appendChild(createMatcherField("活用形", draft.cform ?? "", "cform-values", COMMON_CFORM_VALUES, (value) => updateField("cform", value)));
+    grid.appendChild(createMatcherField("活用型", draft.ctype ?? "", "ctype-values", COMMON_CTYPE_VALUES, (value) => updateField("ctype", value)));
+
+    wrap.append(head, grid);
+    return wrap;
+  };
+
+  const renderSequenceEditorV2 = (entry) => {
+    const wrap = document.createElement("div");
+    wrap.className = "panel-block";
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = "sequence";
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(createButton("Token追加", "secondary", () => {
+      const next = Array.isArray(entry.sequence) ? cloneValue(entry.sequence) : [];
+      next.push({ surface: "", pos: "" });
+      entry.sequence = next;
+      renderApp();
+    }));
+    head.append(title, actions);
+
+    const sequence = Array.isArray(entry.sequence) ? entry.sequence : [];
+    if (sequence.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "count";
+      empty.textContent = "sequence は未設定です。";
+      wrap.append(head, empty);
+      return wrap;
+    }
+
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "scroll-area";
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    thead.innerHTML = `
+      <tr>
+        <th>表層</th>
+        <th>原形</th>
+        <th>品詞</th>
+        <th>品詞1</th>
+        <th>活用形</th>
+        <th>活用型</th>
+        <th>操作</th>
+      </tr>
+    `;
+    const tbody = document.createElement("tbody");
+
+    sequence.forEach((matcher, matcherIndex) => {
+      const row = document.createElement("tr");
+      const draft = normalizeMatcherDraft(matcher);
+      const updateMatcher = (key, value) => {
+        const next = Array.isArray(entry.sequence) ? cloneValue(entry.sequence) : [];
+        const matcherDraft = normalizeMatcherDraft(next[matcherIndex]);
+        matcherDraft[key] = value;
+        next[matcherIndex] = cleanupMatcherDraft(matcherDraft) ?? {};
+        entry.sequence = next;
+        renderDiagnostics();
+      };
+
+      const appendCell = (node) => {
+        const td = document.createElement("td");
+        td.appendChild(node);
+        row.appendChild(td);
+      };
+
+      appendCell(createCompactInput(draft.surface ?? "", { min: 3, max: 18 }));
+      row.lastChild.firstChild.addEventListener("input", (event) => updateMatcher("surface", event.currentTarget.value));
+
+      appendCell(createCompactInput(draft.basic ?? "", { min: 3, max: 18 }));
+      row.lastChild.firstChild.addEventListener("input", (event) => updateMatcher("basic", event.currentTarget.value));
+
+      const posInput = createCompactInput(draft.pos ?? "", { min: 3, max: 12 });
+      ensureDatalist("pos-values", COMMON_POS_VALUES);
+      posInput.setAttribute("list", "pos-values");
+      posInput.addEventListener("input", (event) => updateMatcher("pos", event.currentTarget.value));
+      appendCell(posInput);
+
+      const pos1Input = createCompactInput(draft.pos1 ?? "", { min: 3, max: 12 });
+      ensureDatalist("pos1-values", COMMON_POS1_VALUES);
+      pos1Input.setAttribute("list", "pos1-values");
+      pos1Input.addEventListener("input", (event) => updateMatcher("pos1", event.currentTarget.value));
+      appendCell(pos1Input);
+
+      const cformInput = createCompactInput(draft.cform ?? "", { min: 3, max: 12 });
+      ensureDatalist("cform-values", COMMON_CFORM_VALUES);
+      cformInput.setAttribute("list", "cform-values");
+      cformInput.addEventListener("input", (event) => updateMatcher("cform", event.currentTarget.value));
+      appendCell(cformInput);
+
+      const ctypeInput = createCompactInput(draft.ctype ?? "", { min: 3, max: 14 });
+      ensureDatalist("ctype-values", COMMON_CTYPE_VALUES);
+      ctypeInput.setAttribute("list", "ctype-values");
+      ctypeInput.addEventListener("input", (event) => updateMatcher("ctype", event.currentTarget.value));
+      appendCell(ctypeInput);
+
+      const actionTd = document.createElement("td");
+      actionTd.className = "action-col";
+      actionTd.appendChild(createButton("↑", "ghost", () => {
+        if (moveItem(sequence, matcherIndex, -1)) {
+          entry.sequence = cloneValue(sequence);
+          renderApp();
+        }
+      }));
+      actionTd.appendChild(createButton("↓", "ghost", () => {
+        if (moveItem(sequence, matcherIndex, 1)) {
+          entry.sequence = cloneValue(sequence);
+          renderApp();
+        }
+      }));
+      actionTd.appendChild(createButton("削除", "danger", () => {
+        const next = cloneValue(sequence);
+        next.splice(matcherIndex, 1);
+        entry.sequence = next.length > 0 ? next : null;
+        renderApp();
+      }));
+      row.appendChild(actionTd);
+
+      tbody.appendChild(row);
+    });
+
+    table.append(thead, tbody);
+    tableWrap.appendChild(table);
+    wrap.append(head, tableWrap);
+    return wrap;
+  };
+
+  const renderBulkImportPanel = (node, effectiveKind) => {
+    const panel = document.createElement("div");
+    panel.className = "panel-block";
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = "一括登録";
+    const hint = document.createElement("span");
+    hint.className = "count";
+    hint.textContent = "置換前,置換後[,優先度,有効,正規表現,原形一致]";
+    head.append(title, hint);
+
+    const body = document.createElement("div");
+    body.style.display = "grid";
+    body.style.gap = "6px";
+
+    const textarea = document.createElement("textarea");
+    textarea.rows = 8;
+    textarea.placeholder = "例:\n分かる,分る,90,true,false,true\n奇跡,奇蹟,90,true";
+    textarea.value = `${node.bulkImportText ?? ""}`;
+    textarea.addEventListener("input", () => {
+      node.bulkImportText = textarea.value;
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(createButton("一括追加", "primary", () => {
+      const importedEntries = parseBulkImportText(textarea.value, effectiveKind);
+      if (importedEntries.length === 0) {
+        setStatus("一括登録できる行がありません。", "error");
+        return;
+      }
+      node.entries.push(...importedEntries);
+      node.bulkImportText = "";
+      node.bulkImportOpen = false;
+      renderApp();
+      setStatus(`${importedEntries.length} 件を一括追加しました。`, "success");
+    }));
+    actions.appendChild(createButton("入力クリア", "ghost", () => {
+      node.bulkImportText = "";
+      renderApp();
+    }));
+
+    body.append(textarea, actions);
+    panel.append(head, body);
+    return panel;
+  };
+
   const renderEntryTable = (node, effectiveKind) => {
     const wrapper = document.createElement("div");
     wrapper.className = "panel-block";
@@ -1516,6 +1839,8 @@
         entry.metaOpen = !entry.metaOpen;
         renderApp();
       });
+      detailButton.textContent = entry.metaOpen ? "閉じる" : "条件";
+      detailButton.title = entry.metaOpen ? "条件を閉じる" : "条件を開く";
       if (effectiveKind !== "token-rules") {
         detailButton.disabled = true;
         detailButton.title = "dictionary-rules では条件・sequence を使いません";
@@ -1554,6 +1879,14 @@
         detailGrid.appendChild(renderConditionEditor(entry, "next", "後"));
         detailGrid.appendChild(renderSequenceEditor(entry));
 
+        detailTitle.textContent = "条件";
+        detailHint.textContent = "前後条件・現条件・sequence を編集";
+        detailGrid.replaceChildren(
+          renderConditionEditorV2(entry, "prev", "前"),
+          renderConditionEditorV2(entry, "current", "現"),
+          renderConditionEditorV2(entry, "next", "後"),
+          renderSequenceEditorV2(entry)
+        );
         detailWrap.append(detailHead, detailGrid);
         detailCell.appendChild(detailWrap);
         detailRow.appendChild(detailCell);
@@ -1586,6 +1919,16 @@
 
     const titleWrap = document.createElement("div");
     titleWrap.className = isRoot ? "bundle-title" : "group-title";
+    const collapseToggle = createButton(
+      isNodeCollapsed(node.id) ? "▸" : "▾",
+      "ghost",
+      () => {
+        setNodeCollapsed(node.id, !isNodeCollapsed(node.id));
+        renderApp();
+      }
+    );
+    collapseToggle.title = isNodeCollapsed(node.id) ? "展開" : "折り畳む";
+    titleWrap.appendChild(collapseToggle);
     titleWrap.appendChild(createEditableTitle(isRoot ? "h2" : "h3", node, isRoot ? "Bundle" : "Group", renderApp));
 
     const entryChip = document.createElement("span");
@@ -1613,6 +1956,11 @@
     });
     enabledLabel.append(enabledCheckbox, document.createTextNode("有効"));
     actions.appendChild(enabledLabel);
+
+    actions.appendChild(createButton(node.bulkImportOpen === true ? "一括登録を閉じる" : "一括登録", "secondary", () => {
+      node.bulkImportOpen = node.bulkImportOpen !== true;
+      renderApp();
+    }));
 
     if (isRoot) {
       const kindSelect = document.createElement("select");
@@ -1691,6 +2039,14 @@
 
     header.append(titleWrap, actions);
     card.appendChild(header);
+
+    if (isNodeCollapsed(node.id)) {
+      return card;
+    }
+
+    if (node.bulkImportOpen === true) {
+      card.appendChild(renderBulkImportPanel(node, effectiveKind));
+    }
 
     if (node.entries.length > 0 || node.children.length === 0) {
       card.appendChild(renderEntryTable(node, effectiveKind));
@@ -2203,6 +2559,9 @@
       ? storedDiagnosticUiState.dismissedDiagnostics
       : {};
     state.dismissedDiagnosticsCollapsed = storedDiagnosticUiState?.collapsed !== false;
+    state.collapsedNodes = storedDiagnosticUiState?.collapsedNodes && typeof storedDiagnosticUiState.collapsedNodes === "object"
+      ? storedDiagnosticUiState.collapsedNodes
+      : {};
     renderApp();
     setStatus("設定を読み込みました。", "info");
   };

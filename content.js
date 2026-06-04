@@ -9,8 +9,18 @@
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
   const BUNDLE_OVERRIDE_STORAGE_KEY = "bundleOverrideSettingsV1";
   const DICT_PATH = "dict/";
+  const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
+  const MESSAGE_TYPES = {
+    APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
+    GET_PAGE_CONTEXT: "GET_PAGE_CONTEXT",
+    GET_TAB_RUNTIME_STATE: "GET_TAB_RUNTIME_STATE"
+  };
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
-    skipEditableInputs: false
+    skipEditableInputs: false,
+    globalEnabled: true
+  });
+  const DEFAULT_DISABLED_SITES = Object.freeze({
+    domains: []
   });
   const TransformEngine = globalThis.TransformEngine;
   const SKIP_TAGS = new Set([
@@ -59,6 +69,7 @@
     "WBR"
   ]);
 
+  const originalTextByRunAnchor = new WeakMap();
   const processedTextByRunAnchor = new WeakMap();
   const pendingTextRuns = new Map();
   const composingEditableHosts = new WeakSet();
@@ -69,6 +80,9 @@
   let activeStringRules = [];
   let activeTokenizer = null;
   let activeRuntimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
+  let activeDisabledSites = { ...DEFAULT_DISABLED_SITES };
+  let activePopupBundleId = DEFAULT_POPUP_BUNDLE_ID;
+  let activeTabDisabled = false;
 
   if (!TransformEngine) {
     throw new Error("TransformEngine が未読込です。manifest.json の content_scripts の順序を確認してください。");
@@ -108,8 +122,64 @@
 
   const normalizeRuntimeSettings = (value) => {
     return {
-      skipEditableInputs: value?.skipEditableInputs === true
+      skipEditableInputs: value?.skipEditableInputs === true,
+      globalEnabled: value?.globalEnabled !== false
     };
+  };
+
+  const normalizeDisabledSites = (value) => {
+    const domains = Array.isArray(value?.domains)
+      ? value.domains
+          .map((domain) => `${domain ?? ""}`.trim().toLowerCase())
+          .filter(Boolean)
+      : [];
+
+    return {
+      domains: [...new Set(domains)]
+    };
+  };
+
+  const getCurrentSelectionText = () => {
+    try {
+      return `${globalThis.getSelection?.()?.toString?.() ?? ""}`.trim();
+    } catch (error) {
+      return "";
+    }
+  };
+
+  const isCurrentSiteDisabled = () => {
+    const hostname = `${location.hostname ?? ""}`.trim().toLowerCase();
+    if (!hostname) {
+      return false;
+    }
+
+    return activeDisabledSites.domains.includes(hostname);
+  };
+
+  const isRuntimeEnabled = () => {
+    return (
+      activeRuntimeSettings.globalEnabled !== false &&
+      !activeTabDisabled &&
+      !isCurrentSiteDisabled()
+    );
+  };
+
+  const sendRuntimeMessage = async (message) => {
+    if (!chrome?.runtime?.sendMessage) {
+      return null;
+    }
+
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(message, (response) => {
+        const runtimeError = chrome.runtime.lastError;
+        if (runtimeError) {
+          reject(new Error(runtimeError.message));
+          return;
+        }
+
+        resolve(response ?? null);
+      });
+    });
   };
 
   const getEditableHost = (target) => {
@@ -1160,12 +1230,12 @@
     return TransformEngine.normalizeBundleOverridesPayload(storedValue);
   };
 
-  const loadRuntimeSettings = async () => {
+  const loadStoredSettingsPayload = async () => {
     if (!chrome?.storage?.local) {
-      return { ...DEFAULT_RUNTIME_SETTINGS };
+      return {};
     }
 
-    const storedValue = await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       chrome.storage.local.get([BUNDLE_OVERRIDE_STORAGE_KEY], (result) => {
         const runtimeError = chrome.runtime?.lastError;
         if (runtimeError) {
@@ -1173,11 +1243,34 @@
           return;
         }
 
-        resolve(result?.[BUNDLE_OVERRIDE_STORAGE_KEY] ?? null);
+        resolve(result?.[BUNDLE_OVERRIDE_STORAGE_KEY] ?? {});
       });
     });
+  };
 
-    return normalizeRuntimeSettings(storedValue?.runtime_settings);
+  const loadRuntimeConfiguration = async () => {
+    const storedValue = await loadStoredSettingsPayload();
+
+    return {
+      runtimeSettings: normalizeRuntimeSettings(storedValue?.runtime_settings),
+      disabledSites: normalizeDisabledSites(storedValue?.disabled_sites),
+      popupBundleId: `${storedValue?.popup_bundle_id ?? DEFAULT_POPUP_BUNDLE_ID}`.trim() || DEFAULT_POPUP_BUNDLE_ID
+    };
+  };
+
+  const loadTabRuntimeState = async () => {
+    try {
+      const response = await sendRuntimeMessage({
+        type: MESSAGE_TYPES.GET_TAB_RUNTIME_STATE
+      });
+      return {
+        tabDisabled: response?.tabDisabled === true
+      };
+    } catch (error) {
+      return {
+        tabDisabled: false
+      };
+    }
   };
 
   const applyBundleOverrideToManifest = (bundle, override) => {
@@ -1393,6 +1486,40 @@
     }
   };
 
+  const restoreTextRun = (textRun) => {
+    if (!Array.isArray(textRun) || textRun.length === 0) {
+      return false;
+    }
+
+    const textNodes = textRun.filter((node) => node?.isConnected);
+    if (textNodes.length === 0) {
+      return false;
+    }
+
+    const runAnchor = textNodes[0];
+    const original = originalTextByRunAnchor.get(runAnchor);
+    if (typeof original !== "string") {
+      return false;
+    }
+
+    const currentParts = textNodes.map((node) => readNodeValueSafely(node));
+    const current = currentParts.join("");
+    if (current === original) {
+      processedTextByRunAnchor.delete(runAnchor);
+      return false;
+    }
+
+    redistributeTransformedText(textNodes, currentParts, original);
+    processedTextByRunAnchor.delete(runAnchor);
+    return true;
+  };
+
+  const restoreDocumentRuns = (root) => {
+    for (const run of collectProcessableTextRuns(root)) {
+      restoreTextRun(run);
+    }
+  };
+
   const processTextRun = (textRun) => {
     if (!Array.isArray(textRun) || textRun.length === 0) {
       return false;
@@ -1405,30 +1532,32 @@
       return false;
     }
 
-    const originalParts = textNodes.map((node) => readNodeValueSafely(node));
-    const original = originalParts.join("");
-    if (!original || !original.trim()) {
+    const currentParts = textNodes.map((node) => readNodeValueSafely(node));
+    const current = currentParts.join("");
+    if (!current || !current.trim()) {
       return false;
     }
 
     const runAnchor = textNodes[0];
     const lastProcessed = processedTextByRunAnchor.get(runAnchor);
-    if (lastProcessed !== undefined && lastProcessed === original) {
-      return false;
-    }
+    const storedOriginal = originalTextByRunAnchor.get(runAnchor);
+    const sourceText = lastProcessed !== undefined && current === lastProcessed && typeof storedOriginal === "string"
+      ? storedOriginal
+      : current;
+    originalTextByRunAnchor.set(runAnchor, sourceText);
 
-    const transformed = transformTextWithStages(original);
+    const transformed = transformTextWithStages(sourceText);
     processedTextByRunAnchor.set(runAnchor, transformed);
 
-    if (transformed === original) {
+    if (transformed === current) {
       return false;
     }
 
-    redistributeTransformedText(textNodes, originalParts, transformed);
+    redistributeTransformedText(textNodes, currentParts, transformed);
 
     if (DEBUG) {
       log("textRun 更新", {
-        original,
+        original: sourceText,
         transformed,
         nodeCount: textNodes.length
       });
@@ -1439,6 +1568,11 @@
 
   const flushPendingTextRuns = () => {
     flushTimer = null;
+
+    if (!isRuntimeEnabled()) {
+      pendingTextRuns.clear();
+      return;
+    }
 
     const hasAnyRules = activeTransformStages.some((stage) => {
       return Array.isArray(stage.rules) && stage.rules.length > 0;
@@ -1493,6 +1627,10 @@
   const queueTextRuns = (runs, options = {}) => {
     const { immediate = false } = options;
 
+    if (!isRuntimeEnabled()) {
+      return;
+    }
+
     for (const run of runs) {
       if (!Array.isArray(run) || run.length === 0) {
         continue;
@@ -1519,7 +1657,7 @@
   };
 
   const queueEditableHostRuns = (host, options = {}) => {
-    if (!host || !host.isConnected || activeRuntimeSettings.skipEditableInputs) {
+    if (!host || !host.isConnected || activeRuntimeSettings.skipEditableInputs || !isRuntimeEnabled()) {
       return;
     }
 
@@ -1569,6 +1707,10 @@
 
   const observeDynamicContent = () => {
     const observer = new MutationObserver((mutations) => {
+      if (!isRuntimeEnabled()) {
+        return;
+      }
+
       const queuedRuns = [];
 
       for (const mutation of mutations) {
@@ -1596,12 +1738,13 @@
     log("MutationObserver 開始");
   };
 
-  const initialize = async () => {
-    if (!document.body) {
-      throw new Error("document.body が利用できません。");
-    }
+  const refreshRuntimeState = async (options = {}) => {
+    const { reapply = true } = options;
+    const runtimeConfiguration = await loadRuntimeConfiguration();
+    activeRuntimeSettings = runtimeConfiguration.runtimeSettings;
+    activeDisabledSites = runtimeConfiguration.disabledSites;
+    activePopupBundleId = runtimeConfiguration.popupBundleId;
 
-    activeRuntimeSettings = await loadRuntimeSettings();
     const loaded = await loadOrderedRules();
     activeTransformStages = loaded.stages;
     activeStringRules = activeTransformStages
@@ -1610,8 +1753,88 @@
     activeTokenRules = activeTransformStages
       .filter((stage) => stage.kind === "token-rules")
       .flatMap((stage) => stage.rules);
+    activeTabDisabled = (await loadTabRuntimeState()).tabDisabled === true;
     activeTokenizer = activeTokenRules.length > 0 ? await buildTokenizer() : null;
 
+    if (!reapply) {
+      return;
+    }
+
+    if (!isRuntimeEnabled()) {
+      pendingTextRuns.clear();
+      if (flushTimer !== null) {
+        window.clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      restoreDocumentRuns(document.body);
+      return;
+    }
+
+    queueTextRuns(collectProcessableTextRuns(document.body), { immediate: true });
+  };
+
+  const handleRuntimeMessage = (message, sendResponse) => {
+    if (!message || typeof message !== "object") {
+      return false;
+    }
+
+    if (message.type === MESSAGE_TYPES.GET_PAGE_CONTEXT) {
+      sendResponse({
+        ok: true,
+        url: location.href,
+        hostname: location.hostname,
+        selectionText: getCurrentSelectionText(),
+        globalEnabled: activeRuntimeSettings.globalEnabled !== false,
+        siteDisabled: isCurrentSiteDisabled(),
+        tabDisabled: activeTabDisabled === true,
+        effectiveEnabled: isRuntimeEnabled(),
+        popupBundleId: activePopupBundleId
+      });
+      return false;
+    }
+
+    if (message.type === MESSAGE_TYPES.APPLY_SETTINGS_UPDATE) {
+      refreshRuntimeState({ reapply: true })
+        .then(() => sendResponse({ ok: true }))
+        .catch((error) => {
+          sendResponse({
+            ok: false,
+            error: error instanceof Error ? error.message : `${error}`
+          });
+        });
+      return true;
+    }
+
+    return false;
+  };
+
+  const bindRuntimeSynchronization = () => {
+    if (chrome?.storage?.onChanged) {
+      chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName !== "local" || !changes[BUNDLE_OVERRIDE_STORAGE_KEY]) {
+          return;
+        }
+
+        refreshRuntimeState({ reapply: true }).catch((error) => {
+          console.error("runtime refresh failed", error);
+        });
+      });
+    }
+
+    if (chrome?.runtime?.onMessage) {
+      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        return handleRuntimeMessage(message, sendResponse);
+      });
+    }
+  };
+
+  const initialize = async () => {
+    if (!document.body) {
+      throw new Error("document.body が利用できません。");
+    }
+
+    await refreshRuntimeState({ reapply: false });
+    bindRuntimeSynchronization();
     bindEditableLifecycle();
     const initialRuns = collectProcessableTextRuns(document.body);
     log("対象 textRun 数", initialRuns.length);

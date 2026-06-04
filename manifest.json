@@ -1,11 +1,25 @@
 {
-  "name": "省略変換器",
-  "description": "日本語を簡潔に書き換える拡張機能。JSON5ルールとkuromoji.jsによる形態素解析を使用。",
-  "version": "1.4",
+  "name": "Text Transform Extension",
+  "description": "Transforms Japanese text on web pages with ordered rules and morphological analysis.",
+  "version": "1.5",
   "manifest_version": 3,
-  "permissions": ["storage"],
+  "permissions": ["storage", "tabs"],
   "host_permissions": ["<all_urls>"],
   "options_page": "options.html",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "toggle-current-tab": {
+      "description": "Temporarily toggle the extension on the current tab"
+    },
+    "toggle-global-extension": {
+      "description": "Temporarily toggle the extension globally"
+    }
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>日本語表記変換システム 設定</title>
+  <title>日本語表記変換拡張 設定</title>
   <style>
     :root {
       --bg: #f5f1e8;
@@ -81,7 +81,7 @@
     .status[data-type="success"] { color: #166534; }
     .status[data-type="error"] { color: #b91c1c; }
 
-    .tabbar { display: flex; gap: 8px; margin-bottom: 8px; }
+    .tabbar { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
     .tab-panel[hidden] { display: none; }
     .bundle-grid, .diagnostics-grid, .bundle-body { display: grid; gap: 8px; }
 
@@ -177,6 +177,38 @@
     }
     .diag-occurrence, code { font-family: var(--mono); font-size: 13px; line-height: 1.6; }
 
+    .simple-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .simple-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(216, 199, 170, 0.7);
+    }
+
+    .simple-row:last-child {
+      border-bottom: 0;
+    }
+
+    .domain-input {
+      min-width: 24ch;
+    }
+
+    .shortcut-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #efe2cb;
+      color: var(--ink);
+      font-size: 12px;
+    }
+
     @media (max-width: 780px) {
       .shell { width: min(100% - 8px, 100%); }
       .hero, .toolbar, .tabbar, .bundle-card, .diagnostics-card, .group-card, .panel-block { padding-inline: 8px; }
@@ -186,12 +218,12 @@
 <body>
   <div class="shell">
     <section class="hero">
-      <h1>日本語表記変換システム 設定</h1>
-      <p>Bundle と Group を入れ子で管理し、各置換をその場で編集します。名称はダブルクリックで変更できます。</p>
+      <h1>日本語表記変換拡張 設定</h1>
+      <p>Bundle と Group を入れ子で管理し、置換規則をその場で編集します。popup 用の簡易登録語彙も同じ設定の中で管理します。</p>
       <ul>
-        <li>保存後は変換対象タブを再読み込みしてください。</li>
-        <li>設定は <code>chrome.storage.local</code> に保存され、拡張本体から参照されます。</li>
-        <li>形態素解析タブで入力文の token を確認できます。</li>
+        <li>編集後は保存して、対象タブをその場で更新できます。</li>
+        <li>ホットキーは Chrome 標準のショートカット設定で変更します。</li>
+        <li>形態素解析タブでは token を確認できます。</li>
       </ul>
     </section>
 
@@ -199,24 +231,27 @@
       <div class="toolbar-actions">
         <button id="save-all" class="primary" type="button">全体を保存</button>
         <button id="add-bundle" class="secondary" type="button">Bundle追加</button>
-        <button id="reload-defaults" class="secondary" type="button">既定値を再読込</button>
-        <button id="import-settings" class="secondary" type="button">JSON/YAML 読込</button>
-        <button id="export-json" class="ghost" type="button">JSON 書出</button>
-        <button id="export-yaml" class="ghost" type="button">YAML 書出</button>
+        <button id="reload-defaults" class="secondary" type="button">既定を再読込</button>
+        <button id="import-settings" class="secondary" type="button">JSON/YAML読込</button>
+        <button id="export-json" class="ghost" type="button">JSON書出</button>
+        <button id="export-yaml" class="ghost" type="button">YAML書出</button>
       </div>
       <div id="status" class="status" aria-live="polite"></div>
     </section>
 
     <section class="panel-block">
       <div class="panel-head">
-        <h2>runtime設定</h2>
+        <h2>Runtime設定</h2>
       </div>
       <div class="bundle-body">
+        <label class="toggle">
+          <input id="runtime-global-enabled" type="checkbox" checked>
+          <span>拡張全体を有効にする</span>
+        </label>
         <label class="toggle">
           <input id="runtime-skip-editable" type="checkbox">
           <span>入力ボックス中は置換しない</span>
         </label>
-        <p class="diag-summary">オフのときは編集中の置換を抑止し、変換確定後またはフォーカス離脱後に置換します。</p>
       </div>
     </section>
 
@@ -224,6 +259,8 @@
       <button id="tab-bundles" class="tab-button secondary" type="button" aria-selected="true">Bundle編集</button>
       <button id="tab-diagnostics" class="tab-button ghost" type="button" aria-selected="false">診断</button>
       <button id="tab-tokenizer" class="tab-button ghost" type="button" aria-selected="false">形態素解析</button>
+      <button id="tab-hotkeys" class="tab-button ghost" type="button" aria-selected="false">Hotkey</button>
+      <button id="tab-sites" class="tab-button ghost" type="button" aria-selected="false">無効サイト</button>
     </nav>
 
     <section id="panel-bundles" class="tab-panel">
@@ -262,6 +299,30 @@
             </table>
           </div>
         </div>
+      </div>
+    </section>
+
+    <section id="panel-hotkeys" class="tab-panel" hidden>
+      <div class="diagnostics-card">
+        <div class="panel-head">
+          <h2>Hotkey</h2>
+          <div class="panel-actions">
+            <button id="open-shortcuts" class="secondary" type="button">ショートカット設定を開く</button>
+          </div>
+        </div>
+        <div id="hotkeys-root" class="simple-list"></div>
+      </div>
+    </section>
+
+    <section id="panel-sites" class="tab-panel" hidden>
+      <div class="diagnostics-card">
+        <div class="panel-head">
+          <h2>無効サイト</h2>
+          <div class="panel-actions">
+            <button id="add-current-site" class="secondary" type="button">現在サイトを追加</button>
+          </div>
+        </div>
+        <div id="sites-root" class="simple-list"></div>
       </div>
     </section>
   </div>

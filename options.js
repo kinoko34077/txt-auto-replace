@@ -5,8 +5,17 @@
   const STORAGE_KEY = "bundleOverrideSettingsV1";
   const DIAGNOSTIC_UI_STATE_KEY = "diagnosticUiStateV1";
   const DICT_PATH = "./dict/";
+  const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
+  const MESSAGE_TYPES = {
+    APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
+    OPEN_SHORTCUTS_PAGE: "OPEN_SHORTCUTS_PAGE"
+  };
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
-    skipEditableInputs: false
+    skipEditableInputs: false,
+    globalEnabled: true
+  });
+  const DEFAULT_DISABLED_SITES = Object.freeze({
+    domains: []
   });
 
   const state = {
@@ -14,22 +23,31 @@
     roots: [],
     baseRoots: [],
     runtimeSettings: { ...DEFAULT_RUNTIME_SETTINGS },
+    disabledSites: { ...DEFAULT_DISABLED_SITES },
+    popupBundleId: DEFAULT_POPUP_BUNDLE_ID,
     nodeSerial: 0,
     entrySerial: 0,
     collapsedNodes: {},
     tokenizer: null,
     dismissedDiagnostics: {},
-    dismissedDiagnosticsCollapsed: true
+    dismissedDiagnosticsCollapsed: true,
+    commands: []
   };
 
   const bundleRoot = document.getElementById("bundle-root");
   const diagnosticsRoot = document.getElementById("diagnostics-root");
+  const hotkeysRoot = document.getElementById("hotkeys-root");
+  const sitesRoot = document.getElementById("sites-root");
   const panelBundles = document.getElementById("panel-bundles");
   const panelDiagnostics = document.getElementById("panel-diagnostics");
   const panelTokenizer = document.getElementById("panel-tokenizer");
+  const panelHotkeys = document.getElementById("panel-hotkeys");
+  const panelSites = document.getElementById("panel-sites");
   const tabBundlesButton = document.getElementById("tab-bundles");
   const tabDiagnosticsButton = document.getElementById("tab-diagnostics");
   const tabTokenizerButton = document.getElementById("tab-tokenizer");
+  const tabHotkeysButton = document.getElementById("tab-hotkeys");
+  const tabSitesButton = document.getElementById("tab-sites");
   const statusNode = document.getElementById("status");
   const saveAllButton = document.getElementById("save-all");
   const addBundleButton = document.getElementById("add-bundle");
@@ -38,10 +56,13 @@
   const exportJsonButton = document.getElementById("export-json");
   const exportYamlButton = document.getElementById("export-yaml");
   const importFileInput = document.getElementById("import-file");
+  const runtimeGlobalEnabledInput = document.getElementById("runtime-global-enabled");
   const runtimeSkipEditableInput = document.getElementById("runtime-skip-editable");
   const tokenizerInput = document.getElementById("tokenizer-input");
   const tokenizerRunButton = document.getElementById("tokenizer-run");
   const tokenizerResult = document.getElementById("tokenizer-result");
+  const openShortcutsButton = document.getElementById("open-shortcuts");
+  const addCurrentSiteButton = document.getElementById("add-current-site");
 
   const setStatus = (message, type = "info") => {
     statusNode.textContent = message;
@@ -52,7 +73,8 @@
 
   const normalizeRuntimeSettings = (value) => {
     return {
-      skipEditableInputs: value?.skipEditableInputs === true
+      skipEditableInputs: value?.skipEditableInputs === true,
+      globalEnabled: value?.globalEnabled !== false
     };
   };
 
@@ -64,6 +86,33 @@
     return normalizeRuntimeSettings(
       payload.runtime_settings ?? payload?.[STORAGE_KEY]?.runtime_settings
     );
+  };
+
+  const normalizeDisabledSites = (value) => {
+    const domains = Array.isArray(value?.domains)
+      ? value.domains
+          .map((domain) => `${domain ?? ""}`.trim().toLowerCase())
+          .filter(Boolean)
+      : [];
+
+    return {
+      domains: [...new Set(domains)]
+    };
+  };
+
+  const extractDisabledSites = (payload) => {
+    if (!payload || typeof payload !== "object") {
+      return { ...DEFAULT_DISABLED_SITES };
+    }
+
+    return normalizeDisabledSites(
+      payload.disabled_sites ?? payload?.[STORAGE_KEY]?.disabled_sites
+    );
+  };
+
+  const extractPopupBundleId = (payload) => {
+    const popupBundleId = `${payload?.popup_bundle_id ?? payload?.[STORAGE_KEY]?.popup_bundle_id ?? DEFAULT_POPUP_BUNDLE_ID}`.trim();
+    return popupBundleId || DEFAULT_POPUP_BUNDLE_ID;
   };
 
   const getCollapsedNodes = () => {
@@ -157,6 +206,56 @@
 
         resolve();
       });
+    });
+  };
+
+  const sendRuntimeMessage = async (message) => {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(message, (response) => {
+        const runtimeError = chrome.runtime.lastError;
+        if (runtimeError) {
+          reject(new Error(runtimeError.message));
+          return;
+        }
+
+        resolve(response ?? null);
+      });
+    });
+  };
+
+  const getAllCommands = async () => {
+    if (!chrome?.commands?.getAll) {
+      return [];
+    }
+
+    return new Promise((resolve, reject) => {
+      chrome.commands.getAll((commands) => {
+        const runtimeError = chrome.runtime.lastError;
+        if (runtimeError) {
+          reject(new Error(runtimeError.message));
+          return;
+        }
+
+        resolve(commands ?? []);
+      });
+    });
+  };
+
+  const getActiveTab = async () => {
+    if (!chrome?.tabs?.query) {
+      return null;
+    }
+
+    const tabs = await chrome.tabs.query({
+      active: true,
+      currentWindow: true
+    });
+    return tabs[0] ?? null;
+  };
+
+  const notifyRuntimeSettingsApplied = async () => {
+    await sendRuntimeMessage({
+      type: MESSAGE_TYPES.APPLY_SETTINGS_UPDATE
     });
   };
 
@@ -936,6 +1035,29 @@
     };
   };
 
+  const createPopupBundleRoot = () => {
+    return normalizeNode({
+      id: DEFAULT_POPUP_BUNDLE_ID,
+      label: "Popup 追加語彙",
+      kind: "token-rules",
+      enabled: true,
+      order: 57,
+      entries: [],
+      children: []
+    }, DEFAULT_POPUP_BUNDLE_ID, "Popup 追加語彙");
+  };
+
+  const ensurePopupBundleRoot = (roots) => {
+    const existing = roots.find((root) => root.id === state.popupBundleId);
+    if (existing) {
+      existing.label = existing.label || "Popup 追加語彙";
+      return roots;
+    }
+
+    roots.push(createPopupBundleRoot());
+    return roots;
+  };
+
   const normalizeManifestDefinition = (bundle, definition) => {
     if (!definition || !definition.kind) {
       throw new Error(`${bundle.id} の定義が不正です。`);
@@ -1059,6 +1181,8 @@
     return {
       schema_version: 3,
       runtime_settings: cloneValue(state.runtimeSettings),
+      disabled_sites: cloneValue(state.disabledSites),
+      popup_bundle_id: state.popupBundleId,
       roots: state.roots.map((root, index) => serializeNode(root, index + 1))
     };
   };
@@ -1066,6 +1190,19 @@
   const buildStoragePayload = () => ({
     [STORAGE_KEY]: buildPayload()
   });
+
+  const saveAllAndNotify = async () => {
+    await storageSet(buildStoragePayload());
+    await notifyRuntimeSettingsApplied();
+    setStatus("設定を保存し、現在のタブへ即時反映しました。", "success");
+  };
+
+  const applyDefaultState = () => {
+    state.roots = cloneValue(state.baseRoots);
+    state.runtimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
+    state.disabledSites = { ...DEFAULT_DISABLED_SITES };
+    ensurePopupBundleRoot(state.roots);
+  };
 
   const findBaseRoot = (rootId) => {
     return state.baseRoots.find((root) => root.id === rootId) ?? null;
@@ -2453,15 +2590,23 @@
     const bundlesActive = state.activeTab === "bundles";
     const diagnosticsActive = state.activeTab === "diagnostics";
     const tokenizerActive = state.activeTab === "tokenizer";
+    const hotkeysActive = state.activeTab === "hotkeys";
+    const sitesActive = state.activeTab === "sites";
     panelBundles.hidden = !bundlesActive;
     panelDiagnostics.hidden = !diagnosticsActive;
     panelTokenizer.hidden = !tokenizerActive;
+    panelHotkeys.hidden = !hotkeysActive;
+    panelSites.hidden = !sitesActive;
     tabBundlesButton.setAttribute("aria-selected", bundlesActive ? "true" : "false");
     tabDiagnosticsButton.setAttribute("aria-selected", diagnosticsActive ? "true" : "false");
     tabTokenizerButton.setAttribute("aria-selected", tokenizerActive ? "true" : "false");
+    tabHotkeysButton.setAttribute("aria-selected", hotkeysActive ? "true" : "false");
+    tabSitesButton.setAttribute("aria-selected", sitesActive ? "true" : "false");
     tabBundlesButton.className = bundlesActive ? "tab-button secondary" : "tab-button ghost";
     tabDiagnosticsButton.className = diagnosticsActive ? "tab-button secondary" : "tab-button ghost";
     tabTokenizerButton.className = tokenizerActive ? "tab-button secondary" : "tab-button ghost";
+    tabHotkeysButton.className = hotkeysActive ? "tab-button secondary" : "tab-button ghost";
+    tabSitesButton.className = sitesActive ? "tab-button secondary" : "tab-button ghost";
   };
 
   const renderBundles = () => {
@@ -2478,13 +2623,108 @@
   };
 
   const renderRuntimeSettings = () => {
+    runtimeGlobalEnabledInput.checked = state.runtimeSettings.globalEnabled !== false;
     runtimeSkipEditableInput.checked = state.runtimeSettings.skipEditableInputs === true;
+  };
+
+  const renderHotkeys = () => {
+    if (!hotkeysRoot) {
+      return;
+    }
+
+    hotkeysRoot.textContent = "";
+    const commands = Array.isArray(state.commands) ? state.commands : [];
+
+    if (commands.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "diag-summary";
+      empty.textContent = "利用可能なコマンドがありません。";
+      hotkeysRoot.appendChild(empty);
+      return;
+    }
+
+    commands.forEach((command) => {
+      const row = document.createElement("div");
+      row.className = "simple-row";
+
+      const title = document.createElement("strong");
+      title.textContent = command.name || command.description || "command";
+      row.appendChild(title);
+
+      const description = document.createElement("span");
+      description.className = "diag-summary";
+      description.textContent = command.description || "";
+      row.appendChild(description);
+
+      const shortcut = document.createElement("span");
+      shortcut.className = "shortcut-pill";
+      shortcut.textContent = command.shortcut || "未割当";
+      row.appendChild(shortcut);
+
+      hotkeysRoot.appendChild(row);
+    });
+  };
+
+  const renderDisabledSites = () => {
+    if (!sitesRoot) {
+      return;
+    }
+
+    sitesRoot.textContent = "";
+
+    const list = [...state.disabledSites.domains];
+    if (list.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "diag-summary";
+      empty.textContent = "無効化しているドメインはありません。";
+      sitesRoot.appendChild(empty);
+    }
+
+    list.forEach((domain, index) => {
+      const row = document.createElement("div");
+      row.className = "simple-row";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "domain-input";
+      input.value = domain;
+      input.addEventListener("change", () => {
+        state.disabledSites.domains[index] = input.value.trim().toLowerCase();
+      });
+      row.appendChild(input);
+      row.appendChild(createButton("削除", "danger", () => {
+        state.disabledSites.domains.splice(index, 1);
+        state.disabledSites = normalizeDisabledSites(state.disabledSites);
+        renderDisabledSites();
+      }));
+      sitesRoot.appendChild(row);
+    });
+
+    const addRow = document.createElement("div");
+    addRow.className = "simple-row";
+    const addInput = document.createElement("input");
+    addInput.type = "text";
+    addInput.className = "domain-input";
+    addInput.placeholder = "example.com";
+    addRow.appendChild(addInput);
+    addRow.appendChild(createButton("追加", "secondary", () => {
+      const domain = addInput.value.trim().toLowerCase();
+      if (!domain) {
+        return;
+      }
+
+      state.disabledSites.domains.push(domain);
+      state.disabledSites = normalizeDisabledSites(state.disabledSites);
+      renderDisabledSites();
+    }));
+    sitesRoot.appendChild(addRow);
   };
 
   const renderApp = () => {
     renderRuntimeSettings();
     renderBundles();
     renderDiagnostics();
+    renderHotkeys();
+    renderDisabledSites();
     renderTabState();
   };
 
@@ -2513,6 +2753,9 @@
     const importedRoots = normalizeImportedRoots(parsed);
     state.roots = importedRoots;
     state.runtimeSettings = extractRuntimeSettings(parsed);
+    state.disabledSites = extractDisabledSites(parsed);
+    state.popupBundleId = extractPopupBundleId(parsed);
+    ensurePopupBundleRoot(state.roots);
     renderApp();
     setStatus(`${fileName} を読み込みました。`, "success");
   };
@@ -2555,6 +2798,10 @@
     state.baseRoots = cloneValue(baseRoots);
     state.roots = currentRoots;
     state.runtimeSettings = extractRuntimeSettings(storedPayload);
+    state.disabledSites = extractDisabledSites(storedPayload);
+    state.popupBundleId = extractPopupBundleId(storedPayload);
+    ensurePopupBundleRoot(state.roots);
+    state.commands = await getAllCommands();
     state.dismissedDiagnostics = storedDiagnosticUiState?.dismissedDiagnostics && typeof storedDiagnosticUiState.dismissedDiagnostics === "object"
       ? storedDiagnosticUiState.dismissedDiagnostics
       : {};
@@ -2589,7 +2836,8 @@
 
   saveAllButton.addEventListener("click", async () => {
     try {
-      await saveAll();
+      await saveAllAndNotify();
+      setStatus("設定を保存し、現在のタブへ即時反映しました。", "success");
     } catch (error) {
       console.error(error);
       setStatus(`保存に失敗しました: ${error.message}`, "error");
@@ -2614,7 +2862,9 @@
   });
 
   reloadDefaultsButton.addEventListener("click", () => {
-    reloadDefaults();
+    applyDefaultState();
+    renderApp();
+    setStatus("既定値へ戻しました。", "info");
   });
 
   importSettingsButton.addEventListener("click", () => {
@@ -2660,6 +2910,49 @@
     } catch (error) {
       console.error(error);
       setStatus(`形態素解析に失敗しました: ${error.message}`, "error");
+    }
+  });
+
+  tabHotkeysButton?.addEventListener("click", () => {
+    state.activeTab = "hotkeys";
+    renderTabState();
+  });
+
+  tabSitesButton?.addEventListener("click", () => {
+    state.activeTab = "sites";
+    renderTabState();
+  });
+
+  runtimeGlobalEnabledInput?.addEventListener("change", () => {
+    state.runtimeSettings.globalEnabled = runtimeGlobalEnabledInput.checked;
+    setStatus("拡張全体の有効状態を更新しました。保存すると即時反映されます。", "info");
+  });
+
+  openShortcutsButton?.addEventListener("click", async () => {
+    try {
+      await sendRuntimeMessage({ type: MESSAGE_TYPES.OPEN_SHORTCUTS_PAGE });
+    } catch (error) {
+      console.error(error);
+      setStatus(`ショートカット画面を開けませんでした: ${error.message}`, "error");
+    }
+  });
+
+  addCurrentSiteButton?.addEventListener("click", async () => {
+    try {
+      const activeTab = await getActiveTab();
+      const hostname = activeTab?.url ? new URL(activeTab.url).hostname.toLowerCase() : "";
+      if (!hostname) {
+        setStatus("現在サイトの取得に失敗しました。", "error");
+        return;
+      }
+
+      state.disabledSites.domains.push(hostname);
+      state.disabledSites = normalizeDisabledSites(state.disabledSites);
+      renderDisabledSites();
+      setStatus(`${hostname} を無効サイトへ追加しました。保存すると即時反映されます。`, "info");
+    } catch (error) {
+      console.error(error);
+      setStatus(`現在サイトの追加に失敗しました: ${error.message}`, "error");
     }
   });
 

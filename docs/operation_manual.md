@@ -41,6 +41,20 @@
       order: 40,
     },
     {
+      id: "official-homophone-restoration",
+      label: "告示・同音書換復元",
+      path: "transforms/50-official-homophone-restoration.json5",
+      enabled: true,
+      order: 50,
+    },
+    {
+      id: "homophone-kanji",
+      label: "同音漢字置換",
+      path: "transforms/55-homophone-kanji.json5",
+      enabled: true,
+      order: 55,
+    },
+    {
       id: "general-character-replacements",
       label: "一般単漢字置換",
       path: "transforms/60-general-character-replacements.json5",
@@ -137,8 +151,26 @@
 - JSON5 は厳密な JSON と異なりコメントと末尾カンマを許容するが、誤ってシングルクォートとダブルクォートを混在させないよう注意する。
 - 形態素解析に依存するため、未知語や固有名詞が辞書に含まれていない場合は `pos` が `名詞, 固有名詞` 等となる。複雑な語彙には過剰に規則を設けず、誤変換を避ける工夫が必要。
 - Stage5（旧字変換）は、ユーザー指定の旧字参照表だけを `legacy-kanji` へ入れている。そこに含めない単漢字置換は `general-character-replacements` へ逃がす。
-- 同音漢字置換は現時点では `奇跡 → 奇蹟` を実装済みで、今後も基本は固定熟語単位または単漢字単位で管理する。誤爆しやすいものだけを条件付きルールとして別管理する。
+- 文化庁「同音の漢字による書きかえ」の熟語対応表を反転した固定復元群は `official-homophone-restoration` に入れている。たとえば `奇跡 → 奇蹟` はこの bundle 側で管理する。
+- `homophone-kanji` は告示外の個別追加ルール用として残し、今後も基本は固定熟語単位または単漢字単位で管理する。誤爆しやすいものだけを条件付きルールとして別管理する。
 - Stage6（ルビ処理）は未実装である。これに対応する規則を書いても現行バージョンでは機能しないため、将来のアップデートまで待つ。
+
+## 開発者向けruntime検証
+
+runtime の回帰確認は `node tools/verify_runtime.js` を正本とする。通常は引数なしで全件実行し、必要なら `node tools/verify_runtime.js --case wakaru-mizen` のように個別 case を確認する。
+
+確認対象は次で固定する。
+
+- Stage 順が `transform-bundles.json5` の `order` と一致していること
+- `分かる / 分かります / 分からない / 分かれば / 分かれ`
+- `当たる / 当たれば / 当たれ`
+- `書き出す / 書き出した / 書き出せば`
+- `悩みを書き出す。`
+- `面倒ごとに当たる。`
+- `奇跡が起きた。`
+- 保存済み override を通した後でも `token-rules` が `dictionary-rules` 扱いへ落ちないこと
+
+`debug.html` は補助確認用であり、DOM が複数の inline run に割れているケースや、後から追加された文への適用を目視確認するために使う。
 
 ## 4. トラブルシューティング
 

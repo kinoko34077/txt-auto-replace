@@ -5,11 +5,15 @@
   const STORAGE_KEY = "bundleOverrideSettingsV1";
   const DIAGNOSTIC_UI_STATE_KEY = "diagnosticUiStateV1";
   const DICT_PATH = "./dict/";
+  const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
+    skipEditableInputs: false
+  });
 
   const state = {
     activeTab: "bundles",
     roots: [],
     baseRoots: [],
+    runtimeSettings: { ...DEFAULT_RUNTIME_SETTINGS },
     nodeSerial: 0,
     entrySerial: 0,
     tokenizer: null,
@@ -33,6 +37,7 @@
   const exportJsonButton = document.getElementById("export-json");
   const exportYamlButton = document.getElementById("export-yaml");
   const importFileInput = document.getElementById("import-file");
+  const runtimeSkipEditableInput = document.getElementById("runtime-skip-editable");
   const tokenizerInput = document.getElementById("tokenizer-input");
   const tokenizerRunButton = document.getElementById("tokenizer-run");
   const tokenizerResult = document.getElementById("tokenizer-result");
@@ -43,6 +48,22 @@
   };
 
   const cloneValue = (value) => JSON.parse(JSON.stringify(value));
+
+  const normalizeRuntimeSettings = (value) => {
+    return {
+      skipEditableInputs: value?.skipEditableInputs === true
+    };
+  };
+
+  const extractRuntimeSettings = (payload) => {
+    if (!payload || typeof payload !== "object") {
+      return { ...DEFAULT_RUNTIME_SETTINGS };
+    }
+
+    return normalizeRuntimeSettings(
+      payload.runtime_settings ?? payload?.[STORAGE_KEY]?.runtime_settings
+    );
+  };
 
   const getDismissedDiagnostics = () => {
     return state.dismissedDiagnostics ?? {};
@@ -922,6 +943,7 @@
   const buildPayload = () => {
     return {
       schema_version: 3,
+      runtime_settings: cloneValue(state.runtimeSettings),
       roots: state.roots.map((root, index) => serializeNode(root, index + 1))
     };
   };
@@ -953,6 +975,7 @@
 
   const reloadDefaults = () => {
     state.roots = cloneValue(state.baseRoots);
+    state.runtimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
     renderApp();
     setStatus("既定値に戻しました。", "info");
   };
@@ -2098,7 +2121,12 @@
     });
   };
 
+  const renderRuntimeSettings = () => {
+    runtimeSkipEditableInput.checked = state.runtimeSettings.skipEditableInputs === true;
+  };
+
   const renderApp = () => {
+    renderRuntimeSettings();
     renderBundles();
     renderDiagnostics();
     renderTabState();
@@ -2128,6 +2156,7 @@
 
     const importedRoots = normalizeImportedRoots(parsed);
     state.roots = importedRoots;
+    state.runtimeSettings = extractRuntimeSettings(parsed);
     renderApp();
     setStatus(`${fileName} を読み込みました。`, "success");
   };
@@ -2169,6 +2198,7 @@
 
     state.baseRoots = cloneValue(baseRoots);
     state.roots = currentRoots;
+    state.runtimeSettings = extractRuntimeSettings(storedPayload);
     state.dismissedDiagnostics = storedDiagnosticUiState?.dismissedDiagnostics && typeof storedDiagnosticUiState.dismissedDiagnostics === "object"
       ? storedDiagnosticUiState.dismissedDiagnostics
       : {};
@@ -2205,6 +2235,11 @@
       console.error(error);
       setStatus(`保存に失敗しました: ${error.message}`, "error");
     }
+  });
+
+  runtimeSkipEditableInput.addEventListener("change", () => {
+    state.runtimeSettings.skipEditableInputs = runtimeSkipEditableInput.checked;
+    setStatus("runtime 設定を更新しました。保存すると拡張本体へ反映されます。", "info");
   });
 
   addBundleButton.addEventListener("click", () => {

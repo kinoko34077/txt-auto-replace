@@ -207,6 +207,19 @@
       <div id="status" class="status" aria-live="polite"></div>
     </section>
 
+    <section class="panel-block">
+      <div class="panel-head">
+        <h2>runtime設定</h2>
+      </div>
+      <div class="bundle-body">
+        <label class="toggle">
+          <input id="runtime-skip-editable" type="checkbox">
+          <span>入力ボックス中は置換しない</span>
+        </label>
+        <p class="diag-summary">オフのときは編集中の置換を抑止し、変換確定後またはフォーカス離脱後に置換します。</p>
+      </div>
+    </section>
+
     <nav class="tabbar" aria-label="設定タブ">
       <button id="tab-bundles" class="tab-button secondary" type="button" aria-selected="true">Bundle編集</button>
       <button id="tab-diagnostics" class="tab-button ghost" type="button" aria-selected="false">診断</button>

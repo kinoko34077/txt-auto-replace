@@ -1,5 +1,5 @@
 // transform-bundles.json5
-// 拡張機能内の変換バンドル定義。
+// 変換バンドルの読込順と有効状態を定義する。
 // order が小さいものから順に適用される。
 {
   bundles: [
@@ -32,11 +32,18 @@
       order: 40,
     },
     {
-      id: "homophone-kanji",
-      label: "同音漢字置換",
-      path: "transforms/50-homophone-kanji.json5",
+      id: "official-homophone-restoration",
+      label: "告示・同音書換復元",
+      path: "transforms/50-official-homophone-restoration.json5",
       enabled: true,
       order: 50,
+    },
+    {
+      id: "homophone-kanji",
+      label: "同音漢字置換",
+      path: "transforms/55-homophone-kanji.json5",
+      enabled: true,
+      order: 55,
     },
     {
       id: "general-character-replacements",

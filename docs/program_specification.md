@@ -37,7 +37,8 @@ jpn-transform-ext/
 │  ├─ 20-lexical-replacements.json5 … 語彙置換バンドル
 │  ├─ 30-okurigana-abbreviation.json5 … 送り仮名省略バンドル
 │  ├─ 40-legacy-kanji.json5 … 旧字変換バンドル
-│  ├─ 50-homophone-kanji.json5 … 同音漢字置換バンドル
+│  ├─ 50-official-homophone-restoration.json5 … 告示・同音書換復元バンドル
+│  ├─ 55-homophone-kanji.json5 … 同音漢字置換バンドル
 │  └─ 60-general-character-replacements.json5 … 一般単漢字置換バンドル
 ├─ options.html … 拡張機能の設定ページ
 ├─ options.js … 設定ページの保存・編集ロジック
@@ -155,10 +156,11 @@ Kuromoji により、テキストは次の情報を持つトークン列に分�
 | `lexical-replacements` | 指示語や固定語彙の置換 | 汎用ルール |
 | `okurigana-abbreviation` | 送り仮名省略 | 汎用ルール |
 | `legacy-kanji` | 旧字変換 | `dictionary-rules` による熟語表 + 単漢字表 |
+| `official-homophone-restoration` | 告示・同音書換復元 | `dictionary-rules` による熟語表 |
 | `homophone-kanji` | 同音漢字置換 | `dictionary-rules` による熟語表 + 単漢字表 |
 | `general-character-replacements` | 一般単漢字置換 | `dictionary-rules` による単漢字表 |
 
-旧字変換や同音漢字置換は、ルールや対象漢字・熟語の件数が比較的固定されやすいため、他の可変ルールと混ぜず専用バンドルとして分離する。旧字変換はユーザー指定の参照表だけを `legacy-kanji` とし、それ以外の単漢字置換は `general-character-replacements` に逃がす。
+旧字変換や同音漢字置換は、ルールや対象漢字・熟語の件数が比較的固定されやすいため、他の可変ルールと混ぜず専用バンドルとして分離する。旧字変換はユーザー指定の参照表だけを `legacy-kanji` とし、それ以外の単漢字置換は `general-character-replacements` に逃がす。文化庁「同音の漢字による書きかえ」の熟語対応表を反転した固定復元群は `official-homophone-restoration` に置き、個別の追加同音置換は `homophone-kanji` に分ける。
 
 さらに、この 2 系統は原則として次の単位で扱う。
 
@@ -225,3 +227,14 @@ Kuromoji により、テキストは次の情報を持つトークン列に分�
 ## 8. まとめ
 
 本仕様書では、日本語表記変換システムの目標、構造、処理フロー、各変換段階の設計、形態素解析を用いた条件判定、具体的な規則例、そして拡張ポイントを整理した。本システムは単なる文字列置換ではなく、言語学的背景に基づくエンジンである。将来的な拡張に備え、各ステージの優先順位と設計原則を明示しつつ、現行実装の挙動と文書の整合を維持することを重視する。
+
+## 9. runtime検証
+
+runtime 検証の正本は `tools/verify_runtime.js` とする。開発時は `node tools/verify_runtime.js` を実行し、少なくとも次を確認する。
+
+- `transform-bundles.json5` の `order` が実行順として守られていること
+- `token-rules` と `dictionary-rules` の役割分離が崩れていないこと
+- `type: "verb"` または `match_target: "basic_form"` の動詞 rule が、原形指定から五段活用の未然・連用・仮定・命令まで安定して適用されること
+- 保存済み設定 override を通した後でも、`token-rules` が `dictionary-rules` 扱いへ落ちず、`conditions` / `sequence` / `match_target` が保持されること
+
+`debug.html` は補助確認用とし、DOM run 分割や MutationObserver 後の見え方を人間が確認するために使う。合否判定は Node 側の検証ハーネスを基準にする。

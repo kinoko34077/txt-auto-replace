@@ -1,6 +1,5 @@
-// transforms/50-homophone-kanji.json5
-// 同音・異表記の固定熟語置換バンドル
-// groups を使うと、同一バンドル内で記号・カタカナ・英字などを束ねて管理できる
+// transforms/55-homophone-kanji.json5
+// 告示系ではない固定熟語・同音漢字置換バンドル
 {
   id: "homophone-kanji",
   label: "同音漢字置換",
@@ -10,7 +9,6 @@
       id: "default",
       label: "既定",
       phrase_rules: {
-        "奇跡": ["奇蹟", 90, true],
         "ドイツ": ["独逸,独乙", 90, true],
       },
       character_map_priority: 10,

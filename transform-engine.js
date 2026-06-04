@@ -1,164 +1,27 @@
-// content.js
-// Manifest で lib/json5.min.js → lib/kuromoji.js → content.js の順に読み込む前提。
-// そのため、このファイルでは import / script 注入 / top-level await を使わない。
-
-(() => {
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) {
+    module.exports = api;
+  }
+  root.TransformEngine = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  const DEBUG = true;
-  const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
-  const BUNDLE_OVERRIDE_STORAGE_KEY = "bundleOverrideSettingsV1";
-  const DICT_PATH = "dict/";
-  const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
-    skipEditableInputs: false
-  });
-  const TransformEngine = globalThis.TransformEngine;
-  const SKIP_TAGS = new Set([
-    "SCRIPT",
-    "STYLE",
-    "TEXTAREA",
-    "INPUT",
-    "SELECT",
-    "OPTION",
-    "NOSCRIPT",
-    "CODE",
-    "PRE"
-  ]);
-  const INLINE_RUN_TAGS = new Set([
-    "A",
-    "ABBR",
-    "B",
-    "BDI",
-    "BDO",
-    "CITE",
-    "DATA",
-    "DEL",
-    "DFN",
-    "EM",
-    "I",
-    "INS",
-    "KBD",
-    "LABEL",
-    "MARK",
-    "Q",
-    "RB",
-    "RP",
-    "RT",
-    "RTC",
-    "RUBY",
-    "S",
-    "SAMP",
-    "SMALL",
-    "SPAN",
-    "STRONG",
-    "SUB",
-    "SUP",
-    "TIME",
-    "U",
-    "VAR",
-    "WBR"
-  ]);
-
-  const processedTextByRunAnchor = new WeakMap();
-  const pendingTextRuns = new Map();
-  const composingEditableHosts = new WeakSet();
-
-  let flushTimer = null;
-  let activeTransformStages = [];
-  let activeTokenRules = [];
-  let activeStringRules = [];
-  let activeTokenizer = null;
-  let activeRuntimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
-
-  if (!TransformEngine) {
-    throw new Error("TransformEngine が未読込です。manifest.json の content_scripts の順序を確認してください。");
-  }
-
-  const log = (...args) => {
-    if (DEBUG) {
-      console.log("省略変換器:", ...args);
-    }
-  };
-
-  const readNodeValueSafely = (node) => {
-    try {
-      return typeof node?.nodeValue === "string" ? node.nodeValue : "";
-    } catch (error) {
-      return "";
-    }
-  };
-
-  const describeNodeSafely = (node) => {
-    try {
-      return {
-        nodeType: node?.nodeType,
-        nodeName: node?.nodeName,
-        parentTagName: node?.parentElement?.tagName ?? null,
-        nodeValue: readNodeValueSafely(node)
-      };
-    } catch (error) {
-      return {
-        nodeType: null,
-        nodeName: null,
-        parentTagName: null,
-        nodeValue: ""
-      };
-    }
-  };
-
-  const normalizeRuntimeSettings = (value) => {
-    return {
-      skipEditableInputs: value?.skipEditableInputs === true
-    };
-  };
-
-  const getEditableHost = (target) => {
-    const element = target?.nodeType === Node.TEXT_NODE
-      ? target.parentElement
-      : target?.nodeType === Node.ELEMENT_NODE
-        ? target
-        : null;
-    if (!element) {
-      return null;
+  const splitReplacementCandidates = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => `${entry ?? ""}`.trim())
+        .filter(Boolean);
     }
 
-    if (typeof element.closest === "function") {
-      const closestEditable = element.closest("textarea, input, [contenteditable], [role='textbox']");
-      if (closestEditable) {
-        return closestEditable;
-      }
+    if (typeof value !== "string") {
+      return [];
     }
 
-    return element.isContentEditable ? element : null;
-  };
-
-  const isEditableHostFocused = (host) => {
-    if (!host) {
-      return false;
-    }
-
-    const activeElement = document.activeElement;
-    if (!activeElement) {
-      return false;
-    }
-
-    return host === activeElement || (typeof host.contains === "function" && host.contains(activeElement));
-  };
-
-  const isEditableHostActive = (host) => {
-    return isEditableHostFocused(host) || composingEditableHosts.has(host);
-  };
-
-  const shouldSkipEditableHost = (host) => {
-    if (!host) {
-      return false;
-    }
-
-    if (activeRuntimeSettings.skipEditableInputs) {
-      return true;
-    }
-
-    return isEditableHostActive(host);
+    return value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
   };
 
   const normalizeCondition = (condition) => {
@@ -191,23 +54,6 @@
     }
 
     return conditionList.map(normalizeCondition);
-  };
-
-  const splitReplacementCandidates = (value) => {
-    if (Array.isArray(value)) {
-      return value
-        .map((entry) => `${entry ?? ""}`.trim())
-        .filter(Boolean);
-    }
-
-    if (typeof value !== "string") {
-      return [];
-    }
-
-    return value
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean);
   };
 
   const GODAN_VERB_ENDINGS = {
@@ -343,7 +189,11 @@
         candidates: splitReplacementCandidates(entry.candidates ?? to),
         regex: entry.regex === true || entry.is_regex === true,
         priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
-        enabled: entry.enabled !== false
+        enabled: entry.enabled !== false,
+        match_target: entry.match_target ?? entry.matchTarget ?? null,
+        conditions: entry.conditions ?? null,
+        sequence: entry.sequence ?? null,
+        character_map: entry.character_map ?? null
       });
     }
 
@@ -467,7 +317,7 @@
     }
 
     const seedSource = [
-      location.href,
+      globalThis?.location?.href ?? "runtime",
       rule.bundle_id ?? "",
       rule.from ?? matchedText,
       matchedText
@@ -652,7 +502,7 @@
 
     const sharedSuffix = getSharedSuffix(rule.from, replacementBase);
     if (!sharedSuffix) {
-      return token.surface_form === rule.from ? replacementBase : replacementBase;
+      return replacementBase;
     }
 
     const fromStem = rule.from.slice(0, rule.from.length - sharedSuffix.length);
@@ -662,7 +512,7 @@
     }
 
     if (!token.surface_form.startsWith(fromStem)) {
-      return token.surface_form === rule.from ? replacementBase : replacementBase;
+      return replacementBase;
     }
 
     return `${toStem}${token.surface_form.slice(fromStem.length)}`;
@@ -722,10 +572,10 @@
     });
   };
 
-  const applyVerbFallbackTransformations = (text, rules) => {
+  const applyVerbFallbackTransformations = (text, tokenRules) => {
     let result = text;
 
-    for (const rule of rules) {
+    for (const rule of tokenRules) {
       const replacementBase = chooseReplacement(rule, rule.from);
       const variants = buildVerbSurfaceFallbackVariants(rule, replacementBase);
       for (const variant of variants) {
@@ -746,8 +596,8 @@
     const currentToken = currentTokens[0];
     const prevToken = tokens[index - 1];
     const nextToken = tokens[index + length];
-
-    const { current, prev, next } = rule.conditions;
+    const conditions = rule.conditions || {};
+    const { current, prev, next } = conditions;
 
     if (current && !anyConditionMatches(currentToken, current)) {
       return false;
@@ -810,10 +660,10 @@
     };
   };
 
-  const applyStringTransformations = (text, rules) => {
+  const applyDictionaryRules = (text, dictionaryRules) => {
     let result = text;
 
-    for (const rule of rules) {
+    for (const rule of dictionaryRules) {
       if (!rule || rule.enabled === false) {
         continue;
       }
@@ -823,7 +673,7 @@
           const regex = new RegExp(rule.from, "gu");
           result = result.replace(regex, (matchedText) => chooseReplacement(rule, matchedText));
         } catch (error) {
-          log("regex 置換失敗", { rule, error: error.message });
+          continue;
         }
         continue;
       }
@@ -839,37 +689,10 @@
     return result;
   };
 
-  const tokenLabel = (token) => {
-    if (!token) {
-      return null;
-    }
-
-    return {
-      surface_form: token.surface_form,
-      basic_form: token.basic_form,
-      pos: token.pos,
-      pos_detail_1: token.pos_detail_1,
-      conjugated_form: token.conjugated_form,
-      word_type: token.word_type
-    };
-  };
-
   const applyTransformations = (tokens, rules) => {
     const outputTokens = tokens.map((token) => ({ ...token }));
 
     for (let index = 0; index < outputTokens.length; index++) {
-      const token = outputTokens[index];
-
-      if (DEBUG && token.surface_form === "こと") {
-        log("こと検出", {
-          index,
-          prev: tokenLabel(outputTokens[index - 1]),
-          current: tokenLabel(token),
-          next: tokenLabel(outputTokens[index + 1]),
-          matchedRules: rules.filter((rule) => rule.from === "こと")
-        });
-      }
-
       for (const rule of rules) {
         const match = ruleMatches(outputTokens, index, rule);
         if (!match) {
@@ -887,23 +710,6 @@
           outputTokens[match.start + offset].surface_form = "";
         }
 
-        if (DEBUG) {
-          log("変換", {
-            from: matchedText,
-            matchedTokens,
-            to: outputTokens[match.start].surface_form,
-            rule,
-            bundle: {
-              id: rule.bundle_id,
-              label: rule.bundle_label,
-              order: rule.bundle_order
-            },
-            prev: tokenLabel(outputTokens[match.start - 1]),
-            current: tokenLabel(outputTokens[match.start]),
-            next: tokenLabel(outputTokens[match.start + match.length])
-          });
-        }
-
         index = match.start + match.length - 1;
         break;
       }
@@ -912,153 +718,47 @@
     return outputTokens.map((token) => token.surface_form).join("");
   };
 
-  const isSkippableTextNode = (node) => {
-    if (!node || node.nodeType !== Node.TEXT_NODE) {
-      return true;
+  const tokenizeAndApplyTokenRules = (text, tokenRules, tokenizer) => {
+    if (!text || !text.trim()) {
+      return text;
     }
 
-    const parent = node.parentElement;
-    if (!parent) {
-      return true;
+    if (!Array.isArray(tokenRules) || tokenRules.length === 0) {
+      return text;
     }
 
-    if (SKIP_TAGS.has(parent.tagName)) {
-      return true;
+    if (!tokenizer) {
+      return text;
     }
 
-    const editableHost = getEditableHost(node);
-    if (shouldSkipEditableHost(editableHost)) {
-      return true;
-    }
-
-    const nodeValue = readNodeValueSafely(node);
-    if (!nodeValue || !nodeValue.trim()) {
-      return true;
-    }
-
-    return false;
+    const tokens = tokenizer.tokenize(text);
+    const transformed = applyTransformations(tokens, tokenRules);
+    return applyVerbFallbackTransformations(transformed, tokenRules);
   };
 
-  const isRunBoundaryElement = (element) => {
-    if (!element || element.nodeType !== Node.ELEMENT_NODE) {
-      return false;
+  const transformTextWithStages = (text, stages, tokenizer) => {
+    if (!text || !text.trim()) {
+      return text;
     }
 
-    if (SKIP_TAGS.has(element.tagName)) {
-      return true;
+    let transformedText = text;
+
+    for (const stage of Array.isArray(stages) ? stages : []) {
+      if (!stage || !Array.isArray(stage.rules) || stage.rules.length === 0) {
+        continue;
+      }
+
+      if (stage.kind === "dictionary-rules") {
+        transformedText = applyDictionaryRules(transformedText, stage.rules);
+        continue;
+      }
+
+      if (stage.kind === "token-rules") {
+        transformedText = tokenizeAndApplyTokenRules(transformedText, stage.rules, tokenizer);
+      }
     }
 
-    if (INLINE_RUN_TAGS.has(element.tagName)) {
-      return false;
-    }
-
-    const display = window.getComputedStyle(element).display;
-    if (display === "contents") {
-      return false;
-    }
-
-    return !display.startsWith("inline");
-  };
-
-  const collectProcessableTextRuns = (root) => {
-    if (!root) {
-      return [];
-    }
-
-    if (root.nodeType === Node.TEXT_NODE) {
-      return isSkippableTextNode(root) ? [] : [[root]];
-    }
-
-    const runs = [];
-    let currentRun = [];
-
-    const flushRun = () => {
-      if (currentRun.length > 0) {
-        runs.push(currentRun);
-        currentRun = [];
-      }
-    };
-
-    const walk = (node, isRoot = false) => {
-      if (!node) {
-        return;
-      }
-
-      if (node.nodeType === Node.TEXT_NODE) {
-        if (!isSkippableTextNode(node)) {
-          currentRun.push(node);
-        }
-        return;
-      }
-
-      if (node.nodeType === Node.DOCUMENT_NODE) {
-        walk(node.body, true);
-        return;
-      }
-
-      if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
-        return;
-      }
-
-      if (node.nodeType === Node.ELEMENT_NODE && SKIP_TAGS.has(node.tagName)) {
-        return;
-      }
-
-      const boundary = node.nodeType === Node.ELEMENT_NODE && !isRoot && isRunBoundaryElement(node);
-      if (boundary) {
-        flushRun();
-      }
-
-      for (const child of node.childNodes) {
-        walk(child);
-      }
-
-      if (boundary) {
-        flushRun();
-      }
-    };
-
-    walk(root, true);
-    flushRun();
-    return runs;
-  };
-
-  const buildTokenizer = () => {
-    return new Promise((resolve, reject) => {
-      if (typeof kuromoji === "undefined") {
-        reject(new Error("kuromoji が未読込です。manifest.json の content_scripts の順序を確認してください。"));
-        return;
-      }
-
-      kuromoji.builder({
-        dicPath: chrome.runtime.getURL(DICT_PATH)
-      }).build((error, tokenizer) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(tokenizer);
-      });
-    });
-  };
-
-  const loadJson5Resource = async (path) => {
-    if (typeof JSON5 === "undefined") {
-      throw new Error("JSON5 が未読込です。manifest.json の content_scripts の順序を確認してください。");
-    }
-
-    const url = chrome.runtime.getURL(path) + `?t=${Date.now()}`;
-    const text = await fetch(url, { cache: "no-store" }).then((response) => {
-      if (!response.ok) {
-        throw new Error(`${path} 読込失敗: ${response.status}`);
-      }
-
-      return response.text();
-    });
-
-    log("JSON5 読込", { path, url });
-    return JSON5.parse(text);
+    return transformedText;
   };
 
   const normalizeBundle = (bundle) => {
@@ -1107,11 +807,11 @@
       return "token-rules";
     }
 
-    return null;
-  };
+    if (Array.isArray(source?.children) && source.children.some((child) => inferStoredBundleKind(child) === "token-rules")) {
+      return "token-rules";
+    }
 
-  const normalizeStoredRule = (rule) => {
-    return normalizePhraseRuleRecord(rule?.from ?? "", rule);
+    return "dictionary-rules";
   };
 
   const normalizeStoredBundleOverride = (override) => {
@@ -1140,44 +840,28 @@
     };
   };
 
-  const loadBundleOverrides = async () => {
-    if (!chrome?.storage?.local) {
+  const normalizeBundleOverridesPayload = (storedValue) => {
+    const storedRoots = Array.isArray(storedValue?.roots) ? storedValue.roots : null;
+    if (storedRoots) {
+      return Object.fromEntries(
+        storedRoots
+          .filter((root) => root?.id)
+          .map((root) => [root.id, normalizeStoredBundleOverride(root)])
+          .filter(([, override]) => override)
+      );
+    }
+
+    const storedBundles = storedValue?.bundles;
+    if (!storedBundles || typeof storedBundles !== "object" || Array.isArray(storedBundles)) {
       return {};
     }
 
-    const storedValue = await new Promise((resolve, reject) => {
-      chrome.storage.local.get([BUNDLE_OVERRIDE_STORAGE_KEY], (result) => {
-        const runtimeError = chrome.runtime.lastError;
-        if (runtimeError) {
-          reject(new Error(runtimeError.message));
-          return;
-        }
-
-        resolve(result?.[BUNDLE_OVERRIDE_STORAGE_KEY] ?? null);
-      });
-    });
-
-    return TransformEngine.normalizeBundleOverridesPayload(storedValue);
-  };
-
-  const loadRuntimeSettings = async () => {
-    if (!chrome?.storage?.local) {
-      return { ...DEFAULT_RUNTIME_SETTINGS };
-    }
-
-    const storedValue = await new Promise((resolve, reject) => {
-      chrome.storage.local.get([BUNDLE_OVERRIDE_STORAGE_KEY], (result) => {
-        const runtimeError = chrome.runtime?.lastError;
-        if (runtimeError) {
-          reject(runtimeError);
-          return;
-        }
-
-        resolve(result?.[BUNDLE_OVERRIDE_STORAGE_KEY] ?? null);
-      });
-    });
-
-    return normalizeRuntimeSettings(storedValue?.runtime_settings);
+    return Object.fromEntries(
+      Object.entries(storedBundles)
+        .filter(([bundleId]) => bundleId)
+        .map(([bundleId, override]) => [bundleId, normalizeStoredBundleOverride(override)])
+        .filter(([, override]) => override)
+    );
   };
 
   const applyBundleOverrideToManifest = (bundle, override) => {
@@ -1218,7 +902,11 @@
                 to: entry.to,
                 priority: entry.priority,
                 enabled: entry.enabled !== false,
-                regex: entry.regex === true
+                regex: entry.regex === true,
+                match_target: entry.match_target ?? baseRule.match_target ?? null,
+                conditions: entry.conditions ?? baseRule.conditions ?? null,
+                sequence: entry.sequence ?? baseRule.sequence ?? null,
+                type: entry.type ?? baseRule.type
               });
             }
           }
@@ -1302,331 +990,77 @@
       });
     }
 
-    if (!definition || definition.kind !== "token-rules") {
-      throw new Error(`未対応のバンドル種別です: ${bundle.id}`);
-    }
+    throw new Error(`未対応のバンドル種別です: ${bundle.id}`);
   };
 
-  const loadRules = async () => {
-    const bundleManifest = await loadJson5Resource(TRANSFORM_BUNDLES_PATH);
-    const bundleOverrides = await loadBundleOverrides();
-    const manifestBundles = (bundleManifest.bundles || []).map(normalizeBundle);
+  const loadStagesFromDefinitions = (bundleManifest, bundleFiles, overrides = {}) => {
+    const manifestBundles = (bundleManifest?.bundles || []).map(normalizeBundle);
     const manifestBundleIds = new Set(manifestBundles.map((bundle) => bundle.id));
-    const virtualBundles = Object.values(bundleOverrides)
+    const virtualBundles = Object.values(overrides)
       .filter((override) => override?.id && !manifestBundleIds.has(override.id))
       .map((override) => normalizeBundle({
-      id: override.id,
-      label: override.label ?? override.id,
-      kind: override.kind ?? "dictionary-rules",
-      path: null,
-      order: override.order ?? 0,
-      enabled: override.enabled !== false
+        id: override.id,
+        label: override.label ?? override.id,
+        kind: override.kind ?? "dictionary-rules",
+        path: null,
+        order: override.order ?? 0,
+        enabled: override.enabled !== false
       }));
     const bundles = [...manifestBundles, ...virtualBundles]
-      .map((bundle) => applyBundleOverrideToManifest(bundle, bundleOverrides[bundle.id]))
+      .map((bundle) => applyBundleOverrideToManifest(bundle, overrides[bundle.id]))
       .filter((bundle) => bundle.enabled)
       .sort((left, right) => {
         return (left.order ?? 0) - (right.order ?? 0);
       });
 
-    const stringRules = [];
-    const tokenRules = [];
+    const stages = [];
+    let stringRuleCount = 0;
+    let tokenRuleCount = 0;
 
     for (const bundle of bundles) {
-      const definition = mergeBundleDefinition(
-        bundle.path ? await loadJson5Resource(bundle.path) : buildVirtualBundleDefinition(bundleOverrides[bundle.id]),
-        bundleOverrides[bundle.id]
-      );
+      const baseDefinition = bundle.path
+        ? bundleFiles?.[bundle.id]
+        : buildVirtualBundleDefinition(overrides[bundle.id]);
+      if (!baseDefinition) {
+        throw new Error(`バンドル定義が見つかりません: ${bundle.id}`);
+      }
+
+      const mergedDefinition = mergeBundleDefinition(baseDefinition, overrides[bundle.id]);
+      const definition = {
+        ...mergedDefinition,
+        kind: resolveBundleKind(bundle, mergedDefinition)
+      };
       const bundleRules = extractBundleRules(bundle, definition);
+
+      stages.push({
+        id: bundle.id,
+        label: bundle.label,
+        kind: definition.kind,
+        order: bundle.order ?? 0,
+        rules: bundleRules
+      });
+
       if (definition.kind === "dictionary-rules") {
-        stringRules.push(...bundleRules);
-      } else {
-        tokenRules.push(...bundleRules);
+        stringRuleCount += bundleRules.length;
+      } else if (definition.kind === "token-rules") {
+        tokenRuleCount += bundleRules.length;
       }
     }
 
-    log("読込バンドル", bundles);
-    log("読込 string rules", stringRules);
-    log("読込 token rules", tokenRules);
-
-    return { stringRules, tokenRules };
+    return {
+      bundles,
+      stages,
+      stringRuleCount,
+      tokenRuleCount
+    };
   };
 
-  const transformText = (text) => {
-    return transformTextWithStages(text);
+  return {
+    applyDictionaryRules,
+    applyVerbFallbackTransformations,
+    loadStagesFromDefinitions,
+    normalizeBundleOverridesPayload,
+    tokenizeAndApplyTokenRules,
+    transformTextWithStages
   };
-
-  const loadOrderedRules = async () => {
-    const bundleManifest = await loadJson5Resource(TRANSFORM_BUNDLES_PATH);
-    const bundleOverrides = await loadBundleOverrides();
-    const bundleFiles = {};
-
-    for (const bundle of bundleManifest.bundles || []) {
-      if (!bundle?.id || !bundle?.path) {
-        continue;
-      }
-
-      bundleFiles[bundle.id] = await loadJson5Resource(bundle.path);
-    }
-
-    const loaded = TransformEngine.loadStagesFromDefinitions(bundleManifest, bundleFiles, bundleOverrides);
-    log("隱ｭ霎ｼ ordered bundles", loaded.bundles);
-    log("隱ｭ霎ｼ transform stages", loaded.stages);
-    return loaded;
-  };
-
-  const transformTextWithStages = (text) => {
-    return TransformEngine.transformTextWithStages(text, activeTransformStages, activeTokenizer);
-  };
-
-  const redistributeTransformedText = (textNodes, originalParts, transformed) => {
-    let cursor = 0;
-
-    for (let index = 0; index < textNodes.length; index += 1) {
-      const originalLength = originalParts[index].length;
-      const nextLength = index === textNodes.length - 1
-        ? Math.max(transformed.length - cursor, 0)
-        : Math.min(originalLength, Math.max(transformed.length - cursor, 0));
-      const nextValue = transformed.slice(cursor, cursor + nextLength);
-      textNodes[index].nodeValue = nextValue;
-      cursor += nextLength;
-    }
-  };
-
-  const processTextRun = (textRun) => {
-    if (!Array.isArray(textRun) || textRun.length === 0) {
-      return false;
-    }
-
-    const textNodes = textRun.filter((node) => {
-      return node?.isConnected && !isSkippableTextNode(node);
-    });
-    if (textNodes.length === 0) {
-      return false;
-    }
-
-    const originalParts = textNodes.map((node) => readNodeValueSafely(node));
-    const original = originalParts.join("");
-    if (!original || !original.trim()) {
-      return false;
-    }
-
-    const runAnchor = textNodes[0];
-    const lastProcessed = processedTextByRunAnchor.get(runAnchor);
-    if (lastProcessed !== undefined && lastProcessed === original) {
-      return false;
-    }
-
-    const transformed = transformTextWithStages(original);
-    processedTextByRunAnchor.set(runAnchor, transformed);
-
-    if (transformed === original) {
-      return false;
-    }
-
-    redistributeTransformedText(textNodes, originalParts, transformed);
-
-    if (DEBUG) {
-      log("textRun 更新", {
-        original,
-        transformed,
-        nodeCount: textNodes.length
-      });
-    }
-
-    return true;
-  };
-
-  const flushPendingTextRuns = () => {
-    flushTimer = null;
-
-    const hasAnyRules = activeTransformStages.some((stage) => {
-      return Array.isArray(stage.rules) && stage.rules.length > 0;
-    });
-    const requiresTokenizer = activeTransformStages.some((stage) => {
-      return stage.kind === "token-rules" && Array.isArray(stage.rules) && stage.rules.length > 0;
-    });
-
-    if ((!activeTokenizer && requiresTokenizer) || !hasAnyRules || pendingTextRuns.size === 0) {
-      pendingTextRuns.clear();
-      return;
-    }
-
-    let changedCount = 0;
-    const processedNodes = new Set();
-
-    for (const [runKey, queuedRun] of pendingTextRuns) {
-      pendingTextRuns.delete(runKey);
-
-      try {
-        const textRun = queuedRun.filter((node) => {
-          return node?.isConnected && !isSkippableTextNode(node);
-        });
-        if (textRun.length === 0) {
-          continue;
-        }
-
-        if (textRun.some((node) => processedNodes.has(node))) {
-          continue;
-        }
-
-        if (processTextRun(textRun)) {
-          changedCount++;
-        }
-
-        for (const node of textRun) {
-          processedNodes.add(node);
-        }
-      } catch (error) {
-        console.error("省略変換器: 変換失敗", error, {
-          runKey: describeNodeSafely(runKey),
-          textRun: queuedRun.map((node) => describeNodeSafely(node))
-        });
-      }
-    }
-
-    if (changedCount > 0) {
-      log("更新 textRun 数", changedCount);
-    }
-  };
-
-  const queueTextRuns = (runs, options = {}) => {
-    const { immediate = false } = options;
-
-    for (const run of runs) {
-      if (!Array.isArray(run) || run.length === 0) {
-        continue;
-      }
-
-      pendingTextRuns.set(run[0], run);
-    }
-
-    if (immediate) {
-      if (flushTimer !== null) {
-        window.clearTimeout(flushTimer);
-        flushTimer = null;
-      }
-
-      flushPendingTextRuns();
-      return;
-    }
-
-    if (flushTimer !== null) {
-      return;
-    }
-
-    flushTimer = window.setTimeout(flushPendingTextRuns, 0);
-  };
-
-  const queueEditableHostRuns = (host, options = {}) => {
-    if (!host || !host.isConnected || activeRuntimeSettings.skipEditableInputs) {
-      return;
-    }
-
-    const runs = collectProcessableTextRuns(host);
-    if (runs.length > 0) {
-      queueTextRuns(runs, options);
-    }
-  };
-
-  const bindEditableLifecycle = () => {
-    document.addEventListener("compositionstart", (event) => {
-      const host = getEditableHost(event.target);
-      if (!host) {
-        return;
-      }
-
-      composingEditableHosts.add(host);
-    }, true);
-
-    document.addEventListener("compositionend", (event) => {
-      const host = getEditableHost(event.target);
-      if (!host) {
-        return;
-      }
-
-      composingEditableHosts.delete(host);
-      window.setTimeout(() => {
-        queueEditableHostRuns(host, { immediate: true });
-      }, 0);
-    }, true);
-
-    document.addEventListener("focusout", (event) => {
-      const host = getEditableHost(event.target);
-      if (!host) {
-        return;
-      }
-
-      window.setTimeout(() => {
-        if (!host.isConnected || isEditableHostFocused(host) || composingEditableHosts.has(host)) {
-          return;
-        }
-
-        queueEditableHostRuns(host, { immediate: true });
-      }, 0);
-    }, true);
-  };
-
-  const observeDynamicContent = () => {
-    const observer = new MutationObserver((mutations) => {
-      const queuedRuns = [];
-
-      for (const mutation of mutations) {
-        if (mutation.type === "characterData") {
-          queuedRuns.push(...collectProcessableTextRuns(mutation.target));
-          continue;
-        }
-
-        for (const addedNode of mutation.addedNodes) {
-          queuedRuns.push(...collectProcessableTextRuns(addedNode));
-        }
-      }
-
-      if (queuedRuns.length > 0) {
-        queueTextRuns(queuedRuns);
-      }
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true
-    });
-
-    log("MutationObserver 開始");
-  };
-
-  const initialize = async () => {
-    if (!document.body) {
-      throw new Error("document.body が利用できません。");
-    }
-
-    activeRuntimeSettings = await loadRuntimeSettings();
-    const loaded = await loadOrderedRules();
-    activeTransformStages = loaded.stages;
-    activeStringRules = activeTransformStages
-      .filter((stage) => stage.kind === "dictionary-rules")
-      .flatMap((stage) => stage.rules);
-    activeTokenRules = activeTransformStages
-      .filter((stage) => stage.kind === "token-rules")
-      .flatMap((stage) => stage.rules);
-    activeTokenizer = activeTokenRules.length > 0 ? await buildTokenizer() : null;
-
-    bindEditableLifecycle();
-    const initialRuns = collectProcessableTextRuns(document.body);
-    log("対象 textRun 数", initialRuns.length);
-    queueTextRuns(initialRuns, { immediate: true });
-    observeDynamicContent();
-  };
-
-  initialize()
-    .then(() => {
-      log("変換初期化完了", {
-        stringRules: activeStringRules.length,
-        tokenRules: activeTokenRules.length
-      });
-    })
-    .catch((error) => {
-      console.error("省略変換器: 初期化失敗", error);
-    });
-})();
+});

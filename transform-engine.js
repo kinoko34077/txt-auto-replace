@@ -1431,6 +1431,9 @@
     applyVerbFallbackTransformations,
     loadStagesFromDefinitions,
     normalizeBundleOverridesPayload,
+    splitCommaSeparatedValues,
+    splitMatchCandidates,
+    splitReplacementCandidates,
     tokenizeAndApplyTokenRules,
     transformTextWithStages
   };

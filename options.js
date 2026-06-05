@@ -18,6 +18,7 @@
   const DEFAULT_DISABLED_SITES = Object.freeze({
     domains: []
   });
+  const TransformEngine = globalThis.TransformEngine;
 
   const state = {
     activeTab: "bundles",
@@ -84,10 +85,10 @@
 
   const cloneValue = (value) => JSON.parse(JSON.stringify(value));
 
-  const splitCommaSeparatedValues = (value) => {
+  const fallbackSplitCommaSeparatedValues = (value) => {
     if (Array.isArray(value)) {
       return value
-        .flatMap((item) => splitCommaSeparatedValues(item))
+        .flatMap((item) => fallbackSplitCommaSeparatedValues(item))
         .filter(Boolean);
     }
 
@@ -102,6 +103,10 @@
       .filter(Boolean);
   };
 
+  const splitCommaSeparatedValues = typeof TransformEngine?.splitCommaSeparatedValues === "function"
+    ? TransformEngine.splitCommaSeparatedValues
+    : fallbackSplitCommaSeparatedValues;
+
   const normalizeFromOptions = (value, fallbackValue = "") => {
     const candidates = splitCommaSeparatedValues(value);
     if (candidates.length > 0) {
@@ -114,6 +119,56 @@
 
   const stringifyFromOptions = (value, fallbackValue = "") => {
     return normalizeFromOptions(value, fallbackValue).join(",");
+  };
+
+  const listifyValue = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => `${item ?? ""}`.trim())
+        .filter(Boolean);
+    }
+    const normalized = `${value ?? ""}`.trim();
+    return normalized ? [normalized] : [];
+  };
+
+  const getCurrentConditions = (entry) => {
+    return Array.isArray(entry?.conditions?.current)
+      ? entry.conditions.current
+      : entry?.conditions?.current
+        ? [entry.conditions.current]
+        : [];
+  };
+
+  const inferEntryType = (entry) => {
+    if (typeof entry?.type === "string" && entry.type.trim()) {
+      return entry.type.trim();
+    }
+
+    const currentConditions = getCurrentConditions(entry);
+    const hasCurrentPos = (expected) => {
+      return currentConditions.some((condition) => {
+        return listifyValue(condition?.pos).includes(expected);
+      });
+    };
+
+    if (hasCurrentPos("動詞")) {
+      return "verb";
+    }
+    if (hasCurrentPos("形容詞")) {
+      return "adjective";
+    }
+
+    return null;
+  };
+
+  const getEffectiveEntryMatchTarget = (entry, inferredType = inferEntryType(entry)) => {
+    if (entry?.match_target !== undefined && entry.match_target !== null) {
+      return entry.match_target;
+    }
+
+    return inferredType === "verb" || inferredType === "adjective"
+      ? "basic_form"
+      : null;
   };
 
   const normalizeRuntimeSettings = (value) => {
@@ -923,38 +978,7 @@
       return null;
     }
 
-    const listifyValue = (value) => {
-      if (Array.isArray(value)) {
-        return value
-          .map((item) => `${item ?? ""}`.trim())
-          .filter(Boolean);
-      }
-      const normalized = `${value ?? ""}`.trim();
-      return normalized ? [normalized] : [];
-    };
-
-    const currentConditions = Array.isArray(entry.conditions?.current)
-      ? entry.conditions.current
-      : entry.conditions?.current
-        ? [entry.conditions.current]
-        : [];
-    const hasCurrentPos = (expected) => {
-      return currentConditions.some((condition) => {
-        return listifyValue(condition?.pos).includes(expected);
-      });
-    };
-    const inferredType = (() => {
-      if (typeof entry.type === "string" && entry.type.trim()) {
-        return entry.type.trim();
-      }
-      if (hasCurrentPos("動詞")) {
-        return "verb";
-      }
-      if (hasCurrentPos("形容詞")) {
-        return "adjective";
-      }
-      return null;
-    })();
+    const inferredType = inferEntryType(entry);
 
     return {
       id: `${entry.id ?? createEntryId()}`,
@@ -965,7 +989,7 @@
       enabled: entry.enabled !== false,
       regex: entry.regex === true || entry.is_regex === true,
       type: inferredType,
-      match_target: entry.match_target ?? ((inferredType === "verb" || inferredType === "adjective") ? "basic_form" : null),
+      match_target: getEffectiveEntryMatchTarget(entry, inferredType),
       conditions: cloneValue(entry.conditions ?? null),
       sequence: cloneValue(entry.sequence ?? null),
       raw: cloneValue(entry),
@@ -1246,40 +1270,7 @@
   };
 
   const serializeEntry = (entry, index) => {
-    const listifyValue = (value) => {
-      if (Array.isArray(value)) {
-        return value
-          .map((item) => `${item ?? ""}`.trim())
-          .filter(Boolean);
-      }
-      const normalized = `${value ?? ""}`.trim();
-      return normalized ? [normalized] : [];
-    };
-
-    const currentConditions = Array.isArray(entry.conditions?.current)
-      ? entry.conditions.current
-      : entry.conditions?.current
-        ? [entry.conditions.current]
-        : [];
-    const hasCurrentPos = (expected) => {
-      return currentConditions.some((condition) => {
-        return listifyValue(condition?.pos).includes(expected);
-      });
-    };
-
-    const inferredType = (() => {
-      if (typeof entry.type === "string" && entry.type.trim()) {
-        return entry.type.trim();
-      }
-      if (hasCurrentPos("動詞")) {
-        return "verb";
-      }
-      if (hasCurrentPos("形容詞")) {
-        return "adjective";
-      }
-      return null;
-    })();
-
+    const inferredType = inferEntryType(entry);
     const fromOptions = normalizeFromOptions(entry.from_options ?? entry.from, entry.from);
     const serializedFrom = stringifyFromOptions(fromOptions, entry.from);
 
@@ -1300,7 +1291,7 @@
       serialized.type = inferredType;
     }
 
-    const effectiveMatchTarget = entry.match_target ?? ((inferredType === "verb" || inferredType === "adjective") ? "basic_form" : null);
+    const effectiveMatchTarget = getEffectiveEntryMatchTarget(entry, inferredType);
     if (effectiveMatchTarget === "basic_form") {
       serialized.match_target = "basic_form";
     }

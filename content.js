@@ -1,11 +1,11 @@
-// content.js
+﻿// content.js
 // Manifest で lib/json5.min.js → lib/kuromoji.js → content.js の順に読み込む前提。
 // そのため、このファイルでは import / script 注入 / top-level await を使わない。
 
 (() => {
   "use strict";
 
-  const DEBUG = true;
+  const DEBUG = false;
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
   const BUNDLE_OVERRIDE_STORAGE_KEY = "bundleOverrideSettingsV1";
   const DICT_PATH = "dict/";
@@ -14,6 +14,10 @@
   const DEBUG_LAST_ATTRIBUTE = "data-jpn-transform-last-debug";
   const DEBUG_HISTORY_ATTRIBUTE = "data-jpn-transform-debug-history";
   const DEBUG_RUNTIME_ATTRIBUTE = "data-jpn-transform-runtime-snapshot";
+  const VISIBLE_ROOT_MARGIN_PX = 320;
+  const VISIBLE_FLUSH_BUDGET_MS = 8;
+  const BACKGROUND_FLUSH_BUDGET_MS = 16;
+  const DEBUG_HISTORY_LIMIT = 20;
   const MESSAGE_TYPES = {
     APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
     GET_PAGE_CONTEXT: "GET_PAGE_CONTEXT",
@@ -77,9 +81,16 @@
   const originalTextByRunAnchor = new WeakMap();
   const processedTextByRunAnchor = new WeakMap();
   const pendingTextRuns = new Map();
+  const pendingRootQueue = new Map();
   const composingEditableHosts = new WeakSet();
+  const json5ResourcePromiseCache = new Map();
 
   let flushTimer = null;
+  let visibleFlushHandle = null;
+  let visibleFlushHandleType = null;
+  let backgroundFlushHandle = null;
+  let backgroundFlushHandleType = null;
+  let scrollRefreshScheduled = false;
   let activeTransformStages = [];
   let activeTokenRules = [];
   let activeStringRules = [];
@@ -91,6 +102,8 @@
   let lastTransformDebug = null;
   let activeLoadedBundles = [];
   let activeManifestBundleIds = [];
+  let cachedOrderedRuleResourcesPromise = null;
+  let tokenizerPromise = null;
 
   if (!TransformEngine) {
     throw new Error("TransformEngine が未読込です。manifest.json の content_scripts の順序を確認してください。");
@@ -111,14 +124,22 @@
   };
 
   const publishTransformDebug = (payload) => {
+    if (!hasDebugTargets()) {
+      lastTransformDebug = null;
+      globalThis.__jpnTransformLastDebug = null;
+      globalThis.__jpnTransformDebugHistory = [];
+      clearPublishedDebugState();
+      return;
+    }
+
     lastTransformDebug = payload;
     globalThis.__jpnTransformLastDebug = payload;
     const history = Array.isArray(globalThis.__jpnTransformDebugHistory)
       ? globalThis.__jpnTransformDebugHistory
       : [];
     history.push(payload);
-    if (history.length > 20) {
-      history.splice(0, history.length - 20);
+    if (history.length > DEBUG_HISTORY_LIMIT) {
+      history.splice(0, history.length - DEBUG_HISTORY_LIMIT);
     }
     globalThis.__jpnTransformDebugHistory = history;
 
@@ -162,6 +183,25 @@
         .filter(Boolean);
     } catch (error) {
       return [];
+    }
+  };
+
+  const hasDebugTargets = () => {
+    return getDebugTargetsFromDocument().length > 0;
+  };
+
+  const clearPublishedDebugState = () => {
+    try {
+      const root = document.documentElement;
+      if (!root) {
+        return;
+      }
+
+      root.removeAttribute(DEBUG_LAST_ATTRIBUTE);
+      root.removeAttribute(DEBUG_HISTORY_ATTRIBUTE);
+      root.removeAttribute(DEBUG_RUNTIME_ATTRIBUTE);
+    } catch (error) {
+      console.error("runtime debug clear failed", error);
     }
   };
 
@@ -225,18 +265,27 @@
     };
   };
 
-  const publishRuntimeDebugSnapshot = () => {
+  const publishRuntimeDebugSnapshot = (targets = getDebugTargetsFromDocument(), options = {}) => {
+    const normalizedTargets = normalizeDebugTargetList(targets);
+    const { force = false } = options;
+    if (!force && normalizedTargets.length === 0) {
+      clearPublishedDebugState();
+      return null;
+    }
+
     try {
       const root = document.documentElement;
       if (!root) {
-        return;
+        return null;
       }
 
-      const snapshot = buildRuntimeDebugSnapshot(getDebugTargetsFromDocument());
+      const snapshot = buildRuntimeDebugSnapshot(normalizedTargets);
       globalThis.__jpnTransformRuntimeSnapshot = snapshot;
       root.setAttribute(DEBUG_RUNTIME_ATTRIBUTE, JSON.stringify(snapshot));
+      return snapshot;
     } catch (error) {
       console.error("runtime debug publish failed", error);
+      return null;
     }
   };
 
@@ -1249,6 +1298,135 @@
     return runs;
   };
 
+  const getRootAnchorElement = (root) => {
+    if (!root) {
+      return null;
+    }
+
+    if (root.nodeType === Node.TEXT_NODE) {
+      return root.parentElement;
+    }
+
+    return root.nodeType === Node.ELEMENT_NODE ? root : null;
+  };
+
+  const isRootNearViewport = (root) => {
+    const anchor = getRootAnchorElement(root);
+    if (!anchor || typeof anchor.getBoundingClientRect !== "function") {
+      return true;
+    }
+
+    const rect = anchor.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 0;
+    const viewportWidth = window.innerWidth || document.documentElement?.clientWidth || 0;
+
+    return (
+      rect.bottom >= -VISIBLE_ROOT_MARGIN_PX &&
+      rect.top <= viewportHeight + VISIBLE_ROOT_MARGIN_PX &&
+      rect.right >= -VISIBLE_ROOT_MARGIN_PX &&
+      rect.left <= viewportWidth + VISIBLE_ROOT_MARGIN_PX
+    );
+  };
+
+  const collectProcessableRoots = (root) => {
+    if (!root) {
+      return [];
+    }
+
+    const roots = new Map();
+    const boundaryCache = new WeakMap();
+
+    const isBoundaryCached = (element) => {
+      if (!element || element.nodeType !== Node.ELEMENT_NODE) {
+        return false;
+      }
+
+      if (!boundaryCache.has(element)) {
+        boundaryCache.set(element, isRunBoundaryElement(element));
+      }
+
+      return boundaryCache.get(element) === true;
+    };
+
+    const addRoot = (candidate) => {
+      if (!candidate || !candidate.isConnected) {
+        return;
+      }
+
+      roots.set(candidate, candidate);
+    };
+
+    const resolveRootForTextNode = (textNode) => {
+      if (isSkippableTextNode(textNode)) {
+        return null;
+      }
+
+      let current = textNode.parentElement;
+      let fallback = textNode;
+      while (current && current !== root && current !== document.body) {
+        fallback = current;
+        if (isBoundaryCached(current)) {
+          return current;
+        }
+        current = current.parentElement;
+      }
+
+      if (root.nodeType === Node.ELEMENT_NODE && root !== document.body) {
+        return root;
+      }
+
+      return fallback;
+    };
+
+    const walk = (node, isTopLevel = false) => {
+      if (!node) {
+        return;
+      }
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        addRoot(resolveRootForTextNode(node));
+        return;
+      }
+
+      if (node.nodeType === Node.DOCUMENT_NODE) {
+        walk(node.body, true);
+        return;
+      }
+
+      if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
+        return;
+      }
+
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        if (SKIP_TAGS.has(node.tagName)) {
+          return;
+        }
+
+        const editableHost = getEditableHost(node);
+        if (shouldSkipEditableHost(editableHost)) {
+          return;
+        }
+
+        if (!isTopLevel && isBoundaryCached(node)) {
+          addRoot(node);
+          return;
+        }
+      }
+
+      for (const child of node.childNodes) {
+        walk(child);
+      }
+    };
+
+    if (root.nodeType === Node.TEXT_NODE) {
+      addRoot(resolveRootForTextNode(root));
+      return [...roots.values()];
+    }
+
+    walk(root, true);
+    return [...roots.values()];
+  };
+
   const buildTokenizer = () => {
     return new Promise((resolve, reject) => {
       if (typeof kuromoji === "undefined") {
@@ -1269,6 +1447,17 @@
     });
   };
 
+  const getTokenizer = async () => {
+    if (!tokenizerPromise) {
+      tokenizerPromise = buildTokenizer().catch((error) => {
+        tokenizerPromise = null;
+        throw error;
+      });
+    }
+
+    return tokenizerPromise;
+  };
+
   const loadJson5Resource = async (path) => {
     if (typeof JSON5 === "undefined") {
       throw new Error("JSON5 が未読込です。manifest.json の content_scripts の順序を確認してください。");
@@ -1285,6 +1474,27 @@
 
     log("JSON5 読込", { path, url });
     return JSON5.parse(text);
+  };
+
+  const loadCachedJson5Resource = async (path) => {
+    if (!json5ResourcePromiseCache.has(path)) {
+      const resourcePromise = fetch(chrome.runtime.getURL(path)).then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`${path} 読込失敗: ${response.status}`);
+        }
+
+        const text = await response.text();
+        log("JSON5 読込", { path, url: response.url });
+        return JSON5.parse(text);
+      }).catch((error) => {
+        json5ResourcePromiseCache.delete(path);
+        throw error;
+      });
+
+      json5ResourcePromiseCache.set(path, resourcePromise);
+    }
+
+    return json5ResourcePromiseCache.get(path);
   };
 
   const normalizeBundle = (bundle) => {
@@ -1613,23 +1823,42 @@
     return transformTextWithStages(text);
   };
 
-  const loadOrderedRules = async () => {
-    const bundleManifest = await loadJson5Resource(TRANSFORM_BUNDLES_PATH);
-    const bundleOverrides = await loadBundleOverrides();
-    const bundleFiles = {};
-    const manifestBundleIds = Array.isArray(bundleManifest?.bundles)
-      ? bundleManifest.bundles
-          .filter((bundle) => bundle?.id)
-          .map((bundle) => bundle.id)
-      : [];
+  const loadOrderedRuleResources = async () => {
+    if (!cachedOrderedRuleResourcesPromise) {
+      cachedOrderedRuleResourcesPromise = (async () => {
+        const bundleManifest = await loadCachedJson5Resource(TRANSFORM_BUNDLES_PATH);
+        const bundleFiles = {};
+        const manifestBundleIds = Array.isArray(bundleManifest?.bundles)
+          ? bundleManifest.bundles
+              .filter((bundle) => bundle?.id)
+              .map((bundle) => bundle.id)
+          : [];
 
-    for (const bundle of bundleManifest.bundles || []) {
-      if (!bundle?.id || !bundle?.path) {
-        continue;
-      }
+        await Promise.all((bundleManifest.bundles || []).map(async (bundle) => {
+          if (!bundle?.id || !bundle?.path) {
+            return;
+          }
 
-      bundleFiles[bundle.id] = await loadJson5Resource(bundle.path);
+          bundleFiles[bundle.id] = await loadCachedJson5Resource(bundle.path);
+        }));
+
+        return {
+          bundleManifest,
+          bundleFiles,
+          manifestBundleIds
+        };
+      })().catch((error) => {
+        cachedOrderedRuleResourcesPromise = null;
+        throw error;
+      });
     }
+
+    return cachedOrderedRuleResourcesPromise;
+  };
+
+  const loadOrderedRules = async () => {
+    const { bundleManifest, bundleFiles, manifestBundleIds } = await loadOrderedRuleResources();
+    const bundleOverrides = await loadBundleOverrides();
 
     const loaded = TransformEngine.loadStagesFromDefinitions(bundleManifest, bundleFiles, bundleOverrides);
     log("隱ｭ霎ｼ ordered bundles", loaded.bundles);
@@ -1641,7 +1870,7 @@
   };
 
   const transformTextWithStages = (text) => {
-    if (!DEBUG) {
+    if (!DEBUG && !hasDebugTargets()) {
       return TransformEngine.transformTextWithStages(text, activeTransformStages, activeTokenizer);
     }
 
@@ -1761,6 +1990,222 @@
     return true;
   };
 
+  const hasAnyActiveRules = () => {
+    return activeTransformStages.some((stage) => {
+      return Array.isArray(stage.rules) && stage.rules.length > 0;
+    });
+  };
+
+  const runtimeRequiresTokenizer = () => {
+    return activeTransformStages.some((stage) => {
+      return stage.kind === "token-rules" && Array.isArray(stage.rules) && stage.rules.length > 0;
+    });
+  };
+
+  const cancelVisibleRootFlush = () => {
+    if (visibleFlushHandle === null) {
+      return;
+    }
+
+    if (visibleFlushHandleType === "raf" && typeof window.cancelAnimationFrame === "function") {
+      window.cancelAnimationFrame(visibleFlushHandle);
+    } else {
+      window.clearTimeout(visibleFlushHandle);
+    }
+
+    visibleFlushHandle = null;
+    visibleFlushHandleType = null;
+  };
+
+  const cancelBackgroundRootFlush = () => {
+    if (backgroundFlushHandle === null) {
+      return;
+    }
+
+    if (backgroundFlushHandleType === "idle" && typeof window.cancelIdleCallback === "function") {
+      window.cancelIdleCallback(backgroundFlushHandle);
+    } else {
+      window.clearTimeout(backgroundFlushHandle);
+    }
+
+    backgroundFlushHandle = null;
+    backgroundFlushHandleType = null;
+  };
+
+  const cancelRootFlushes = () => {
+    cancelVisibleRootFlush();
+    cancelBackgroundRootFlush();
+  };
+
+  const reclassifyPendingRoots = () => {
+    for (const [root, entry] of pendingRootQueue) {
+      entry.priority = isRootNearViewport(root) ? 0 : 1;
+    }
+  };
+
+  const hasPendingRoots = (priority = null) => {
+    if (priority === null) {
+      return pendingRootQueue.size > 0;
+    }
+
+    for (const entry of pendingRootQueue.values()) {
+      if (entry.priority === priority) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  const processTextRoot = (root) => {
+    let changedCount = 0;
+    const processedNodes = new Set();
+
+    for (const queuedRun of collectProcessableTextRuns(root)) {
+      const textRun = queuedRun.filter((node) => {
+        return node?.isConnected && !isSkippableTextNode(node);
+      });
+      if (textRun.length === 0) {
+        continue;
+      }
+
+      if (textRun.some((node) => processedNodes.has(node))) {
+        continue;
+      }
+
+      if (processTextRun(textRun)) {
+        changedCount++;
+      }
+
+      for (const node of textRun) {
+        processedNodes.add(node);
+      }
+    }
+
+    return changedCount;
+  };
+
+  const processQueuedRootBatch = ({ includeBackground = false, budgetMs = VISIBLE_FLUSH_BUDGET_MS } = {}) => {
+    if (!isRuntimeEnabled()) {
+      pendingRootQueue.clear();
+      cancelRootFlushes();
+      return;
+    }
+
+    if ((!activeTokenizer && runtimeRequiresTokenizer()) || !hasAnyActiveRules() || pendingRootQueue.size === 0) {
+      pendingRootQueue.clear();
+      return;
+    }
+
+    reclassifyPendingRoots();
+
+    const deadline = budgetMs === Infinity ? Infinity : performance.now() + budgetMs;
+    let changedCount = 0;
+
+    for (const [root, entry] of pendingRootQueue) {
+      if (!includeBackground && entry.priority > 0) {
+        continue;
+      }
+
+      pendingRootQueue.delete(root);
+      changedCount += processTextRoot(root);
+
+      if (performance.now() >= deadline) {
+        break;
+      }
+    }
+
+    if (changedCount > 0) {
+      log("更新 root 数", changedCount);
+    }
+
+    if (hasPendingRoots(0)) {
+      scheduleVisibleRootFlush();
+    } else if (hasPendingRoots()) {
+      scheduleBackgroundRootFlush();
+    }
+  };
+
+  function scheduleVisibleRootFlush() {
+    if (visibleFlushHandle !== null || !hasPendingRoots(0)) {
+      return;
+    }
+
+    const runFlush = () => {
+      visibleFlushHandle = null;
+      visibleFlushHandleType = null;
+      processQueuedRootBatch({ includeBackground: false, budgetMs: VISIBLE_FLUSH_BUDGET_MS });
+    };
+
+    if (typeof window.requestAnimationFrame === "function") {
+      visibleFlushHandleType = "raf";
+      visibleFlushHandle = window.requestAnimationFrame(runFlush);
+      return;
+    }
+
+    visibleFlushHandleType = "timeout";
+    visibleFlushHandle = window.setTimeout(runFlush, 0);
+  }
+
+  function scheduleBackgroundRootFlush() {
+    if (backgroundFlushHandle !== null || hasPendingRoots(0) || !hasPendingRoots()) {
+      return;
+    }
+
+    const runFlush = () => {
+      backgroundFlushHandle = null;
+      backgroundFlushHandleType = null;
+      processQueuedRootBatch({ includeBackground: true, budgetMs: BACKGROUND_FLUSH_BUDGET_MS });
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      backgroundFlushHandleType = "idle";
+      backgroundFlushHandle = window.requestIdleCallback(runFlush, { timeout: 250 });
+      return;
+    }
+
+    backgroundFlushHandleType = "timeout";
+    backgroundFlushHandle = window.setTimeout(runFlush, 32);
+  }
+
+  const queueProcessableRoots = (roots, options = {}) => {
+    const { immediate = false, priority = "auto" } = options;
+
+    if (!isRuntimeEnabled()) {
+      return;
+    }
+
+    for (const root of roots) {
+      if (!root || !root.isConnected) {
+        continue;
+      }
+
+      const nextPriority = priority === "visible"
+        ? 0
+        : priority === "background"
+          ? 1
+          : isRootNearViewport(root)
+            ? 0
+            : 1;
+      const existing = pendingRootQueue.get(root);
+      if (!existing || nextPriority < existing.priority) {
+        pendingRootQueue.set(root, { priority: nextPriority });
+      }
+    }
+
+    if (immediate) {
+      cancelRootFlushes();
+      processQueuedRootBatch({ includeBackground: true, budgetMs: Infinity });
+      return;
+    }
+
+    if (hasPendingRoots(0)) {
+      scheduleVisibleRootFlush();
+    } else if (hasPendingRoots()) {
+      scheduleBackgroundRootFlush();
+    }
+  };
+
   const flushPendingTextRuns = () => {
     flushTimer = null;
 
@@ -1856,9 +2301,9 @@
       return;
     }
 
-    const runs = collectProcessableTextRuns(host);
-    if (runs.length > 0) {
-      queueTextRuns(runs, options);
+    const roots = collectProcessableRoots(host);
+    if (roots.length > 0) {
+      queueProcessableRoots(roots, { ...options, priority: "visible" });
     }
   };
 
@@ -1906,21 +2351,21 @@
         return;
       }
 
-      const queuedRuns = [];
+      const queuedRoots = [];
 
       for (const mutation of mutations) {
         if (mutation.type === "characterData") {
-          queuedRuns.push(...collectProcessableTextRuns(mutation.target));
+          queuedRoots.push(...collectProcessableRoots(mutation.target));
           continue;
         }
 
         for (const addedNode of mutation.addedNodes) {
-          queuedRuns.push(...collectProcessableTextRuns(addedNode));
+          queuedRoots.push(...collectProcessableRoots(addedNode));
         }
       }
 
-      if (queuedRuns.length > 0) {
-        queueTextRuns(queuedRuns);
+      if (queuedRoots.length > 0) {
+        queueProcessableRoots(queuedRoots);
       }
     });
 
@@ -1933,6 +2378,32 @@
     log("MutationObserver 開始");
   };
 
+  const bindViewportRefresh = () => {
+    const requestRefresh = () => {
+      if (scrollRefreshScheduled || !isRuntimeEnabled()) {
+        return;
+      }
+
+      scrollRefreshScheduled = true;
+      const runRefresh = () => {
+        scrollRefreshScheduled = false;
+        reclassifyPendingRoots();
+        if (hasPendingRoots(0)) {
+          scheduleVisibleRootFlush();
+        }
+      };
+
+      if (typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(runRefresh);
+      } else {
+        window.setTimeout(runRefresh, 0);
+      }
+    };
+
+    window.addEventListener("scroll", requestRefresh, { passive: true });
+    window.addEventListener("resize", requestRefresh, { passive: true });
+  };
+
   const observeDebugTargetChanges = () => {
     const root = document.documentElement;
     if (!root) {
@@ -1942,7 +2413,12 @@
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === "attributes" && mutation.attributeName === DEBUG_TARGETS_ATTRIBUTE) {
-          publishRuntimeDebugSnapshot();
+          const targets = getDebugTargetsFromDocument();
+          if (targets.length > 0) {
+            publishRuntimeDebugSnapshot(targets, { force: true });
+          } else {
+            clearPublishedDebugState();
+          }
           return;
         }
       }
@@ -1979,24 +2455,22 @@
       .filter((stage) => stage.kind === "token-rules")
       .flatMap((stage) => stage.rules);
     activeTabDisabled = (await loadTabRuntimeState()).tabDisabled === true;
-    activeTokenizer = activeTokenRules.length > 0 ? await buildTokenizer() : null;
-    publishRuntimeDebugSnapshot();
+    activeTokenizer = activeTokenRules.length > 0 ? await getTokenizer() : null;
+    publishRuntimeDebugSnapshot(getDebugTargetsFromDocument());
 
     if (!reapply) {
       return;
     }
 
     if (!isRuntimeEnabled()) {
-      pendingTextRuns.clear();
-      if (flushTimer !== null) {
-        window.clearTimeout(flushTimer);
-        flushTimer = null;
-      }
+      pendingRootQueue.clear();
+      cancelRootFlushes();
       restoreDocumentRuns(document.body);
       return;
     }
 
-    queueTextRuns(collectProcessableTextRuns(document.body), { immediate: true });
+    pendingRootQueue.clear();
+    queueProcessableRoots(collectProcessableRoots(document.body));
   };
 
   const handleRuntimeMessage = (message, sendResponse) => {
@@ -2065,10 +2539,11 @@
     await refreshRuntimeState({ reapply: false });
     bindRuntimeSynchronization();
     bindEditableLifecycle();
+    bindViewportRefresh();
     observeDebugTargetChanges();
-    const initialRuns = collectProcessableTextRuns(document.body);
-    log("対象 textRun 数", initialRuns.length);
-    queueTextRuns(initialRuns, { immediate: true });
+    const initialRoots = collectProcessableRoots(document.body);
+    log("対象 root 数", initialRoots.length);
+    queueProcessableRoots(initialRoots);
     observeDynamicContent();
   };
 

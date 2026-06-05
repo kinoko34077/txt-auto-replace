@@ -75,6 +75,94 @@
             color: #666;
             font-size: 14px;
         }
+
+        .debug-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .debug-toolbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .debug-status {
+            color: #666;
+            font-size: 13px;
+            min-height: 20px;
+        }
+
+        .debug-toolbar input[type="text"] {
+            min-width: min(100%, 360px);
+            flex: 1 1 280px;
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .debug-card {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 14px;
+            background: #fcfcfc;
+        }
+
+        .debug-card h3 {
+            margin-top: 0;
+            margin-bottom: 8px;
+        }
+
+        .debug-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .debug-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: #eee;
+            font-size: 12px;
+        }
+
+        .debug-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .debug-item {
+            border: 1px solid #e1e1e1;
+            border-radius: 8px;
+            padding: 10px;
+            background: white;
+        }
+
+        .debug-item h4 {
+            margin: 0 0 6px;
+        }
+
+        .debug-item pre,
+        .json-block {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 12px;
+            line-height: 1.5;
+            background: #f4f4f4;
+            border-radius: 6px;
+            padding: 10px;
+        }
+
+        details {
+            margin-top: 8px;
+        }
     </style>
 </head>
 
@@ -160,12 +248,39 @@
                 <li>Console に <code>変換初期化完了</code> と MutationObserver 開始ログが出るか。</li>
             </ul>
         </section>
+
+        <section>
+            <h2>8. Runtime Debug Viewer</h2>
+            <p class="note">content script が document 属性へ書き出した runtime snapshot と transform debug を、このページ上で直接確認します。</p>
+            <div class="debug-toolbar">
+                <label for="debugTargetInput">確認する from</label>
+                <input id="debugTargetInput" type="text" value="ない, よい, いま" />
+                <label><input id="debugAutoRefreshInput" type="checkbox" /> 自動更新</label>
+                <button id="applyDebugTargetsBtn" type="button">対象を更新</button>
+                <button id="refreshDebugViewBtn" type="button">再読込</button>
+            </div>
+            <div id="debugStatusNode" class="debug-status"></div>
+            <div id="debugViewerRoot" class="debug-grid"></div>
+        </section>
     </main>
 
     <script>
         const dynamicInput = document.getElementById("dynamicInput");
         const dynamicArea = document.getElementById("dynamicArea");
         const fixtureSelect = document.getElementById("fixtureSelect");
+        const debugViewerRoot = document.getElementById("debugViewerRoot");
+        const debugTargetInput = document.getElementById("debugTargetInput");
+        const debugAutoRefreshInput = document.getElementById("debugAutoRefreshInput");
+        const debugStatusNode = document.getElementById("debugStatusNode");
+        const DEBUG_TARGETS_ATTRIBUTE = "data-jpn-transform-debug-targets";
+        const DEBUG_LAST_ATTRIBUTE = "data-jpn-transform-last-debug";
+        const DEBUG_HISTORY_ATTRIBUTE = "data-jpn-transform-debug-history";
+        const DEBUG_RUNTIME_ATTRIBUTE = "data-jpn-transform-runtime-snapshot";
+        let debugViewerDirty = false;
+
+        const setDebugStatus = (message) => {
+            debugStatusNode.textContent = message;
+        };
 
         const appendDynamicText = (text) => {
             const p = document.createElement("p");
@@ -186,6 +301,213 @@
         document.getElementById("clearDynamicBtn").addEventListener("click", () => {
             dynamicArea.textContent = "";
         });
+
+        const safeParseJsonAttribute = (attributeName) => {
+            const raw = document.documentElement.getAttribute(attributeName);
+            if (!raw) {
+                return null;
+            }
+
+            try {
+                return JSON.parse(raw);
+            } catch (error) {
+                return {
+                    parseError: error.message,
+                    raw
+                };
+            }
+        };
+
+        const createJsonDetails = (label, value) => {
+            const details = document.createElement("details");
+            const summary = document.createElement("summary");
+            summary.textContent = label;
+            details.appendChild(summary);
+            const pre = document.createElement("pre");
+            pre.className = "json-block";
+            pre.textContent = JSON.stringify(value, null, 2);
+            details.appendChild(pre);
+            return details;
+        };
+
+        const renderRuntimeDebugViewer = () => {
+            debugViewerDirty = false;
+            debugViewerRoot.textContent = "";
+
+            const runtimeSnapshot = safeParseJsonAttribute(DEBUG_RUNTIME_ATTRIBUTE);
+            const lastDebug = safeParseJsonAttribute(DEBUG_LAST_ATTRIBUTE);
+            const history = safeParseJsonAttribute(DEBUG_HISTORY_ATTRIBUTE);
+
+            const runtimeCard = document.createElement("div");
+            runtimeCard.className = "debug-card";
+            const runtimeHeading = document.createElement("h3");
+            runtimeHeading.textContent = "Runtime Snapshot";
+            runtimeCard.appendChild(runtimeHeading);
+
+            if (!runtimeSnapshot) {
+                const empty = document.createElement("p");
+                empty.className = "note";
+                empty.textContent = "runtime snapshot はまだ出ていません。ページ読込後に少し待ってから再読込してください。";
+                runtimeCard.appendChild(empty);
+            } else {
+                const meta = document.createElement("div");
+                meta.className = "debug-meta";
+                [
+                    `generated: ${runtimeSnapshot.generatedAt ?? "unknown"}`,
+                    `stages: ${runtimeSnapshot.stages?.length ?? 0}`,
+                    `virtual: ${runtimeSnapshot.virtualBundleIds?.length ?? 0}`,
+                    `runtimeEnabled: ${runtimeSnapshot.runtimeEnabled === true ? "true" : "false"}`
+                ].forEach((text) => {
+                    const chip = document.createElement("span");
+                    chip.className = "debug-chip";
+                    chip.textContent = text;
+                    meta.appendChild(chip);
+                });
+                runtimeCard.appendChild(meta);
+
+                if (Array.isArray(runtimeSnapshot.virtualBundleIds) && runtimeSnapshot.virtualBundleIds.length > 0) {
+                    const virtualTitle = document.createElement("h4");
+                    virtualTitle.textContent = "manifest 外 active bundle";
+                    runtimeCard.appendChild(virtualTitle);
+                    const virtualList = document.createElement("div");
+                    virtualList.className = "debug-list";
+                    runtimeSnapshot.virtualBundleIds.forEach((bundleId) => {
+                        const bundle = Array.isArray(runtimeSnapshot.loadedBundles)
+                            ? runtimeSnapshot.loadedBundles.find((candidate) => candidate.id === bundleId)
+                            : null;
+                        const item = document.createElement("div");
+                        item.className = "debug-item";
+                        const title = document.createElement("h4");
+                        title.textContent = bundle?.label || bundleId;
+                        const summary = document.createElement("p");
+                        summary.className = "note";
+                        summary.textContent = `id=${bundleId} / kind=${bundle?.kind ?? "unknown"} / order=${bundle?.order ?? "?"}`;
+                        item.append(title, summary);
+                        virtualList.appendChild(item);
+                    });
+                    runtimeCard.appendChild(virtualList);
+                }
+
+                const matchingRules = Array.isArray(runtimeSnapshot.matchingRules) ? runtimeSnapshot.matchingRules : [];
+                const matchTitle = document.createElement("h4");
+                matchTitle.textContent = `対象 from に一致した active rule (${matchingRules.length})`;
+                runtimeCard.appendChild(matchTitle);
+                if (matchingRules.length === 0) {
+                    const empty = document.createElement("p");
+                    empty.className = "note";
+                    empty.textContent = "一致した active rule はありません。";
+                    runtimeCard.appendChild(empty);
+                } else {
+                    const matchList = document.createElement("div");
+                    matchList.className = "debug-list";
+                    matchingRules.forEach((match) => {
+                        const item = document.createElement("div");
+                        item.className = "debug-item";
+                        const title = document.createElement("h4");
+                        title.textContent = `${match.rule?.from ?? ""} -> ${match.rule?.to ?? ""}`;
+                        const summary = document.createElement("p");
+                        summary.className = "note";
+                        summary.textContent = `${match.stageId} / ${match.stageKind} / order=${match.stageOrder ?? 0}`;
+                        item.append(title, summary, createJsonDetails("rule object", match.rule));
+                        matchList.appendChild(item);
+                    });
+                    runtimeCard.appendChild(matchList);
+                }
+
+                runtimeCard.appendChild(createJsonDetails("runtime snapshot json", runtimeSnapshot));
+            }
+            debugViewerRoot.appendChild(runtimeCard);
+
+            const lastDebugCard = document.createElement("div");
+            lastDebugCard.className = "debug-card";
+            const lastHeading = document.createElement("h3");
+            lastHeading.textContent = "Last Transform Debug";
+            lastDebugCard.appendChild(lastHeading);
+            if (!lastDebug) {
+                const empty = document.createElement("p");
+                empty.className = "note";
+                empty.textContent = "last debug はまだありません。fixture を追加するか、文を更新してください。";
+                lastDebugCard.appendChild(empty);
+            } else {
+                const meta = document.createElement("div");
+                meta.className = "debug-meta";
+                [
+                    `timestamp: ${lastDebug.timestamp ?? "unknown"}`,
+                    `events: ${Array.isArray(lastDebug.events) ? lastDebug.events.length : 0}`,
+                    `source: ${lastDebug.sourceText ?? ""}`,
+                    `result: ${lastDebug.transformedText ?? ""}`
+                ].forEach((text) => {
+                    const chip = document.createElement("span");
+                    chip.className = "debug-chip";
+                    chip.textContent = text;
+                    meta.appendChild(chip);
+                });
+                lastDebugCard.appendChild(meta);
+                lastDebugCard.appendChild(createJsonDetails("last transform json", lastDebug));
+            }
+            debugViewerRoot.appendChild(lastDebugCard);
+
+            const historyCard = document.createElement("div");
+            historyCard.className = "debug-card";
+            const historyHeading = document.createElement("h3");
+            historyHeading.textContent = "Debug History";
+            historyCard.appendChild(historyHeading);
+            if (!Array.isArray(history) || history.length === 0) {
+                const empty = document.createElement("p");
+                empty.className = "note";
+                empty.textContent = "history はまだありません。";
+                historyCard.appendChild(empty);
+            } else {
+                const summary = document.createElement("p");
+                summary.className = "note";
+                summary.textContent = `${history.length} 件の履歴があります。`;
+                historyCard.appendChild(summary);
+                historyCard.appendChild(createJsonDetails("history json", history));
+            }
+            debugViewerRoot.appendChild(historyCard);
+            setDebugStatus(`viewer 更新: ${new Date().toLocaleTimeString()}`);
+        };
+
+        const applyDebugTargets = () => {
+            document.documentElement.setAttribute(DEBUG_TARGETS_ATTRIBUTE, debugTargetInput.value.trim());
+        };
+
+        document.getElementById("applyDebugTargetsBtn").addEventListener("click", () => {
+            applyDebugTargets();
+            window.setTimeout(() => {
+                renderRuntimeDebugViewer();
+            }, 50);
+        });
+
+        document.getElementById("refreshDebugViewBtn").addEventListener("click", () => {
+            renderRuntimeDebugViewer();
+        });
+
+        const debugAttributeObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (
+                    mutation.type === "attributes" &&
+                    [DEBUG_RUNTIME_ATTRIBUTE, DEBUG_LAST_ATTRIBUTE, DEBUG_HISTORY_ATTRIBUTE].includes(mutation.attributeName)
+                ) {
+                    debugViewerDirty = true;
+                    if (debugAutoRefreshInput.checked) {
+                        renderRuntimeDebugViewer();
+                    } else {
+                        setDebugStatus("新しい snapshot があります。再読込を押してください。");
+                    }
+                    return;
+                }
+            }
+        });
+
+        debugAttributeObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: [DEBUG_RUNTIME_ATTRIBUTE, DEBUG_LAST_ATTRIBUTE, DEBUG_HISTORY_ATTRIBUTE]
+        });
+
+        applyDebugTargets();
+        renderRuntimeDebugViewer();
+        setDebugStatus("自動更新はOFFです。必要なときだけ再読込してください。");
     </script>
 </body>
 

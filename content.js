@@ -10,10 +10,15 @@
   const BUNDLE_OVERRIDE_STORAGE_KEY = "bundleOverrideSettingsV1";
   const DICT_PATH = "dict/";
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
+  const DEBUG_TARGETS_ATTRIBUTE = "data-jpn-transform-debug-targets";
+  const DEBUG_LAST_ATTRIBUTE = "data-jpn-transform-last-debug";
+  const DEBUG_HISTORY_ATTRIBUTE = "data-jpn-transform-debug-history";
+  const DEBUG_RUNTIME_ATTRIBUTE = "data-jpn-transform-runtime-snapshot";
   const MESSAGE_TYPES = {
     APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
     GET_PAGE_CONTEXT: "GET_PAGE_CONTEXT",
-    GET_TAB_RUNTIME_STATE: "GET_TAB_RUNTIME_STATE"
+    GET_TAB_RUNTIME_STATE: "GET_TAB_RUNTIME_STATE",
+    GET_RUNTIME_DEBUG_SNAPSHOT: "GET_RUNTIME_DEBUG_SNAPSHOT"
   };
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
     skipEditableInputs: false,
@@ -83,6 +88,9 @@
   let activeDisabledSites = { ...DEFAULT_DISABLED_SITES };
   let activePopupBundleId = DEFAULT_POPUP_BUNDLE_ID;
   let activeTabDisabled = false;
+  let lastTransformDebug = null;
+  let activeLoadedBundles = [];
+  let activeManifestBundleIds = [];
 
   if (!TransformEngine) {
     throw new Error("TransformEngine が未読込です。manifest.json の content_scripts の順序を確認してください。");
@@ -99,6 +107,136 @@
       return typeof node?.nodeValue === "string" ? node.nodeValue : "";
     } catch (error) {
       return "";
+    }
+  };
+
+  const publishTransformDebug = (payload) => {
+    lastTransformDebug = payload;
+    globalThis.__jpnTransformLastDebug = payload;
+    const history = Array.isArray(globalThis.__jpnTransformDebugHistory)
+      ? globalThis.__jpnTransformDebugHistory
+      : [];
+    history.push(payload);
+    if (history.length > 20) {
+      history.splice(0, history.length - 20);
+    }
+    globalThis.__jpnTransformDebugHistory = history;
+
+    try {
+      const root = document.documentElement;
+      if (!root) {
+        return;
+      }
+
+      root.setAttribute(DEBUG_LAST_ATTRIBUTE, JSON.stringify(payload));
+      root.setAttribute(DEBUG_HISTORY_ATTRIBUTE, JSON.stringify(history));
+    } catch (error) {
+      console.error("transform debug publish failed", error);
+    }
+
+    publishRuntimeDebugSnapshot();
+  };
+
+  const cloneDebugValue = (value) => {
+    return value === undefined ? null : JSON.parse(JSON.stringify(value));
+  };
+
+  const normalizeDebugTargetList = (targets) => {
+    if (!Array.isArray(targets)) {
+      return [];
+    }
+
+    return [...new Set(
+      targets
+        .map((target) => `${target ?? ""}`.trim())
+        .filter(Boolean)
+    )];
+  };
+
+  const getDebugTargetsFromDocument = () => {
+    try {
+      const raw = document.documentElement?.getAttribute(DEBUG_TARGETS_ATTRIBUTE) ?? "";
+      return raw
+        .split(",")
+        .map((target) => target.trim())
+        .filter(Boolean);
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const collectMatchingRuntimeRules = (targets) => {
+    const targetSet = new Set(normalizeDebugTargetList(targets));
+    if (targetSet.size === 0) {
+      return [];
+    }
+
+    const matches = [];
+    for (const stage of activeTransformStages) {
+      const stageRules = Array.isArray(stage?.rules) ? stage.rules : [];
+      for (const rule of stageRules) {
+        if (!targetSet.has(`${rule?.from ?? ""}`.trim())) {
+          continue;
+        }
+
+        const clonedRule = cloneDebugValue(rule);
+        if (clonedRule && typeof clonedRule === "object") {
+          delete clonedRule.raw;
+        }
+        matches.push({
+          stageId: stage.id,
+          stageLabel: stage.label,
+          stageKind: stage.kind,
+          stageOrder: stage.order ?? 0,
+          rule: clonedRule
+        });
+      }
+    }
+
+    return matches;
+  };
+
+  const buildRuntimeDebugSnapshot = (targets) => {
+    const manifestIdSet = new Set(activeManifestBundleIds);
+    const loadedBundles = Array.isArray(activeLoadedBundles) ? activeLoadedBundles : [];
+    const virtualBundleIds = loadedBundles
+      .filter((bundle) => bundle?.id && !manifestIdSet.has(bundle.id))
+      .map((bundle) => bundle.id);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      runtimeEnabled: isRuntimeEnabled(),
+      popupBundleId: activePopupBundleId,
+      tabDisabled: activeTabDisabled === true,
+      runtimeSettings: cloneDebugValue(activeRuntimeSettings),
+      disabledSites: cloneDebugValue(activeDisabledSites),
+      manifestBundleIds: [...activeManifestBundleIds],
+      loadedBundles: cloneDebugValue(activeLoadedBundles),
+      virtualBundleIds,
+      stages: activeTransformStages.map((stage) => ({
+        id: stage.id,
+        label: stage.label,
+        kind: stage.kind,
+        order: stage.order ?? 0,
+        ruleCount: Array.isArray(stage.rules) ? stage.rules.length : 0
+      })),
+      matchingRules: collectMatchingRuntimeRules(targets),
+      lastTransformDebug: cloneDebugValue(lastTransformDebug)
+    };
+  };
+
+  const publishRuntimeDebugSnapshot = () => {
+    try {
+      const root = document.documentElement;
+      if (!root) {
+        return;
+      }
+
+      const snapshot = buildRuntimeDebugSnapshot(getDebugTargetsFromDocument());
+      globalThis.__jpnTransformRuntimeSnapshot = snapshot;
+      root.setAttribute(DEBUG_RUNTIME_ATTRIBUTE, JSON.stringify(snapshot));
+    } catch (error) {
+      console.error("runtime debug publish failed", error);
     }
   };
 
@@ -280,6 +418,8 @@
       .filter(Boolean);
   };
 
+  const splitMatchCandidates = (value) => splitReplacementCandidates(value);
+
   const GODAN_VERB_ENDINGS = {
     "う": { a: "わ", i: "い", e: "え", o: "お", te: "って", ta: "った" },
     "く": { a: "か", i: "き", e: "け", o: "こ", te: "いて", ta: "いた" },
@@ -322,10 +462,13 @@
   };
 
   const normalizePhraseRuleRecord = (from, rawRule) => {
+    const fromCandidates = splitMatchCandidates(from);
+
     if (typeof rawRule === "string") {
       const candidates = splitReplacementCandidates(rawRule);
       return {
-        from,
+        from: fromCandidates[0] ?? from,
+        from_options: fromCandidates,
         to: candidates[0] ?? "",
         candidates,
         priority: 0,
@@ -337,7 +480,8 @@
     if (Array.isArray(rawRule)) {
       const candidates = splitReplacementCandidates(rawRule[0]);
       return {
-        from,
+        from: fromCandidates[0] ?? from,
+        from_options: fromCandidates,
         to: candidates[0] ?? "",
         candidates,
         priority: Number.isFinite(rawRule[1]) ? rawRule[1] : Number(rawRule[1]) || 0,
@@ -348,9 +492,11 @@
 
     if (rawRule && typeof rawRule === "object") {
       const candidates = splitReplacementCandidates(rawRule.candidates ?? rawRule.to);
+      const ruleFromCandidates = splitMatchCandidates(rawRule.from ?? from ?? "");
       return {
         ...rawRule,
-        from: `${rawRule.from ?? from ?? ""}`,
+        from: ruleFromCandidates[0] ?? `${rawRule.from ?? from ?? ""}`,
+        from_options: ruleFromCandidates,
         to: candidates[0] ?? `${rawRule.to ?? ""}`,
         candidates,
         priority: Number.isFinite(rawRule.priority) ? rawRule.priority : Number(rawRule.priority) || 0,
@@ -404,16 +550,23 @@
         continue;
       }
 
+      const fromOptions = splitMatchCandidates(entry.from_options ?? entry.from ?? from);
+
       replaceRules.push({
         id: `${entry.id ?? ""}`.trim() || undefined,
         type: `${entry.type ?? "replace-rule"}`,
-        from,
+        from: fromOptions[0] ?? from,
+        from_options: fromOptions,
         to,
         raw: { ...entry },
         candidates: splitReplacementCandidates(entry.candidates ?? to),
         regex: entry.regex === true || entry.is_regex === true,
         priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
-        enabled: entry.enabled !== false
+        enabled: entry.enabled !== false,
+        match_target: entry.match_target ?? entry.matchTarget ?? null,
+        conditions: entry.conditions ?? null,
+        sequence: entry.sequence ?? null,
+        character_map: entry.character_map ?? null
       });
     }
 
@@ -475,9 +628,12 @@
   const normalizeRule = (rule) => {
     const conditions = rule.conditions || {};
     const candidates = splitReplacementCandidates(rule.candidates ?? rule.to);
+    const fromOptions = splitMatchCandidates(rule.from_options ?? rule.from);
 
     return {
       ...rule,
+      from: fromOptions[0] ?? rule.from,
+      from_options: fromOptions,
       to: candidates[0] ?? rule.to,
       candidates,
       match_target: rule.match_target ?? rule.matchTarget ?? null,
@@ -1292,49 +1448,57 @@
       return definition;
     }
 
-    if (definition.kind !== "dictionary-rules") {
-      if (definition.kind === "token-rules" && (Array.isArray(override.entries) || Array.isArray(override.children))) {
-        const flattenNodesToRules = (node) => {
-          const rules = [];
-          if (Array.isArray(node.entries)) {
-            for (const entry of node.entries) {
-              if (!entry || !entry.from || !entry.to) {
-                continue;
-              }
-              const baseRule = entry.raw && typeof entry.raw === "object"
-                ? { ...entry.raw }
-                : {};
-              rules.push({
-                ...baseRule,
-                id: entry.id ?? baseRule.id,
-                from: entry.from,
-                to: entry.to,
-                priority: entry.priority,
-                enabled: entry.enabled !== false,
-                regex: entry.regex === true
-              });
-            }
+    const flattenNodesToRules = (node) => {
+      const rules = [];
+      if (Array.isArray(node.entries)) {
+        for (const entry of node.entries) {
+          if (!entry || !entry.from || !entry.to) {
+            continue;
           }
-          if (Array.isArray(node.children)) {
-            for (const child of node.children) {
-              rules.push(...flattenNodesToRules(child));
-            }
-          }
-          return rules;
-        };
-
-        return {
-          ...definition,
-          label: override.label ?? definition.label,
-          enabled: override.enabled ?? definition.enabled,
-          rules: flattenNodesToRules(override)
-        };
+          const baseRule = entry.raw && typeof entry.raw === "object"
+            ? { ...entry.raw }
+            : {};
+          rules.push({
+            ...baseRule,
+            id: entry.id ?? baseRule.id,
+            from: entry.from,
+            from_options: Array.isArray(entry.from_options) ? [...entry.from_options] : splitMatchCandidates(entry.from),
+            to: entry.to,
+            priority: entry.priority,
+            enabled: entry.enabled !== false,
+            regex: entry.regex === true,
+            match_target: entry.match_target ?? baseRule.match_target ?? null,
+            conditions: entry.conditions ?? baseRule.conditions ?? null,
+            sequence: entry.sequence ?? baseRule.sequence ?? null,
+            type: entry.type ?? baseRule.type
+          });
+        }
       }
-      return definition;
+      if (Array.isArray(node.children)) {
+        for (const child of node.children) {
+          rules.push(...flattenNodesToRules(child));
+        }
+      }
+      return rules;
+    };
+
+    const targetKind = override.kind ?? definition.kind;
+    if (targetKind === "token-rules") {
+      const hasOverrideTree = Array.isArray(override.entries) || Array.isArray(override.children);
+      return {
+        ...definition,
+        kind: "token-rules",
+        label: override.label ?? definition.label,
+        enabled: override.enabled ?? definition.enabled,
+        rules: hasOverrideTree
+          ? flattenNodesToRules(override)
+          : (Array.isArray(definition.rules) ? definition.rules : [])
+      };
     }
 
     return {
       ...definition,
+      kind: "dictionary-rules",
       label: override.label ?? definition.label,
       enabled: override.enabled ?? definition.enabled,
       entries: Array.isArray(override.entries) ? override.entries : (definition.entries ?? []),
@@ -1453,6 +1617,11 @@
     const bundleManifest = await loadJson5Resource(TRANSFORM_BUNDLES_PATH);
     const bundleOverrides = await loadBundleOverrides();
     const bundleFiles = {};
+    const manifestBundleIds = Array.isArray(bundleManifest?.bundles)
+      ? bundleManifest.bundles
+          .filter((bundle) => bundle?.id)
+          .map((bundle) => bundle.id)
+      : [];
 
     for (const bundle of bundleManifest.bundles || []) {
       if (!bundle?.id || !bundle?.path) {
@@ -1465,11 +1634,36 @@
     const loaded = TransformEngine.loadStagesFromDefinitions(bundleManifest, bundleFiles, bundleOverrides);
     log("隱ｭ霎ｼ ordered bundles", loaded.bundles);
     log("隱ｭ霎ｼ transform stages", loaded.stages);
-    return loaded;
+    return {
+      ...loaded,
+      manifestBundleIds
+    };
   };
 
   const transformTextWithStages = (text) => {
-    return TransformEngine.transformTextWithStages(text, activeTransformStages, activeTokenizer);
+    if (!DEBUG) {
+      return TransformEngine.transformTextWithStages(text, activeTransformStages, activeTokenizer);
+    }
+
+    const events = [];
+    const transformed = TransformEngine.transformTextWithStages(
+      text,
+      activeTransformStages,
+      activeTokenizer,
+      (event) => events.push(event)
+    );
+    publishTransformDebug({
+      timestamp: new Date().toISOString(),
+      sourceText: text,
+      transformedText: transformed,
+      events,
+      stages: activeTransformStages.map((stage) => ({
+        id: stage.id,
+        kind: stage.kind,
+        ruleCount: Array.isArray(stage.rules) ? stage.rules.length : 0
+      }))
+    });
+    return transformed;
   };
 
   const redistributeTransformedText = (textNodes, originalParts, transformed) => {
@@ -1559,7 +1753,8 @@
       log("textRun 更新", {
         original: sourceText,
         transformed,
-        nodeCount: textNodes.length
+        nodeCount: textNodes.length,
+        debugEvents: Array.isArray(lastTransformDebug?.events) ? lastTransformDebug.events : []
       });
     }
 
@@ -1738,6 +1933,27 @@
     log("MutationObserver 開始");
   };
 
+  const observeDebugTargetChanges = () => {
+    const root = document.documentElement;
+    if (!root) {
+      return;
+    }
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === "attributes" && mutation.attributeName === DEBUG_TARGETS_ATTRIBUTE) {
+          publishRuntimeDebugSnapshot();
+          return;
+        }
+      }
+    });
+
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: [DEBUG_TARGETS_ATTRIBUTE]
+    });
+  };
+
   const refreshRuntimeState = async (options = {}) => {
     const { reapply = true } = options;
     const runtimeConfiguration = await loadRuntimeConfiguration();
@@ -1746,6 +1962,15 @@
     activePopupBundleId = runtimeConfiguration.popupBundleId;
 
     const loaded = await loadOrderedRules();
+    activeLoadedBundles = Array.isArray(loaded?.bundles) ? loaded.bundles.map((bundle) => ({
+      id: bundle.id,
+      label: bundle.label,
+      kind: bundle.kind,
+      order: bundle.order ?? 0,
+      enabled: bundle.enabled !== false,
+      path: bundle.path ?? null
+    })) : [];
+    activeManifestBundleIds = loaded?.manifestBundleIds ?? [];
     activeTransformStages = loaded.stages;
     activeStringRules = activeTransformStages
       .filter((stage) => stage.kind === "dictionary-rules")
@@ -1755,6 +1980,7 @@
       .flatMap((stage) => stage.rules);
     activeTabDisabled = (await loadTabRuntimeState()).tabDisabled === true;
     activeTokenizer = activeTokenRules.length > 0 ? await buildTokenizer() : null;
+    publishRuntimeDebugSnapshot();
 
     if (!reapply) {
       return;
@@ -1794,15 +2020,18 @@
     }
 
     if (message.type === MESSAGE_TYPES.APPLY_SETTINGS_UPDATE) {
-      refreshRuntimeState({ reapply: true })
-        .then(() => sendResponse({ ok: true }))
-        .catch((error) => {
-          sendResponse({
-            ok: false,
-            error: error instanceof Error ? error.message : `${error}`
-          });
-        });
-      return true;
+      refreshRuntimeState({ reapply: true }).catch((error) => {
+        console.error("runtime refresh failed", error);
+      });
+      return false;
+    }
+
+    if (message.type === MESSAGE_TYPES.GET_RUNTIME_DEBUG_SNAPSHOT) {
+      sendResponse({
+        ok: true,
+        snapshot: buildRuntimeDebugSnapshot(message.targets)
+      });
+      return false;
     }
 
     return false;
@@ -1836,6 +2065,7 @@
     await refreshRuntimeState({ reapply: false });
     bindRuntimeSynchronization();
     bindEditableLifecycle();
+    observeDebugTargetChanges();
     const initialRuns = collectProcessableTextRuns(document.body);
     log("対象 textRun 数", initialRuns.length);
     queueTextRuns(initialRuns, { immediate: true });

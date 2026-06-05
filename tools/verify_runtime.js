@@ -247,12 +247,69 @@ const OVERRIDE_PAYLOAD = {
           enabled: true,
           regex: false,
           match_target: "basic_form"
+        },
+        {
+          id: "nai-entry",
+          from: "\u306A\u3044",
+          to: "\u7121\u3044",
+          type: "adjective",
+          priority: 64,
+          enabled: true,
+          regex: false,
+          match_target: "basic_form",
+          conditions: {
+            current: [{ pos: "\u5F62\u5BB9\u8A5E", pos1: "\u81EA\u7ACB", basic: "\u306A\u3044" }]
+          }
+        },
+        {
+          id: "naru-entry",
+          from: "\u306A\u308B",
+          to: "\u6210\u308B",
+          type: "verb",
+          priority: 63,
+          enabled: true,
+          regex: false,
+          match_target: "basic_form"
+        },
+        {
+          id: "ima-entry",
+          from: "\u3044\u307E",
+          to: "\u4ECA",
+          priority: 61,
+          enabled: true,
+          regex: false,
+          conditions: {
+            current: [{ pos: "\u540D\u8A5E", pos1: "\u526F\u8A5E\u53EF\u80FD" }]
+          }
+        },
+        {
+          id: "yoi-entry",
+          from: "\u3088\u3044",
+          to: "\u5584\u3044",
+          type: "adjective",
+          priority: 60,
+          enabled: true,
+          regex: false,
+          match_target: "basic_form",
+          conditions: {
+            current: [{ pos: "\u5F62\u5BB9\u8A5E", pos1: "\u81EA\u7ACB", basic: "\u3088\u3044" }]
+          }
+        },
+        {
+          id: "comma-from-token-entry",
+          from: "\u8A00\u3046, \u8A9E\u308B",
+          to: "\u8FF0\u3079\u308B",
+          type: "verb",
+          priority: 62,
+          enabled: true,
+          regex: false,
+          match_target: "basic_form"
         }
       ],
       children: []
     },
-    {
-      id: "runtime-override-check",
+  {
+    id: "runtime-override-check",
       label: "runtime override check",
       kind: "token-rules",
       order: 25,
@@ -286,6 +343,71 @@ const OVERRIDE_PAYLOAD = {
         }
       ],
       children: []
+    },
+  {
+    id: "comma-dictionary-check",
+      label: "comma dictionary check",
+      kind: "dictionary-rules",
+      order: 58,
+      enabled: true,
+      entries: [
+        {
+          id: "comma-from-entry",
+          from: "A,B",
+          to: "C",
+          priority: 50,
+          enabled: true,
+          regex: false
+        }
+      ],
+      children: []
+    },
+    {
+      id: "general-character-replacements",
+      label: "general character replacements override",
+      kind: "token-rules",
+      order: 60,
+      enabled: true,
+      entries: [
+        {
+          id: "override-ima-entry",
+          from: "\u3044\u307E",
+          to: "\u4ECA",
+          priority: 61,
+          enabled: true,
+          regex: false,
+          conditions: {
+            current: [{ pos: "\u540D\u8A5E", pos1: "\u526F\u8A5E\u53EF\u80FD" }]
+          }
+        },
+        {
+          id: "override-yoi-entry",
+          from: "\u3088\u3044",
+          to: "\u5584\u3044",
+          type: "adjective",
+          priority: 60,
+          enabled: true,
+          regex: false,
+          match_target: "basic_form",
+          conditions: {
+            current: [{ pos: "\u5F62\u5BB9\u8A5E", pos1: "\u81EA\u7ACB", basic: "\u3088\u3044" }]
+          }
+        },
+        {
+          id: "override-nai-entry",
+          from: "\u306A\u3044",
+          to: "\u7121\u3044",
+          type: "adjective",
+          priority: 59,
+          enabled: true,
+          regex: false,
+          match_target: "basic_form",
+          conditions: {
+            current: [{ pos: "\u5F62\u5BB9\u8A5E", pos1: "\u81EA\u7ACB", basic: "\u306A\u3044" }]
+          }
+        }
+      ],
+      children: []
     }
   ]
 };
@@ -294,7 +416,7 @@ const OVERRIDE_FIXTURES = [
   {
     id: "override-wakaru-mizen",
     input: "分からない",
-    expected: "分らない",
+    expected: "\u5206\u3089\u306A\u3044",
     activeBundles: ["okurigana-abbreviation"],
     note: "override 復元後も verb rule が token-rules のまま働く"
   },
@@ -311,6 +433,104 @@ const OVERRIDE_FIXTURES = [
     expected: "面倒事",
     activeBundles: ["runtime-override-check"],
     note: "sequence を保持"
+  },
+  {
+    id: "override-nai-basic-form",
+    input: "\u306A\u304F",
+    expected: "\u7121\u304F",
+    activeBundles: ["general-character-replacements"],
+    note: "dictionary bundle override should run as token-rules"
+  },
+  {
+    id: "override-nai-imperative",
+    input: "\u306A\u304B\u308C",
+    expected: "\u7121\u304B\u308C",
+    activeBundles: ["general-character-replacements"],
+    note: "adjective imperative-like form"
+  },
+  {
+    id: "override-nai-nominal",
+    input: "\u306A\u3055",
+    expected: "\u7121\u3055",
+    activeBundles: ["general-character-replacements"],
+    note: "adjective nominalized form"
+  },
+  {
+    id: "override-nai-stray-na",
+    input: "\u306A",
+    expected: "\u306A",
+    activeBundles: ["general-character-replacements"],
+    note: "standalone na should stay unchanged"
+  },
+  {
+    id: "override-nai-auxiliary",
+    input: "\u5206\u304B\u3089\u306A\u3044",
+    expected: "\u5206\u3089\u306A\u3044",
+    activeBundles: ["okurigana-abbreviation", "general-character-replacements"],
+    note: "adjective current conditions should not rewrite auxiliary nai"
+  },
+  {
+    id: "override-naru-basic-form",
+    input: "\u306A\u308B",
+    expected: "\u6210\u308B",
+    activeBundles: ["okurigana-abbreviation"],
+    note: "動詞の basic_form 一致"
+  },
+  {
+    id: "override-naru-conditional-particle",
+    input: "\u305D\u3046\u306A\u3089\u3002",
+    expected: "\u305D\u3046\u306A\u3089\u3002",
+    activeBundles: ["okurigana-abbreviation"],
+    note: "未然形 fallback が別構文の なら を壊さない"
+  },
+  {
+    id: "override-ima-does-not-hit-imasu",
+    input: "\u3044\u307E\u3059",
+    expected: "\u3044\u307E\u3059",
+    activeBundles: ["general-character-replacements"],
+    note: "noun token rule from overridden dictionary bundle should not behave like dictionary replacement"
+  },
+  {
+    id: "override-yoi-basic-form",
+    input: "\u3088\u3044",
+    expected: "\u5584\u3044",
+    activeBundles: ["general-character-replacements"],
+    note: "adjective basic form should transform"
+  },
+  {
+    id: "override-yoi-garu-connection",
+    input: "\u3088\u3055",
+    expected: "\u5584\u3055",
+    activeBundles: ["general-character-replacements"],
+    note: "adjective suffix form should transform"
+  },
+  {
+    id: "override-yoi-imperative",
+    input: "\u3088\u304B\u308C",
+    expected: "\u5584\u304B\u308C",
+    activeBundles: ["general-character-replacements"],
+    note: "adjective imperative form should transform"
+  },
+  {
+    id: "override-comma-token-first-candidate",
+    input: "\u8A00\u3046",
+    expected: "\u8FF0\u3079\u308B",
+    activeBundles: ["okurigana-abbreviation"],
+    note: "comma-separated token rule should match first candidate"
+  },
+  {
+    id: "override-comma-token-second-candidate-spaced",
+    input: "\u8A9E\u308B",
+    expected: "\u8FF0\u3079\u308B",
+    activeBundles: ["okurigana-abbreviation"],
+    note: "comma-separated token rule should ignore spaces and match second candidate"
+  },
+  {
+    id: "override-tsuyoi-should-stay",
+    input: "\u3064\u3088\u3044",
+    expected: "\u3064\u3088\u3044",
+    activeBundles: ["general-character-replacements"],
+    note: "substring should not trigger adjective rule"
   }
 ];
 
@@ -355,13 +575,18 @@ const verifyOverrideRestoration = (stages) => {
   const hasBasicFormVerb = stages
     .find((stage) => stage.id === "okurigana-abbreviation")
     ?.rules.some((rule) => rule.from === "分かる" && rule.match_target === "basic_form" && rule.type === "verb");
+  const generalReplacementStage = stages.find((stage) => stage.id === "general-character-replacements");
+  const hasTokenizedGeneralReplacement = generalReplacementStage?.kind === "token-rules" &&
+    generalReplacementStage.rules.some((rule) => rule.from === "\u306A\u3044" && rule.match_target === "basic_form");
 
   return {
-    passed: Boolean(hasConditionRule && hasSequenceRule && hasBasicFormVerb),
+    passed: Boolean(hasConditionRule && hasSequenceRule && hasBasicFormVerb && hasTokenizedGeneralReplacement),
     details: {
       hasConditionRule,
       hasSequenceRule,
-      hasBasicFormVerb
+      hasBasicFormVerb,
+      generalReplacementStageKind: generalReplacementStage?.kind ?? null,
+      hasTokenizedGeneralReplacement
     }
   };
 };

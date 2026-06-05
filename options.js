@@ -8,7 +8,8 @@
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
   const MESSAGE_TYPES = {
     APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
-    OPEN_SHORTCUTS_PAGE: "OPEN_SHORTCUTS_PAGE"
+    OPEN_SHORTCUTS_PAGE: "OPEN_SHORTCUTS_PAGE",
+    GET_RUNTIME_DEBUG_SNAPSHOT: "GET_RUNTIME_DEBUG_SNAPSHOT"
   };
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
     skipEditableInputs: false,
@@ -31,7 +32,16 @@
     tokenizer: null,
     dismissedDiagnostics: {},
     dismissedDiagnosticsCollapsed: true,
-    commands: []
+    commands: [],
+    clipboard: null,
+    focusedNodeId: null,
+    dragPayload: null,
+    payloadInspectorQuery: "ない, よい, いま",
+    payloadInspector: {
+      storedPayload: null,
+      storedNormalizedRoots: [],
+      runtimeSnapshot: null
+    }
   };
 
   const bundleRoot = document.getElementById("bundle-root");
@@ -40,11 +50,14 @@
   const sitesRoot = document.getElementById("sites-root");
   const panelBundles = document.getElementById("panel-bundles");
   const panelDiagnostics = document.getElementById("panel-diagnostics");
+  const panelPayload = document.getElementById("panel-payload");
   const panelTokenizer = document.getElementById("panel-tokenizer");
   const panelHotkeys = document.getElementById("panel-hotkeys");
   const panelSites = document.getElementById("panel-sites");
+  const payloadRoot = document.getElementById("payload-root");
   const tabBundlesButton = document.getElementById("tab-bundles");
   const tabDiagnosticsButton = document.getElementById("tab-diagnostics");
+  const tabPayloadButton = document.getElementById("tab-payload");
   const tabTokenizerButton = document.getElementById("tab-tokenizer");
   const tabHotkeysButton = document.getElementById("tab-hotkeys");
   const tabSitesButton = document.getElementById("tab-sites");
@@ -70,6 +83,38 @@
   };
 
   const cloneValue = (value) => JSON.parse(JSON.stringify(value));
+
+  const splitCommaSeparatedValues = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .flatMap((item) => splitCommaSeparatedValues(item))
+        .filter(Boolean);
+    }
+
+    const normalized = `${value ?? ""}`.trim();
+    if (!normalized) {
+      return [];
+    }
+
+    return normalized
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  };
+
+  const normalizeFromOptions = (value, fallbackValue = "") => {
+    const candidates = splitCommaSeparatedValues(value);
+    if (candidates.length > 0) {
+      return [...new Set(candidates)];
+    }
+
+    const fallback = `${fallbackValue ?? ""}`.trim();
+    return fallback ? [fallback] : [];
+  };
+
+  const stringifyFromOptions = (value, fallbackValue = "") => {
+    return normalizeFromOptions(value, fallbackValue).join(",");
+  };
 
   const normalizeRuntimeSettings = (value) => {
     return {
@@ -251,6 +296,24 @@
       currentWindow: true
     });
     return tabs[0] ?? null;
+  };
+
+  const sendMessageToTab = async (tabId, message) => {
+    if (!chrome?.tabs?.sendMessage || typeof tabId !== "number") {
+      return null;
+    }
+
+    return new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        const runtimeError = chrome.runtime.lastError;
+        if (runtimeError) {
+          reject(new Error(runtimeError.message));
+          return;
+        }
+
+        resolve(response ?? null);
+      });
+    });
   };
 
   const notifyRuntimeSettingsApplied = async () => {
@@ -853,19 +916,56 @@
           .join(" ")
       : "";
     const from = `${entry.from ?? sequenceLabel ?? ""}`.trim();
+    const fromOptions = normalizeFromOptions(entry.from_options ?? entry.from, sequenceLabel);
+    const displayFrom = stringifyFromOptions(fromOptions, from);
     const to = `${entry.to ?? ""}`.trim();
-    if (!from) {
+    if (!displayFrom) {
       return null;
     }
 
+    const listifyValue = (value) => {
+      if (Array.isArray(value)) {
+        return value
+          .map((item) => `${item ?? ""}`.trim())
+          .filter(Boolean);
+      }
+      const normalized = `${value ?? ""}`.trim();
+      return normalized ? [normalized] : [];
+    };
+
+    const currentConditions = Array.isArray(entry.conditions?.current)
+      ? entry.conditions.current
+      : entry.conditions?.current
+        ? [entry.conditions.current]
+        : [];
+    const hasCurrentPos = (expected) => {
+      return currentConditions.some((condition) => {
+        return listifyValue(condition?.pos).includes(expected);
+      });
+    };
+    const inferredType = (() => {
+      if (typeof entry.type === "string" && entry.type.trim()) {
+        return entry.type.trim();
+      }
+      if (hasCurrentPos("動詞")) {
+        return "verb";
+      }
+      if (hasCurrentPos("形容詞")) {
+        return "adjective";
+      }
+      return null;
+    })();
+
     return {
       id: `${entry.id ?? createEntryId()}`,
-      from,
+      from: displayFrom,
+      from_options: fromOptions,
       to,
       priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
       enabled: entry.enabled !== false,
       regex: entry.regex === true || entry.is_regex === true,
-      match_target: entry.match_target ?? (entry.type === "verb" ? "basic_form" : null),
+      type: inferredType,
+      match_target: entry.match_target ?? ((inferredType === "verb" || inferredType === "adjective") ? "basic_form" : null),
       conditions: cloneValue(entry.conditions ?? null),
       sequence: cloneValue(entry.sequence ?? null),
       raw: cloneValue(entry),
@@ -992,13 +1092,9 @@
     ];
   };
 
-  const inferBundleKind = (source) => {
-    if (typeof source?.kind === "string" && source.kind.trim()) {
-      return source.kind;
-    }
-
+  const sourceHasTokenFeatures = (source) => {
     if (Array.isArray(source?.rules)) {
-      return "token-rules";
+      return true;
     }
 
     if (Array.isArray(source?.entries) && source.entries.some((entry) => {
@@ -1006,10 +1102,30 @@
         entry.match_target !== undefined ||
         entry.conditions !== undefined ||
         entry.sequence !== undefined ||
-        entry.type === "verb"
+        entry.type === "verb" ||
+        entry.type === "adjective" ||
+        entry.type === "literal" ||
+        entry.type === "compound" ||
+        entry.type === "renyou"
       );
     })) {
+      return true;
+    }
+
+    if (Array.isArray(source?.children) && source.children.some((child) => sourceHasTokenFeatures(child))) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const inferBundleKind = (source) => {
+    if (sourceHasTokenFeatures(source)) {
       return "token-rules";
+    }
+
+    if (typeof source?.kind === "string" && source.kind.trim()) {
+      return source.kind;
     }
 
     return "dictionary-rules";
@@ -1027,12 +1143,28 @@
       label: `${source?.label ?? fallbackLabel}`.trim() || fallbackLabel,
       kind: `${inferBundleKind(source)}`.trim() || "dictionary-rules",
       enabled: source?.enabled !== false,
+      selected: source?.selected === true,
       order: Number.isFinite(source?.order) ? source.order : Number(source?.order) || 0,
       entries: normalizeEntries(source),
       children: childrenSource.map((child, index) => {
         return normalizeNode(child, `${fallbackId}-${index + 1}`, `${fallbackLabel} ${index + 1}`);
       })
     };
+  };
+
+  const mergeImportedRootsWithBaseRoots = (importedRoots, baseRoots) => {
+    const importedById = new Map(importedRoots.map((root) => [root.id, root]));
+    const mergedRoots = baseRoots.map((baseRoot) => {
+      return cloneValue(importedById.get(baseRoot.id) ?? baseRoot);
+    });
+
+    for (const importedRoot of importedRoots) {
+      if (!baseRoots.some((baseRoot) => baseRoot.id === importedRoot.id)) {
+        mergedRoots.push(cloneValue(importedRoot));
+      }
+    }
+
+    return mergedRoots;
   };
 
   const createPopupBundleRoot = () => {
@@ -1114,20 +1246,65 @@
   };
 
   const serializeEntry = (entry, index) => {
-    const serialized = entry.raw && typeof entry.raw === "object"
-      ? cloneValue(entry.raw)
-      : {};
-    serialized.id = `${entry.id ?? createEntryId()}`.trim() || `entry-${index + 1}`;
-    serialized.from = `${entry.from ?? ""}`.trim();
-    serialized.to = `${entry.to ?? ""}`.trim();
-    serialized.priority = Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || 0;
-    serialized.enabled = entry.enabled !== false;
-    serialized.regex = entry.regex === true;
-    if (entry.match_target === "basic_form") {
-      serialized.match_target = "basic_form";
-    } else {
-      delete serialized.match_target;
+    const listifyValue = (value) => {
+      if (Array.isArray(value)) {
+        return value
+          .map((item) => `${item ?? ""}`.trim())
+          .filter(Boolean);
+      }
+      const normalized = `${value ?? ""}`.trim();
+      return normalized ? [normalized] : [];
+    };
+
+    const currentConditions = Array.isArray(entry.conditions?.current)
+      ? entry.conditions.current
+      : entry.conditions?.current
+        ? [entry.conditions.current]
+        : [];
+    const hasCurrentPos = (expected) => {
+      return currentConditions.some((condition) => {
+        return listifyValue(condition?.pos).includes(expected);
+      });
+    };
+
+    const inferredType = (() => {
+      if (typeof entry.type === "string" && entry.type.trim()) {
+        return entry.type.trim();
+      }
+      if (hasCurrentPos("動詞")) {
+        return "verb";
+      }
+      if (hasCurrentPos("形容詞")) {
+        return "adjective";
+      }
+      return null;
+    })();
+
+    const fromOptions = normalizeFromOptions(entry.from_options ?? entry.from, entry.from);
+    const serializedFrom = stringifyFromOptions(fromOptions, entry.from);
+
+    const serialized = {
+      id: `${entry.id ?? createEntryId()}`.trim() || `entry-${index + 1}`,
+      from: serializedFrom,
+      to: `${entry.to ?? ""}`.trim(),
+      priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || 0,
+      enabled: entry.enabled !== false,
+      regex: entry.regex === true
+    };
+
+    if (fromOptions.length > 1) {
+      serialized.from_options = cloneValue(fromOptions);
     }
+
+    if (inferredType) {
+      serialized.type = inferredType;
+    }
+
+    const effectiveMatchTarget = entry.match_target ?? ((inferredType === "verb" || inferredType === "adjective") ? "basic_form" : null);
+    if (effectiveMatchTarget === "basic_form") {
+      serialized.match_target = "basic_form";
+    }
+
     if (entry.conditions && (
       entry.conditions.prev ||
       entry.conditions.current ||
@@ -1143,14 +1320,12 @@
       if (entry.conditions.next) {
         serialized.conditions.next = cloneValue(entry.conditions.next);
       }
-    } else {
-      delete serialized.conditions;
     }
+
     if (Array.isArray(entry.sequence) && entry.sequence.length > 0) {
       serialized.sequence = cloneValue(entry.sequence);
-    } else {
-      delete serialized.sequence;
     }
+
     return serialized;
   };
 
@@ -1191,8 +1366,24 @@
     [STORAGE_KEY]: buildPayload()
   });
 
+  const applyPersistedPayloadToState = (payload) => {
+    const importedRoots = normalizeImportedRoots(payload);
+    state.roots = mergeImportedRootsWithBaseRoots(importedRoots, state.baseRoots);
+    state.runtimeSettings = extractRuntimeSettings(payload);
+    state.disabledSites = extractDisabledSites(payload);
+    state.popupBundleId = extractPopupBundleId(payload);
+    state.payloadInspector.storedPayload = cloneValue(payload);
+    state.payloadInspector.storedNormalizedRoots = importedRoots;
+    ensurePopupBundleRoot(state.roots);
+  };
+
   const saveAllAndNotify = async () => {
-    await storageSet(buildStoragePayload());
+    const payload = buildPayload();
+    applyPersistedPayloadToState(payload);
+    renderApp();
+    await storageSet({
+      [STORAGE_KEY]: payload
+    });
     await notifyRuntimeSettingsApplied();
     setStatus("設定を保存し、現在のタブへ即時反映しました。", "success");
   };
@@ -1221,7 +1412,12 @@
   };
 
   const saveAll = async () => {
-    await storageSet(buildStoragePayload());
+    const payload = buildPayload();
+    applyPersistedPayloadToState(payload);
+    renderApp();
+    await storageSet({
+      [STORAGE_KEY]: payload
+    });
     setStatus("設定を保存しました。対象タブを再読み込みしてください。", "success");
   };
 
@@ -1255,6 +1451,304 @@
     }
 
     [items[index], items[nextIndex]] = [items[nextIndex], items[index]];
+    return true;
+  };
+
+  const createDeepEntryClone = (entry) => {
+    return {
+      ...cloneValue(entry),
+      id: createEntryId(),
+      selected: false,
+      metaOpen: false
+    };
+  };
+
+  const refreshNodeIdentity = (node) => {
+    node.id = createNodeId();
+    node.selected = false;
+    node.children = Array.isArray(node.children) ? node.children : [];
+    node.entries = Array.isArray(node.entries) ? node.entries : [];
+    node.entries = node.entries.map((entry) => createDeepEntryClone(entry));
+    node.children = node.children.map((child) => refreshNodeIdentity(child));
+    return node;
+  };
+
+  const createDeepNodeClone = (node) => {
+    return refreshNodeIdentity(cloneValue(node));
+  };
+
+  const setFocusedNode = (nodeId) => {
+    state.focusedNodeId = nodeId;
+  };
+
+  const findNodeLocation = (nodeId, nodes = state.roots, parentChildren = state.roots, parentNode = null) => {
+    for (let index = 0; index < nodes.length; index += 1) {
+      const node = nodes[index];
+      if (node.id === nodeId) {
+        return { node, index, parentChildren, parentNode };
+      }
+
+      const nested = findNodeLocation(nodeId, node.children ?? [], node.children ?? [], node);
+      if (nested) {
+        return nested;
+      }
+    }
+
+    return null;
+  };
+
+  const findEntryLocation = (entryId) => {
+    let found = null;
+    walkNodes(state.roots, (node) => {
+      if (found) {
+        return;
+      }
+
+      const index = node.entries.findIndex((entry) => entry.id === entryId);
+      if (index >= 0) {
+        found = {
+          node,
+          index,
+          entry: node.entries[index]
+        };
+      }
+    });
+    return found;
+  };
+
+  const isNodeAncestorOf = (ancestorId, descendantId) => {
+    const descendantLocation = findNodeLocation(descendantId);
+    let cursor = descendantLocation?.parentNode ?? null;
+    while (cursor) {
+      if (cursor.id === ancestorId) {
+        return true;
+      }
+      const parentLocation = findNodeLocation(cursor.id);
+      cursor = parentLocation?.parentNode ?? null;
+    }
+    return false;
+  };
+
+  const collectSelectedEntries = () => {
+    const selected = [];
+    walkNodes(state.roots, (node) => {
+      node.entries.forEach((entry, index) => {
+        if (entry.selected === true) {
+          selected.push({ node, index, entry });
+        }
+      });
+    });
+    return selected;
+  };
+
+  const collectSelectedNodes = () => {
+    const selected = [];
+    walkNodes(state.roots, (node, trail) => {
+      if (node.selected === true) {
+        const location = findNodeLocation(node.id);
+        if (location) {
+          selected.push({
+            node,
+            trail,
+            ...location
+          });
+        }
+      }
+    });
+    return selected;
+  };
+
+  const clearAllSelections = () => {
+    walkNodes(state.roots, (node) => {
+      node.selected = false;
+      node.entries.forEach((entry) => {
+        entry.selected = false;
+      });
+    });
+  };
+
+  const getPreferredPasteTargetNode = () => {
+    if (state.focusedNodeId) {
+      const focused = findNodeLocation(state.focusedNodeId);
+      if (focused) {
+        return focused.node;
+      }
+    }
+
+    const selectedNodes = collectSelectedNodes();
+    if (selectedNodes.length > 0) {
+      return selectedNodes[0].node;
+    }
+
+    const selectedEntries = collectSelectedEntries();
+    if (selectedEntries.length > 0) {
+      return selectedEntries[0].node;
+    }
+
+    return state.roots[0] ?? null;
+  };
+
+  const copyCurrentSelection = (cut = false) => {
+    const selectedNodes = collectSelectedNodes();
+    if (selectedNodes.length > 0) {
+      const items = selectedNodes.map(({ node }) => createDeepNodeClone(node));
+      state.clipboard = { type: "nodes", items };
+      if (cut) {
+        selectedNodes
+          .sort((left, right) => {
+            if (left.trail.length !== right.trail.length) {
+              return right.trail.length - left.trail.length;
+            }
+            return right.index - left.index;
+          })
+          .forEach(({ parentChildren, index }) => {
+            parentChildren.splice(index, 1);
+          });
+        clearAllSelections();
+      }
+      setStatus(`${items.length} 個の箱を${cut ? "切り取り" : "コピー"}しました。`, "info");
+      renderApp();
+      return true;
+    }
+
+    const selectedEntries = collectSelectedEntries();
+    if (selectedEntries.length > 0) {
+      const items = selectedEntries.map(({ entry }) => createDeepEntryClone(entry));
+      state.clipboard = { type: "entries", items };
+      if (cut) {
+        const groups = new Map();
+        selectedEntries.forEach(({ node, index }) => {
+          const key = node.id;
+          if (!groups.has(key)) {
+            groups.set(key, { node, indexes: [] });
+          }
+          groups.get(key).indexes.push(index);
+        });
+        groups.forEach(({ node, indexes }) => {
+          indexes.sort((a, b) => b - a).forEach((index) => {
+            node.entries.splice(index, 1);
+          });
+        });
+        clearAllSelections();
+      }
+      setStatus(`${items.length} 件の項目を${cut ? "切り取り" : "コピー"}しました。`, "info");
+      renderApp();
+      return true;
+    }
+
+    setStatus("コピーまたは切り取り対象が選択されていません。", "error");
+    return false;
+  };
+
+  const pasteClipboardIntoNode = (targetNodeId = null) => {
+    const clipboard = state.clipboard;
+    if (!clipboard || !Array.isArray(clipboard.items) || clipboard.items.length === 0) {
+      setStatus("貼り付ける内容がありません。", "error");
+      return false;
+    }
+
+    const targetNode = targetNodeId
+      ? findNodeLocation(targetNodeId)?.node
+      : getPreferredPasteTargetNode();
+    if (!targetNode) {
+      setStatus("貼り付け先の箱が見つかりません。", "error");
+      return false;
+    }
+
+    if (clipboard.type === "entries") {
+      targetNode.entries.push(...clipboard.items.map((entry) => createDeepEntryClone(entry)));
+      setStatus(`${clipboard.items.length} 件の項目を貼り付けました。`, "success");
+      renderApp();
+      return true;
+    }
+
+    if (clipboard.type === "nodes") {
+      targetNode.children.push(...clipboard.items.map((node) => createDeepNodeClone(node)));
+      setStatus(`${clipboard.items.length} 個の箱を貼り付けました。`, "success");
+      renderApp();
+      return true;
+    }
+
+    return false;
+  };
+
+  const deleteCurrentSelection = () => {
+    const selectedNodes = collectSelectedNodes();
+    if (selectedNodes.length > 0) {
+      selectedNodes
+        .sort((left, right) => {
+          if (left.trail.length !== right.trail.length) {
+            return right.trail.length - left.trail.length;
+          }
+          return right.index - left.index;
+        })
+        .forEach(({ parentChildren, index }) => {
+          parentChildren.splice(index, 1);
+        });
+      clearAllSelections();
+      renderApp();
+      setStatus("選択した箱を削除しました。", "info");
+      return true;
+    }
+
+    const selectedEntries = collectSelectedEntries();
+    if (selectedEntries.length > 0) {
+      const grouped = new Map();
+      selectedEntries.forEach(({ node, index }) => {
+        if (!grouped.has(node.id)) {
+          grouped.set(node.id, { node, indexes: [] });
+        }
+        grouped.get(node.id).indexes.push(index);
+      });
+      grouped.forEach(({ node, indexes }) => {
+        indexes.sort((a, b) => b - a).forEach((index) => {
+          node.entries.splice(index, 1);
+        });
+      });
+      clearAllSelections();
+      renderApp();
+      setStatus("選択した項目を削除しました。", "info");
+      return true;
+    }
+
+    return false;
+  };
+
+  const moveEntryBetweenNodes = (entryId, sourceNodeId, targetNodeId, targetIndex = null) => {
+    const source = findNodeLocation(sourceNodeId)?.node;
+    const target = findNodeLocation(targetNodeId)?.node;
+    if (!source || !target) {
+      return false;
+    }
+
+    const index = source.entries.findIndex((entry) => entry.id === entryId);
+    if (index < 0) {
+      return false;
+    }
+
+    const [entry] = source.entries.splice(index, 1);
+    let normalizedIndex = targetIndex === null || targetIndex === undefined
+      ? target.entries.length
+      : Math.max(0, Math.min(targetIndex, target.entries.length));
+    if (source.id === target.id && index < normalizedIndex) {
+      normalizedIndex -= 1;
+    }
+    target.entries.splice(normalizedIndex, 0, entry);
+    return true;
+  };
+
+  const moveNodeBetweenParents = (nodeId, targetParentChildren, targetIndex) => {
+    const source = findNodeLocation(nodeId);
+    if (!source || !Array.isArray(targetParentChildren)) {
+      return false;
+    }
+
+    const [node] = source.parentChildren.splice(source.index, 1);
+    let normalizedIndex = Math.max(0, Math.min(targetIndex, targetParentChildren.length));
+    if (source.parentChildren === targetParentChildren && source.index < normalizedIndex) {
+      normalizedIndex -= 1;
+    }
+    targetParentChildren.splice(normalizedIndex, 0, node);
     return true;
   };
 
@@ -1363,6 +1857,31 @@
     return {};
   };
 
+  const normalizeMatcherDraftList = (value) => {
+    if (Array.isArray(value)) {
+      const drafts = value.map((item) => normalizeMatcherDraft(item));
+      return drafts.length > 0 ? drafts : [{}];
+    }
+
+    if (value) {
+      return [normalizeMatcherDraft(value)];
+    }
+
+    return [{}];
+  };
+
+  const getConditionDraftList = (entry, slot) => {
+    if (!entry._conditionDrafts || typeof entry._conditionDrafts !== "object") {
+      entry._conditionDrafts = {};
+    }
+
+    if (!Array.isArray(entry._conditionDrafts[slot])) {
+      entry._conditionDrafts[slot] = normalizeMatcherDraftList(entry.conditions?.[slot]);
+    }
+
+    return entry._conditionDrafts[slot];
+  };
+
   const cleanupMatcherDraft = (draft) => {
     const normalized = {};
     const keys = ["surface", "basic", "pos", "pos1", "pos2", "pos3", "ctype", "cform", "reading", "pronunciation", "word_type"];
@@ -1375,10 +1894,33 @@
     return Object.keys(normalized).length > 0 ? normalized : null;
   };
 
-  const assignConditionSlot = (entry, slot, matcher) => {
+  const cleanupMatcherDraftList = (draftList) => {
+    const cleaned = (Array.isArray(draftList) ? draftList : [])
+      .map((draft) => cleanupMatcherDraft(draft))
+      .filter(Boolean);
+
+    if (cleaned.length === 0) {
+      return null;
+    }
+
+    return cleaned.length === 1 ? cleaned[0] : cleaned;
+  };
+
+  const assignConditionSlot = (entry, slot, matcherOrMatchers) => {
+    if (!entry._conditionDrafts || typeof entry._conditionDrafts !== "object") {
+      entry._conditionDrafts = {};
+    }
+    if (Array.isArray(matcherOrMatchers)) {
+      entry._conditionDrafts[slot] = matcherOrMatchers;
+    }
+
     const nextConditions = { ...(entry.conditions ?? {}) };
-    if (matcher) {
-      nextConditions[slot] = matcher;
+    const normalized = Array.isArray(matcherOrMatchers)
+      ? cleanupMatcherDraftList(matcherOrMatchers)
+      : matcherOrMatchers;
+
+    if (normalized) {
+      nextConditions[slot] = normalized;
     } else {
       delete nextConditions[slot];
     }
@@ -1558,6 +2100,23 @@
       </tr>
     `;
     const tbody = document.createElement("tbody");
+    tbody.addEventListener("dragover", (event) => {
+      if (state.dragPayload?.type === "entry") {
+        event.preventDefault();
+      }
+    });
+    tbody.addEventListener("drop", (event) => {
+      if (state.dragPayload?.type !== "entry") {
+        return;
+      }
+      event.preventDefault();
+      const payload = state.dragPayload;
+      if (moveEntryBetweenNodes(payload.entryId, payload.sourceNodeId, node.id)) {
+        setFocusedNode(node.id);
+        renderApp();
+      }
+      state.dragPayload = null;
+    });
 
     sequence.forEach((matcher, matcherIndex) => {
       const row = document.createElement("tr");
@@ -1671,6 +2230,94 @@
     grid.appendChild(createMatcherField("活用型", draft.ctype ?? "", "ctype-values", COMMON_CTYPE_VALUES, (value) => updateField("ctype", value)));
 
     wrap.append(head, grid);
+    return wrap;
+  };
+
+  const renderConditionGroupEditor = (entry, slot, labelText) => {
+    const wrap = document.createElement("div");
+    wrap.className = "panel-block";
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = labelText;
+    const hint = document.createElement("span");
+    hint.className = "count";
+    hint.textContent = "同一行は AND / 複数行は OR";
+    head.append(title, hint);
+
+    const drafts = getConditionDraftList(entry, slot);
+    const listWrap = document.createElement("div");
+    listWrap.style.display = "grid";
+    listWrap.style.gap = "6px";
+
+    const syncDrafts = () => {
+      assignConditionSlot(entry, slot, drafts);
+      renderDiagnostics();
+    };
+
+    const appendMatcherGrid = (container, draft) => {
+      const grid = document.createElement("div");
+      grid.style.display = "grid";
+      grid.style.gap = "6px";
+      grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(92px, 1fr))";
+
+      const updateField = (key, value) => {
+        draft[key] = value;
+        syncDrafts();
+      };
+
+      grid.appendChild(createMatcherField("表層", draft.surface ?? "", null, null, (value) => updateField("surface", value)));
+      grid.appendChild(createMatcherField("原形", draft.basic ?? "", null, null, (value) => updateField("basic", value)));
+      grid.appendChild(createMatcherField("品詞", draft.pos ?? "", "pos-values", COMMON_POS_VALUES, (value) => updateField("pos", value)));
+      grid.appendChild(createMatcherField("品詞1", draft.pos1 ?? "", "pos1-values", COMMON_POS1_VALUES, (value) => updateField("pos1", value)));
+      grid.appendChild(createMatcherField("活用形", draft.cform ?? "", "cform-values", COMMON_CFORM_VALUES, (value) => updateField("cform", value)));
+      grid.appendChild(createMatcherField("活用型", draft.ctype ?? "", "ctype-values", COMMON_CTYPE_VALUES, (value) => updateField("ctype", value)));
+      container.appendChild(grid);
+    };
+
+    drafts.forEach((draft, matcherIndex) => {
+      const matcherWrap = document.createElement("div");
+      matcherWrap.className = "panel-block";
+
+      const matcherHead = document.createElement("div");
+      matcherHead.className = "panel-head";
+      const matcherTitle = document.createElement("h4");
+      matcherTitle.textContent = `条件 ${matcherIndex + 1}`;
+      const matcherActions = document.createElement("div");
+      matcherActions.className = "panel-actions";
+      matcherActions.appendChild(createButton("↑", "ghost", () => {
+        if (moveItem(drafts, matcherIndex, -1)) {
+          syncDrafts();
+          renderApp();
+        }
+      }));
+      matcherActions.appendChild(createButton("↓", "ghost", () => {
+        if (moveItem(drafts, matcherIndex, 1)) {
+          syncDrafts();
+          renderApp();
+        }
+      }));
+      matcherActions.appendChild(createButton("削除", "ghost", () => {
+        drafts.splice(matcherIndex, 1);
+        syncDrafts();
+        renderApp();
+      }));
+      matcherHead.append(matcherTitle, matcherActions);
+      matcherWrap.appendChild(matcherHead);
+      appendMatcherGrid(matcherWrap, draft);
+      listWrap.appendChild(matcherWrap);
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(createButton("OR 条件追加", "secondary", () => {
+      drafts.push({});
+      assignConditionSlot(entry, slot, drafts);
+      renderApp();
+    }));
+
+    wrap.append(head, listWrap, actions);
     return wrap;
   };
 
@@ -1868,6 +2515,7 @@
     thead.innerHTML = `
       <tr>
         <th class="check-col"></th>
+        <th class="check-col"></th>
         <th class="check-col">有効</th>
         <th class="check-col">正規</th>
         <th class="check-col">原形一致</th>
@@ -1888,6 +2536,45 @@
       const row = document.createElement("tr");
       row.id = `entry-${entry.id}`;
       row.dataset.searchValue = `${entry.regex ? "regex" : "plain"} ${entry.from} ${entry.to}`;
+      row.addEventListener("click", () => setFocusedNode(node.id));
+      row.addEventListener("dragover", (event) => {
+        if (state.dragPayload?.type === "entry") {
+          event.preventDefault();
+        }
+      });
+      row.addEventListener("drop", (event) => {
+        if (state.dragPayload?.type !== "entry") {
+          return;
+        }
+        event.preventDefault();
+        const payload = state.dragPayload;
+        if (moveEntryBetweenNodes(payload.entryId, payload.sourceNodeId, node.id, entryIndex)) {
+          setFocusedNode(node.id);
+          renderApp();
+        }
+        state.dragPayload = null;
+      });
+
+      const dragTd = document.createElement("td");
+      dragTd.className = "check-col";
+      const dragHandle = createButton("⋮⋮", "ghost", () => {});
+      dragHandle.type = "button";
+      dragHandle.title = "項目を移動";
+      dragHandle.draggable = true;
+      dragHandle.addEventListener("dragstart", (event) => {
+        state.dragPayload = {
+          type: "entry",
+          entryId: entry.id,
+          sourceNodeId: node.id
+        };
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", entry.id);
+        setFocusedNode(node.id);
+      });
+      dragHandle.addEventListener("dragend", () => {
+        state.dragPayload = null;
+      });
+      dragTd.appendChild(dragHandle);
 
       const checkTd = document.createElement("td");
       checkTd.className = "check-col";
@@ -1943,6 +2630,7 @@
       const fromInput = createCompactInput(entry.from, { min: 2, max: 24 });
       fromInput.addEventListener("input", () => {
         entry.from = fromInput.value;
+        entry.from_options = normalizeFromOptions(fromInput.value);
         row.dataset.searchValue = `${entry.regex ? "regex" : "plain"} ${entry.from} ${entry.to}`;
         renderDiagnostics();
       });
@@ -1988,13 +2676,13 @@
         renderApp();
       }));
 
-      row.append(checkTd, enabledTd, regexTd, basicTd, fromTd, toTd, priorityTd, actionTd);
+      row.append(dragTd, checkTd, enabledTd, regexTd, basicTd, fromTd, toTd, priorityTd, actionTd);
       tbody.appendChild(row);
 
       if (effectiveKind === "token-rules" && entry.metaOpen) {
         const detailRow = document.createElement("tr");
         const detailCell = document.createElement("td");
-        detailCell.colSpan = 8;
+        detailCell.colSpan = 9;
 
         const detailWrap = document.createElement("div");
         detailWrap.className = "panel-block";
@@ -2019,9 +2707,9 @@
         detailTitle.textContent = "条件";
         detailHint.textContent = "前後条件・現条件・sequence を編集";
         detailGrid.replaceChildren(
-          renderConditionEditorV2(entry, "prev", "前"),
-          renderConditionEditorV2(entry, "current", "現"),
-          renderConditionEditorV2(entry, "next", "後"),
+          renderConditionGroupEditor(entry, "prev", "前"),
+          renderConditionGroupEditor(entry, "current", "現"),
+          renderConditionGroupEditor(entry, "next", "後"),
           renderSequenceEditorV2(entry)
         );
         detailWrap.append(detailHead, detailGrid);
@@ -2047,15 +2735,52 @@
     const card = document.createElement("section");
     card.className = isRoot ? "bundle-card" : "group-card";
     card.id = `node-${node.id}`;
+    card.dataset.focused = state.focusedNodeId === node.id ? "true" : "false";
     const effectiveKind = isRoot
       ? (node.kind ?? "dictionary-rules")
       : (inheritedKind ?? node.kind ?? "dictionary-rules");
 
     const header = document.createElement("div");
     header.className = isRoot ? "bundle-head" : "group-head";
+    header.addEventListener("click", () => setFocusedNode(node.id));
+    header.addEventListener("dragover", (event) => {
+      if (state.dragPayload?.type === "node") {
+        event.preventDefault();
+      }
+    });
+    header.addEventListener("drop", (event) => {
+      if (state.dragPayload?.type !== "node") {
+        return;
+      }
+      event.preventDefault();
+      const payload = state.dragPayload;
+      if (payload.nodeId === node.id || isNodeAncestorOf(payload.nodeId, node.id)) {
+        state.dragPayload = null;
+        return;
+      }
+      if (moveNodeBetweenParents(payload.nodeId, parentChildren, index)) {
+        setFocusedNode(node.id);
+        renderApp();
+      }
+      state.dragPayload = null;
+    });
 
     const titleWrap = document.createElement("div");
     titleWrap.className = isRoot ? "bundle-title" : "group-title";
+    const dragHandle = createButton("⋮⋮", "ghost", () => {});
+    dragHandle.type = "button";
+    dragHandle.title = "箱を移動";
+    dragHandle.draggable = true;
+    dragHandle.addEventListener("dragstart", (event) => {
+      state.dragPayload = { type: "node", nodeId: node.id };
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", node.id);
+      setFocusedNode(node.id);
+    });
+    dragHandle.addEventListener("dragend", () => {
+      state.dragPayload = null;
+    });
+    titleWrap.appendChild(dragHandle);
     const collapseToggle = createButton(
       isNodeCollapsed(node.id) ? "▸" : "▾",
       "ghost",
@@ -2082,6 +2807,18 @@
     const actions = document.createElement("div");
     actions.className = isRoot ? "bundle-actions" : "group-actions";
 
+    const selectedLabel = document.createElement("label");
+    selectedLabel.className = "toggle";
+    const selectedCheckbox = document.createElement("input");
+    selectedCheckbox.type = "checkbox";
+    selectedCheckbox.checked = node.selected === true;
+    selectedCheckbox.addEventListener("change", () => {
+      node.selected = selectedCheckbox.checked;
+      renderDiagnostics();
+    });
+    selectedLabel.append(selectedCheckbox, document.createTextNode("選択"));
+    actions.appendChild(selectedLabel);
+
     const enabledLabel = document.createElement("label");
     enabledLabel.className = "toggle";
     const enabledCheckbox = document.createElement("input");
@@ -2097,6 +2834,15 @@
     actions.appendChild(createButton(node.bulkImportOpen === true ? "一括登録を閉じる" : "一括登録", "secondary", () => {
       node.bulkImportOpen = node.bulkImportOpen !== true;
       renderApp();
+    }));
+    actions.appendChild(createButton("選択コピー", "ghost", () => {
+      copyCurrentSelection(false);
+    }));
+    actions.appendChild(createButton("選択切取り", "ghost", () => {
+      copyCurrentSelection(true);
+    }));
+    actions.appendChild(createButton("ここへ貼付け", "secondary", () => {
+      pasteClipboardIntoNode(node.id);
     }));
 
     if (isRoot) {
@@ -2139,6 +2885,7 @@
       node.entries.push({
         id: createEntryId(),
         from: "",
+        from_options: [],
         to: "",
         priority: 90,
         enabled: true,
@@ -2153,8 +2900,10 @@
       renderApp();
     }));
     actions.appendChild(createButton("選択削除", "danger", () => {
-      node.entries = deleteSelectedRows(node.entries);
-      renderApp();
+      if (!deleteCurrentSelection()) {
+        node.entries = deleteSelectedRows(node.entries);
+        renderApp();
+      }
     }));
 
     if (isRoot) {
@@ -2555,8 +3304,12 @@
 
   const renderTokenizerResult = (tokens) => {
     tokenizerResult.textContent = "";
-    tokens.forEach((token) => {
+    tokens.forEach((token, index) => {
       const row = document.createElement("tr");
+      const indexTd = document.createElement("td");
+      indexTd.textContent = `${index + 1}`;
+      row.appendChild(indexTd);
+
       const cells = [
         token.surface_form ?? "",
         token.basic_form ?? "",
@@ -2571,6 +3324,61 @@
         td.textContent = value;
         row.appendChild(td);
       }
+
+      const actionTd = document.createElement("td");
+      actionTd.className = "action-col";
+      actionTd.appendChild(createButton("辞書追加", "secondary", () => {
+        const targetNode = getPreferredPasteTargetNode() ?? state.roots[0] ?? null;
+        if (!targetNode) {
+          setStatus("追加先の箱がありません。先に Bundle を作成してください。", "error");
+          return;
+        }
+
+        const currentCondition = {};
+        const conditionPairs = [
+          ["surface", token.surface_form],
+          ["basic", token.basic_form],
+          ["pos", token.pos],
+          ["pos1", token.pos_detail_1],
+          ["pos2", token.pos_detail_2],
+          ["pos3", token.pos_detail_3],
+          ["ctype", token.conjugated_type],
+          ["cform", token.conjugated_form],
+          ["reading", token.reading]
+        ];
+        for (const [key, value] of conditionPairs) {
+          const normalizedValue = `${value ?? ""}`.trim();
+          if (normalizedValue) {
+            currentCondition[key] = normalizedValue;
+          }
+        }
+
+        const entry = normalizeEntryFromObject({
+          from: `${token.surface_form ?? ""}`.trim(),
+          to: `${token.surface_form ?? ""}`.trim(),
+          priority: 90,
+          enabled: true,
+          regex: false,
+          match_target: token.basic_form && token.basic_form !== token.surface_form ? "basic_form" : null,
+          conditions: Object.keys(currentCondition).length > 0
+            ? { current: [currentCondition] }
+            : null
+        }, 90);
+
+        if (!entry || !entry.from) {
+          setStatus("解析結果から項目を作成できませんでした。", "error");
+          return;
+        }
+
+        entry.metaOpen = true;
+        targetNode.entries.push(entry);
+        setFocusedNode(targetNode.id);
+        state.activeTab = "bundles";
+        renderApp();
+        setStatus(`「${entry.from}」を ${targetNode.label || "Group"} に追加しました。`, "success");
+      }));
+      row.appendChild(actionTd);
+
       tokenizerResult.appendChild(row);
     });
   };
@@ -2589,21 +3397,25 @@
   const renderTabState = () => {
     const bundlesActive = state.activeTab === "bundles";
     const diagnosticsActive = state.activeTab === "diagnostics";
+    const payloadActive = state.activeTab === "payload";
     const tokenizerActive = state.activeTab === "tokenizer";
     const hotkeysActive = state.activeTab === "hotkeys";
     const sitesActive = state.activeTab === "sites";
     panelBundles.hidden = !bundlesActive;
     panelDiagnostics.hidden = !diagnosticsActive;
+    panelPayload.hidden = !payloadActive;
     panelTokenizer.hidden = !tokenizerActive;
     panelHotkeys.hidden = !hotkeysActive;
     panelSites.hidden = !sitesActive;
     tabBundlesButton.setAttribute("aria-selected", bundlesActive ? "true" : "false");
     tabDiagnosticsButton.setAttribute("aria-selected", diagnosticsActive ? "true" : "false");
+    tabPayloadButton.setAttribute("aria-selected", payloadActive ? "true" : "false");
     tabTokenizerButton.setAttribute("aria-selected", tokenizerActive ? "true" : "false");
     tabHotkeysButton.setAttribute("aria-selected", hotkeysActive ? "true" : "false");
     tabSitesButton.setAttribute("aria-selected", sitesActive ? "true" : "false");
     tabBundlesButton.className = bundlesActive ? "tab-button secondary" : "tab-button ghost";
     tabDiagnosticsButton.className = diagnosticsActive ? "tab-button secondary" : "tab-button ghost";
+    tabPayloadButton.className = payloadActive ? "tab-button secondary" : "tab-button ghost";
     tabTokenizerButton.className = tokenizerActive ? "tab-button secondary" : "tab-button ghost";
     tabHotkeysButton.className = hotkeysActive ? "tab-button secondary" : "tab-button ghost";
     tabSitesButton.className = sitesActive ? "tab-button secondary" : "tab-button ghost";
@@ -2719,10 +3531,350 @@
     sitesRoot.appendChild(addRow);
   };
 
+  const getPayloadInspectorTargets = () => {
+    return [...new Set(
+      `${state.payloadInspectorQuery ?? ""}`
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )];
+  };
+
+  const countNodeEntriesDeep = (node) => {
+    const ownEntries = Array.isArray(node?.entries) ? node.entries.length : 0;
+    const childEntries = Array.isArray(node?.children)
+      ? node.children.reduce((total, child) => total + countNodeEntriesDeep(child), 0)
+      : 0;
+    return ownEntries + childEntries;
+  };
+
+  const collectMatchingEntriesFromRoots = (roots, targets) => {
+    const targetSet = new Set(targets);
+    const matches = [];
+    if (targetSet.size === 0) {
+      return matches;
+    }
+
+    walkNodes(roots, (node, trail) => {
+      node.entries.forEach((entry) => {
+        if (!targetSet.has(`${entry?.from ?? ""}`.trim())) {
+          return;
+        }
+
+        matches.push({
+          rootId: trail[0]?.id ?? null,
+          rootLabel: trail[0]?.label ?? null,
+          nodeId: node.id,
+          pathText: getNodePathText(trail),
+          kind: node.kind,
+          entry: (() => {
+            const cloned = cloneValue(entry);
+            if (cloned && typeof cloned === "object") {
+              delete cloned.raw;
+            }
+            return cloned;
+          })()
+        });
+      });
+    });
+
+    return matches;
+  };
+
+  const refreshStoredPayloadInspector = async () => {
+    const storedPayload = await storageGet(STORAGE_KEY);
+    let normalizedRoots = [];
+    if (storedPayload) {
+      try {
+        normalizedRoots = normalizeImportedRoots(storedPayload);
+      } catch (error) {
+        normalizedRoots = [];
+      }
+    }
+    state.payloadInspector.storedPayload = storedPayload ?? null;
+    state.payloadInspector.storedNormalizedRoots = normalizedRoots;
+  };
+
+  const refreshRuntimePayloadInspector = async () => {
+    const activeTab = await getActiveTab();
+    if (!activeTab?.id) {
+      throw new Error("active tab が見つかりません。");
+    }
+
+    const response = await sendMessageToTab(activeTab.id, {
+      type: MESSAGE_TYPES.GET_RUNTIME_DEBUG_SNAPSHOT,
+      targets: getPayloadInspectorTargets()
+    });
+
+    if (!response?.ok || !response?.snapshot) {
+      throw new Error("active tab から runtime snapshot を取得できませんでした。");
+    }
+
+    state.payloadInspector.runtimeSnapshot = {
+      tabId: activeTab.id,
+      url: activeTab.url ?? "",
+      title: activeTab.title ?? "",
+      ...response.snapshot
+    };
+  };
+
+  const createPayloadJsonDetails = (label, value) => {
+    const details = document.createElement("details");
+    details.className = "payload-details";
+    const summary = document.createElement("summary");
+    summary.textContent = label;
+    details.appendChild(summary);
+
+    const pre = document.createElement("pre");
+    pre.className = "json-block";
+    pre.textContent = JSON.stringify(value, null, 2);
+    details.appendChild(pre);
+    return details;
+  };
+
+  const renderPayloadInspector = () => {
+    if (!payloadRoot) {
+      return;
+    }
+
+    payloadRoot.textContent = "";
+    const targets = getPayloadInspectorTargets();
+
+    const controlsCard = document.createElement("section");
+    controlsCard.className = "diagnostics-card payload-card";
+    const controlsHead = document.createElement("div");
+    controlsHead.className = "panel-head";
+    const controlsTitleWrap = document.createElement("div");
+    const controlsTitle = document.createElement("h2");
+    controlsTitle.textContent = "保存 payload / active runtime";
+    const controlsSummary = document.createElement("p");
+    controlsSummary.className = "diag-summary";
+    controlsSummary.textContent = "storage に入っている内容と、現在タブで実際に有効な stage/rule を同じ画面で比較します。";
+    controlsTitleWrap.append(controlsTitle, controlsSummary);
+    const controlsActions = document.createElement("div");
+    controlsActions.className = "panel-actions";
+    controlsActions.appendChild(createButton("保存データを再読込", "secondary", async () => {
+      try {
+        await refreshStoredPayloadInspector();
+        renderPayloadInspector();
+        setStatus("保存済み payload を再読込しました。", "success");
+      } catch (error) {
+        console.error(error);
+        setStatus(`保存済み payload の読込に失敗しました: ${error.message}`, "error");
+      }
+    }));
+    controlsActions.appendChild(createButton("現在タブの runtime を読込", "secondary", async () => {
+      try {
+        await refreshRuntimePayloadInspector();
+        renderPayloadInspector();
+        setStatus("現在タブの runtime snapshot を取得しました。", "success");
+      } catch (error) {
+        console.error(error);
+        setStatus(`runtime snapshot の取得に失敗しました: ${error.message}`, "error");
+      }
+    }));
+    controlsHead.append(controlsTitleWrap, controlsActions);
+    controlsCard.appendChild(controlsHead);
+
+    const controlsBody = document.createElement("div");
+    controlsBody.className = "bundle-body";
+    const queryLabel = document.createElement("label");
+    queryLabel.className = "toggle";
+    queryLabel.textContent = "確認する from";
+    const queryInput = document.createElement("input");
+    queryInput.type = "text";
+    queryInput.className = "payload-query";
+    queryInput.value = state.payloadInspectorQuery;
+    queryInput.placeholder = "ない, よい, いま";
+    queryInput.addEventListener("change", () => {
+      state.payloadInspectorQuery = queryInput.value;
+      renderPayloadInspector();
+    });
+    controlsBody.append(queryLabel, queryInput);
+    controlsCard.appendChild(controlsBody);
+    payloadRoot.appendChild(controlsCard);
+
+    const storedCard = document.createElement("section");
+    storedCard.className = "diagnostics-card payload-card";
+    const storedTitle = document.createElement("h2");
+    storedTitle.textContent = "保存済み payload";
+    storedCard.appendChild(storedTitle);
+
+    const storedPayload = state.payloadInspector.storedPayload;
+    const storedRoots = state.payloadInspector.storedNormalizedRoots ?? [];
+    if (!storedPayload) {
+      const empty = document.createElement("p");
+      empty.className = "diag-summary";
+      empty.textContent = "保存済み payload はありません。";
+      storedCard.appendChild(empty);
+    } else {
+      const baseRootIds = new Set(state.baseRoots.map((root) => root.id));
+      const unknownRoots = storedRoots.filter((root) => {
+        return root.id !== state.popupBundleId && !baseRootIds.has(root.id);
+      });
+      const meta = document.createElement("div");
+      meta.className = "payload-meta";
+      [
+        `schema ${storedPayload.schema_version ?? "unknown"}`,
+        `roots ${storedRoots.length}`,
+        `unknown ${unknownRoots.length}`,
+        `popup ${extractPopupBundleId(storedPayload)}`
+      ].forEach((text) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = text;
+        meta.appendChild(chip);
+      });
+      storedCard.appendChild(meta);
+
+      const storedMatches = collectMatchingEntriesFromRoots(storedRoots, targets);
+      const matchSummary = document.createElement("p");
+      matchSummary.className = "diag-summary";
+      matchSummary.textContent = targets.length > 0
+        ? `target from に一致した保存 rule は ${storedMatches.length} 件です。`
+        : "target from を入力すると該当 rule を抽出します。";
+      storedCard.appendChild(matchSummary);
+
+      if (unknownRoots.length > 0) {
+        const unknownHeading = document.createElement("h3");
+        unknownHeading.textContent = "manifest 外 root";
+        storedCard.appendChild(unknownHeading);
+        const unknownList = document.createElement("div");
+        unknownList.className = "payload-list";
+        unknownRoots.forEach((root) => {
+          const item = document.createElement("div");
+          item.className = "payload-item";
+          const heading = document.createElement("h4");
+          heading.textContent = root.label || root.id;
+          const summary = document.createElement("p");
+          summary.className = "diag-summary";
+          summary.textContent = `id=${root.id} / kind=${root.kind} / entries=${countNodeEntriesDeep(root)}`;
+          item.append(heading, summary);
+          unknownList.appendChild(item);
+        });
+        storedCard.appendChild(unknownList);
+      }
+
+      const storedMatchList = document.createElement("div");
+      storedMatchList.className = "payload-list";
+      if (storedMatches.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "diag-summary";
+        empty.textContent = "保存 payload 内に target from と一致する rule は見つかりませんでした。";
+        storedMatchList.appendChild(empty);
+      } else {
+        storedMatches.forEach((match) => {
+          const item = document.createElement("div");
+          item.className = "payload-item";
+          const heading = document.createElement("h4");
+          heading.textContent = `${match.entry.from} -> ${match.entry.to}`;
+          const summary = document.createElement("p");
+          summary.className = "diag-summary";
+          summary.textContent = `${match.pathText} / kind=${match.kind}`;
+          item.append(heading, summary, createPayloadJsonDetails("rule object", match.entry));
+          storedMatchList.appendChild(item);
+        });
+      }
+      storedCard.appendChild(storedMatchList);
+      storedCard.appendChild(createPayloadJsonDetails("raw storage payload", storedPayload));
+    }
+    payloadRoot.appendChild(storedCard);
+
+    const runtimeCard = document.createElement("section");
+    runtimeCard.className = "diagnostics-card payload-card";
+    const runtimeTitle = document.createElement("h2");
+    runtimeTitle.textContent = "現在タブの runtime";
+    runtimeCard.appendChild(runtimeTitle);
+
+    const runtimeSnapshot = state.payloadInspector.runtimeSnapshot;
+    if (!runtimeSnapshot) {
+      const empty = document.createElement("p");
+      empty.className = "diag-summary";
+      empty.textContent = "まだ runtime snapshot を取得していません。対象タブを開いた状態で「現在タブの runtime を読込」を押してください。";
+      runtimeCard.appendChild(empty);
+    } else {
+      const meta = document.createElement("div");
+      meta.className = "payload-meta";
+      [
+        `tab ${runtimeSnapshot.tabId}`,
+        `stages ${runtimeSnapshot.stages?.length ?? 0}`,
+        `virtual ${runtimeSnapshot.virtualBundleIds?.length ?? 0}`,
+        `generated ${runtimeSnapshot.generatedAt ?? "unknown"}`
+      ].forEach((text) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = text;
+        meta.appendChild(chip);
+      });
+      runtimeCard.appendChild(meta);
+
+      const runtimeSummary = document.createElement("p");
+      runtimeSummary.className = "diag-summary";
+      runtimeSummary.textContent = `${runtimeSnapshot.title || "(untitled)"} / ${runtimeSnapshot.url || ""}`;
+      runtimeCard.appendChild(runtimeSummary);
+
+      if (Array.isArray(runtimeSnapshot.virtualBundleIds) && runtimeSnapshot.virtualBundleIds.length > 0) {
+        const virtualHeading = document.createElement("h3");
+        virtualHeading.textContent = "manifest 外 active bundle";
+        runtimeCard.appendChild(virtualHeading);
+        const virtualList = document.createElement("div");
+        virtualList.className = "payload-list";
+        runtimeSnapshot.virtualBundleIds.forEach((bundleId) => {
+          const bundle = Array.isArray(runtimeSnapshot.loadedBundles)
+            ? runtimeSnapshot.loadedBundles.find((candidate) => candidate.id === bundleId)
+            : null;
+          const item = document.createElement("div");
+          item.className = "payload-item";
+          const heading = document.createElement("h4");
+          heading.textContent = bundle?.label || bundleId;
+          const summary = document.createElement("p");
+          summary.className = "diag-summary";
+          summary.textContent = `id=${bundleId} / kind=${bundle?.kind ?? "unknown"} / order=${bundle?.order ?? "?"}`;
+          item.append(heading, summary);
+          virtualList.appendChild(item);
+        });
+        runtimeCard.appendChild(virtualList);
+      }
+
+      const runtimeMatches = Array.isArray(runtimeSnapshot.matchingRules) ? runtimeSnapshot.matchingRules : [];
+      const runtimeMatchSummary = document.createElement("p");
+      runtimeMatchSummary.className = "diag-summary";
+      runtimeMatchSummary.textContent = targets.length > 0
+        ? `target from に一致した active rule は ${runtimeMatches.length} 件です。`
+        : "target from を入力すると active rule を抽出します。";
+      runtimeCard.appendChild(runtimeMatchSummary);
+
+      const runtimeMatchList = document.createElement("div");
+      runtimeMatchList.className = "payload-list";
+      if (runtimeMatches.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "diag-summary";
+        empty.textContent = "active runtime 内に target from と一致する rule は見つかりませんでした。";
+        runtimeMatchList.appendChild(empty);
+      } else {
+        runtimeMatches.forEach((match) => {
+          const item = document.createElement("div");
+          item.className = "payload-item";
+          const heading = document.createElement("h4");
+          heading.textContent = `${match.rule?.from ?? ""} -> ${match.rule?.to ?? ""}`;
+          const summary = document.createElement("p");
+          summary.className = "diag-summary";
+          summary.textContent = `${match.stageId} / ${match.stageKind} / order=${match.stageOrder ?? 0}`;
+          item.append(heading, summary, createPayloadJsonDetails("active rule object", match.rule));
+          runtimeMatchList.appendChild(item);
+        });
+      }
+      runtimeCard.appendChild(runtimeMatchList);
+      runtimeCard.appendChild(createPayloadJsonDetails("runtime snapshot", runtimeSnapshot));
+    }
+    payloadRoot.appendChild(runtimeCard);
+  };
+
   const renderApp = () => {
     renderRuntimeSettings();
     renderBundles();
     renderDiagnostics();
+    renderPayloadInspector();
     renderHotkeys();
     renderDisabledSites();
     renderTabState();
@@ -2755,6 +3907,8 @@
     state.runtimeSettings = extractRuntimeSettings(parsed);
     state.disabledSites = extractDisabledSites(parsed);
     state.popupBundleId = extractPopupBundleId(parsed);
+    state.payloadInspector.storedPayload = cloneValue(parsed);
+    state.payloadInspector.storedNormalizedRoots = importedRoots;
     ensurePopupBundleRoot(state.roots);
     renderApp();
     setStatus(`${fileName} を読み込みました。`, "success");
@@ -2800,6 +3954,8 @@
     state.runtimeSettings = extractRuntimeSettings(storedPayload);
     state.disabledSites = extractDisabledSites(storedPayload);
     state.popupBundleId = extractPopupBundleId(storedPayload);
+    state.payloadInspector.storedPayload = storedPayload ?? null;
+    state.payloadInspector.storedNormalizedRoots = storedPayload ? normalizeImportedRoots(storedPayload) : [];
     ensurePopupBundleRoot(state.roots);
     state.commands = await getAllCommands();
     state.dismissedDiagnostics = storedDiagnosticUiState?.dismissedDiagnostics && typeof storedDiagnosticUiState.dismissedDiagnostics === "object"
@@ -2821,6 +3977,18 @@
   tabDiagnosticsButton.addEventListener("click", () => {
     state.activeTab = "diagnostics";
     renderTabState();
+  });
+
+  tabPayloadButton.addEventListener("click", async () => {
+    state.activeTab = "payload";
+    renderTabState();
+    try {
+      await refreshStoredPayloadInspector();
+      renderPayloadInspector();
+    } catch (error) {
+      console.error(error);
+      setStatus(`payload 読込に失敗しました: ${error.message}`, "error");
+    }
   });
 
   tabTokenizerButton.addEventListener("click", async () => {
@@ -2953,6 +4121,50 @@
     } catch (error) {
       console.error(error);
       setStatus(`現在サイトの追加に失敗しました: ${error.message}`, "error");
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (state.activeTab !== "bundles") {
+      return;
+    }
+
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+
+    const key = `${event.key ?? ""}`.toLowerCase();
+    const modifier = event.ctrlKey || event.metaKey;
+
+    if (modifier && key === "c") {
+      event.preventDefault();
+      copyCurrentSelection(false);
+      return;
+    }
+
+    if (modifier && key === "x") {
+      event.preventDefault();
+      copyCurrentSelection(true);
+      return;
+    }
+
+    if (modifier && key === "v") {
+      event.preventDefault();
+      pasteClipboardIntoNode();
+      return;
+    }
+
+    if (key === "delete" || key === "backspace") {
+      if (deleteCurrentSelection()) {
+        event.preventDefault();
+      }
     }
   });
 

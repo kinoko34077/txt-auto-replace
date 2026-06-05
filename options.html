@@ -182,6 +182,69 @@
       gap: 8px;
     }
 
+    .payload-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .payload-card {
+      display: grid;
+      gap: 8px;
+    }
+
+    .payload-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .payload-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .payload-item {
+      border: 1px solid rgba(124, 45, 18, 0.12);
+      border-radius: 12px;
+      background: rgba(255, 248, 236, 0.9);
+      padding: 8px;
+    }
+
+    .payload-item h3,
+    .payload-item h4 {
+      margin: 0 0 4px;
+    }
+
+    .payload-item p,
+    .payload-item pre,
+    .payload-item code {
+      margin: 0;
+    }
+
+    .payload-item pre,
+    .json-block {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .payload-query {
+      width: min(100%, 520px);
+    }
+
+    details.payload-details {
+      border-top: 1px solid rgba(216, 199, 170, 0.7);
+      padding-top: 8px;
+    }
+
+    details.payload-details summary {
+      cursor: pointer;
+      color: var(--muted);
+    }
+
     .simple-row {
       display: flex;
       gap: 8px;
@@ -258,6 +321,7 @@
     <nav class="tabbar" aria-label="設定タブ">
       <button id="tab-bundles" class="tab-button secondary" type="button" aria-selected="true">Bundle編集</button>
       <button id="tab-diagnostics" class="tab-button ghost" type="button" aria-selected="false">診断</button>
+      <button id="tab-payload" class="tab-button ghost" type="button" aria-selected="false">Payload確認</button>
       <button id="tab-tokenizer" class="tab-button ghost" type="button" aria-selected="false">形態素解析</button>
       <button id="tab-hotkeys" class="tab-button ghost" type="button" aria-selected="false">Hotkey</button>
       <button id="tab-sites" class="tab-button ghost" type="button" aria-selected="false">無効サイト</button>
@@ -269,6 +333,10 @@
 
     <section id="panel-diagnostics" class="tab-panel" hidden>
       <div id="diagnostics-root" class="diagnostics-grid" aria-live="polite"></div>
+    </section>
+
+    <section id="panel-payload" class="tab-panel" hidden>
+      <div id="payload-root" class="payload-grid" aria-live="polite"></div>
     </section>
 
     <section id="panel-tokenizer" class="tab-panel" hidden>

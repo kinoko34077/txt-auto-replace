@@ -7,7 +7,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  const splitReplacementCandidates = (value) => {
+  const splitCommaSeparatedValues = (value) => {
     if (Array.isArray(value)) {
       return value
         .map((entry) => `${entry ?? ""}`.trim())
@@ -24,23 +24,73 @@
       .filter(Boolean);
   };
 
+  const splitReplacementCandidates = (value) => splitCommaSeparatedValues(value);
+  const splitMatchCandidates = (value) => splitCommaSeparatedValues(value);
+
+  const emitDebugEvent = (debugCollector, event) => {
+    if (typeof debugCollector === "function" && event && typeof event === "object") {
+      debugCollector({
+        ...event,
+        timestamp: Date.now()
+      });
+    }
+  };
+
+  const snapshotToken = (token) => {
+    if (!token || typeof token !== "object") {
+      return null;
+    }
+
+    return {
+      surface_form: token.surface_form ?? "",
+      basic_form: token.basic_form ?? "",
+      pos: token.pos ?? "",
+      pos_detail_1: token.pos_detail_1 ?? "",
+      pos_detail_2: token.pos_detail_2 ?? "",
+      pos_detail_3: token.pos_detail_3 ?? "",
+      conjugated_type: token.conjugated_type ?? "",
+      conjugated_form: token.conjugated_form ?? "",
+      reading: token.reading ?? ""
+    };
+  };
+
+  const normalizeConditionValue = (value) => {
+    if (Array.isArray(value)) {
+      const values = value
+        .map((entry) => `${entry ?? ""}`.trim())
+        .filter(Boolean);
+      return values.length > 0 ? values : undefined;
+    }
+
+    if (typeof value === "string") {
+      const values = splitCommaSeparatedValues(value);
+      if (values.length === 0) {
+        return undefined;
+      }
+
+      return values.length === 1 ? values[0] : values;
+    }
+
+    return value;
+  };
+
   const normalizeCondition = (condition) => {
     if (!condition || typeof condition !== "object" || Array.isArray(condition)) {
       return condition;
     }
 
     return {
-      surface_form: condition.surface_form ?? condition.surface,
-      basic_form: condition.basic_form ?? condition.basic,
-      pos: condition.pos,
-      pos_detail_1: condition.pos_detail_1 ?? condition.pos1,
-      pos_detail_2: condition.pos_detail_2 ?? condition.pos2,
-      pos_detail_3: condition.pos_detail_3 ?? condition.pos3,
-      conjugated_type: condition.conjugated_type ?? condition.ctype,
-      conjugated_form: condition.conjugated_form ?? condition.cform,
-      reading: condition.reading,
-      pronunciation: condition.pronunciation,
-      word_type: condition.word_type
+      surface_form: normalizeConditionValue(condition.surface_form ?? condition.surface),
+      basic_form: normalizeConditionValue(condition.basic_form ?? condition.basic),
+      pos: normalizeConditionValue(condition.pos),
+      pos_detail_1: normalizeConditionValue(condition.pos_detail_1 ?? condition.pos1),
+      pos_detail_2: normalizeConditionValue(condition.pos_detail_2 ?? condition.pos2),
+      pos_detail_3: normalizeConditionValue(condition.pos_detail_3 ?? condition.pos3),
+      conjugated_type: normalizeConditionValue(condition.conjugated_type ?? condition.ctype),
+      conjugated_form: normalizeConditionValue(condition.conjugated_form ?? condition.cform),
+      reading: normalizeConditionValue(condition.reading),
+      pronunciation: normalizeConditionValue(condition.pronunciation),
+      word_type: normalizeConditionValue(condition.word_type)
     };
   };
 
@@ -83,7 +133,7 @@
     return GODAN_VERB_ENDINGS[fromEnding] ?? null;
   };
 
-  const pushUniqueVariant = (variants, from, to) => {
+  const pushUniqueVariant = (variants, from, to, kind = "plain") => {
     const normalizedFrom = `${from ?? ""}`.trim();
     const normalizedTo = `${to ?? ""}`.trim();
     if (!normalizedFrom || !normalizedTo || normalizedFrom === normalizedTo) {
@@ -94,14 +144,17 @@
       return;
     }
 
-    variants.push({ from: normalizedFrom, to: normalizedTo });
+    variants.push({ from: normalizedFrom, to: normalizedTo, kind });
   };
 
   const normalizePhraseRuleRecord = (from, rawRule) => {
+    const fromCandidates = splitMatchCandidates(from);
+
     if (typeof rawRule === "string") {
       const candidates = splitReplacementCandidates(rawRule);
       return {
-        from,
+        from: fromCandidates[0] ?? from,
+        from_options: fromCandidates,
         to: candidates[0] ?? "",
         candidates,
         priority: 0,
@@ -113,7 +166,8 @@
     if (Array.isArray(rawRule)) {
       const candidates = splitReplacementCandidates(rawRule[0]);
       return {
-        from,
+        from: fromCandidates[0] ?? from,
+        from_options: fromCandidates,
         to: candidates[0] ?? "",
         candidates,
         priority: Number.isFinite(rawRule[1]) ? rawRule[1] : Number(rawRule[1]) || 0,
@@ -124,9 +178,11 @@
 
     if (rawRule && typeof rawRule === "object") {
       const candidates = splitReplacementCandidates(rawRule.candidates ?? rawRule.to);
+      const ruleFromCandidates = splitMatchCandidates(rawRule.from ?? from ?? "");
       return {
         ...rawRule,
-        from: `${rawRule.from ?? from ?? ""}`,
+        from: ruleFromCandidates[0] ?? `${rawRule.from ?? from ?? ""}`,
+        from_options: ruleFromCandidates,
         to: candidates[0] ?? `${rawRule.to ?? ""}`,
         candidates,
         priority: Number.isFinite(rawRule.priority) ? rawRule.priority : Number(rawRule.priority) || 0,
@@ -180,10 +236,13 @@
         continue;
       }
 
+      const fromOptions = splitMatchCandidates(entry.from ?? from);
+
       replaceRules.push({
         id: `${entry.id ?? ""}`.trim() || undefined,
         type: `${entry.type ?? "replace-rule"}`,
-        from,
+        from: fromOptions[0] ?? from,
+        from_options: fromOptions,
         to,
         raw: { ...entry },
         candidates: splitReplacementCandidates(entry.candidates ?? to),
@@ -255,9 +314,12 @@
   const normalizeRule = (rule) => {
     const conditions = rule.conditions || {};
     const candidates = splitReplacementCandidates(rule.candidates ?? rule.to);
+    const fromOptions = splitMatchCandidates(rule.from_options ?? rule.from);
 
     return {
       ...rule,
+      from: fromOptions[0] ?? rule.from,
+      from_options: fromOptions,
       to: candidates[0] ?? rule.to,
       candidates,
       match_target: rule.match_target ?? rule.matchTarget ?? null,
@@ -342,6 +404,11 @@
     return actual === expected;
   };
 
+  const getRuleFromCandidates = (rule) => {
+    const candidates = splitMatchCandidates(rule?.from_options ?? rule?.from);
+    return candidates.length > 0 ? candidates : [`${rule?.from ?? ""}`.trim()].filter(Boolean);
+  };
+
   const tokenMatchesCondition = (token, condition) => {
     if (!token || !condition) {
       return false;
@@ -392,8 +459,15 @@
     return Array.isArray(conditions) ? conditions : [conditions];
   };
 
+  const conditionValueIncludes = (value, expected) => {
+    if (Array.isArray(value)) {
+      return value.includes(expected);
+    }
+    return value === expected;
+  };
+
   const ruleUsesBasicFormMatch = (rule) => {
-    if (rule?.match_target === "basic_form" || rule?.type === "verb") {
+    if (rule?.match_target === "basic_form" || rule?.type === "verb" || rule?.type === "adjective") {
       return true;
     }
 
@@ -406,16 +480,68 @@
         return false;
       }
 
+      const pos = condition.pos;
+      const isVerbPos = Array.isArray(pos)
+        ? pos.includes("動詞")
+        : pos === "動詞";
       return (
         condition.basic_form !== undefined ||
-        condition.pos === "動詞" ||
+        isVerbPos ||
         condition.conjugated_form !== undefined ||
         condition.conjugated_type !== undefined
       );
     });
   };
 
-  const tokenSatisfiesMatcher = (token, matcher) => {
+    const ruleRequiresStrictBasicFormMatch = (rule) => {
+    if (rule?.match_target === "basic_form" || rule?.type === "verb" || rule?.type === "adjective") {
+      return true;
+    }
+
+    return listifyConditions(rule?.conditions?.current).some((condition) => {
+      if (!condition || typeof condition !== "object") {
+        return false;
+      }
+
+      return condition.basic_form !== undefined;
+    });
+  };
+
+  const expectsVerbToken = (rule) => {
+    if (rule?.type === "verb") {
+      return true;
+    }
+
+    return listifyConditions(rule?.conditions?.current).some((condition) => {
+      if (!condition || typeof condition !== "object") {
+        return false;
+      }
+
+      const pos = condition.pos;
+      return Array.isArray(pos)
+        ? pos.includes("動詞")
+        : pos === "動詞";
+    });
+  };
+
+  const expectsAdjectiveToken = (rule) => {
+    if (rule?.type === "adjective") {
+      return true;
+    }
+
+    return listifyConditions(rule?.conditions?.current).some((condition) => {
+      if (!condition || typeof condition !== "object") {
+        return false;
+      }
+
+      const pos = condition.pos;
+      return Array.isArray(pos)
+        ? pos.includes("形容詞")
+        : pos === "形容詞";
+    });
+  };
+
+    const tokenSatisfiesMatcher = (token, matcher) => {
     return tokenMatchesCondition(token, matcher);
   };
 
@@ -464,18 +590,30 @@
       return false;
     }
 
-    if (token.surface_form === rule.from) {
+    const fromCandidates = getRuleFromCandidates(rule);
+    if (expectsVerbToken(rule) && token.pos !== "動詞") {
+      return false;
+    }
+    if (expectsAdjectiveToken(rule) && token.pos !== "形容詞") {
+      return false;
+    }
+
+    if (ruleRequiresStrictBasicFormMatch(rule)) {
+      return fromCandidates.includes(token.basic_form);
+    }
+
+    if (fromCandidates.includes(token.surface_form)) {
       return true;
     }
 
-    if (ruleUsesBasicFormMatch(rule) && token.basic_form === rule.from) {
+    if (ruleUsesBasicFormMatch(rule) && fromCandidates.includes(token.basic_form)) {
       return true;
     }
 
     return false;
   };
 
-  const getSharedSuffix = (left, right) => {
+    const getSharedSuffix = (left, right) => {
     const leftChars = Array.from(left ?? "");
     const rightChars = Array.from(right ?? "");
     let index = 0;
@@ -491,35 +629,56 @@
     return index > 0 ? leftChars.slice(leftChars.length - index).join("") : "";
   };
 
-  const applyBasicFormReplacement = (token, rule, replacementBase) => {
-    if (!token || !ruleUsesBasicFormMatch(rule) || !rule.from || !replacementBase) {
-      return replacementBase;
+  const isAdjectiveRule = (rule) => {
+    if (rule?.type === "adjective") {
+      return true;
     }
 
-    if (token.basic_form !== rule.from) {
-      return replacementBase;
-    }
-
-    const sharedSuffix = getSharedSuffix(rule.from, replacementBase);
-    if (!sharedSuffix) {
-      return replacementBase;
-    }
-
-    const fromStem = rule.from.slice(0, rule.from.length - sharedSuffix.length);
-    const toStem = replacementBase.slice(0, replacementBase.length - sharedSuffix.length);
-    if (!fromStem) {
-      return replacementBase;
-    }
-
-    if (!token.surface_form.startsWith(fromStem)) {
-      return replacementBase;
-    }
-
-    return `${toStem}${token.surface_form.slice(fromStem.length)}`;
+    return listifyConditions(rule?.conditions?.current).some((condition) => {
+      if (!condition || typeof condition !== "object") {
+        return false;
+      }
+      const pos = condition.pos;
+      return Array.isArray(pos)
+        ? pos.includes("形容詞")
+        : pos === "形容詞";
+    });
   };
 
-  const isEligibleForVerbSurfaceFallback = (rule, replacementBase) => {
+    const buildAdjectiveSurfaceFallbackVariants = (rule, replacementBase) => {
+    const fromCandidates = getRuleFromCandidates(rule);
+    const variants = [];
+
+    for (const fromCandidate of fromCandidates) {
+      if (!fromCandidate || !replacementBase || !fromCandidate.endsWith("い") || !replacementBase.endsWith("い")) {
+        continue;
+      }
+
+      const fromStem = fromCandidate.slice(0, -1);
+      const toStem = replacementBase.slice(0, -1);
+      if (!fromStem || !toStem) {
+        continue;
+      }
+
+      pushUniqueVariant(variants, fromCandidate, replacementBase, "base");
+      pushUniqueVariant(variants, `${fromStem}く`, `${toStem}く`, "ku");
+      pushUniqueVariant(variants, `${fromStem}かっ`, `${toStem}かっ`, "katta");
+      pushUniqueVariant(variants, `${fromStem}けれ`, `${toStem}けれ`, "kere");
+      pushUniqueVariant(variants, `${fromStem}かれ`, `${toStem}かれ`, "kare");
+      pushUniqueVariant(variants, `${fromStem}さ`, `${toStem}さ`, "sa");
+    }
+
+    return variants.sort((left, right) => {
+      return right.from.length - left.from.length;
+    });
+  };
+
+  const isEligibleForAdjectiveSurfaceFallback = (rule, replacementBase) => {
     if (!rule || rule.enabled === false || rule.regex === true) {
+      return false;
+    }
+
+    if (!isAdjectiveRule(rule) || !ruleUsesBasicFormMatch(rule)) {
       return false;
     }
 
@@ -535,60 +694,51 @@
       return false;
     }
 
-    if (!ruleUsesBasicFormMatch(rule)) {
-      return false;
-    }
-
-    return Boolean(inferGodanEnding(rule.from, replacementBase));
+    return buildAdjectiveSurfaceFallbackVariants(rule, replacementBase).length > 0;
   };
 
-  const buildVerbSurfaceFallbackVariants = (rule, replacementBase) => {
-    if (!isEligibleForVerbSurfaceFallback(rule, replacementBase)) {
-      return [];
+    const applyBasicFormReplacement = (token, rule, replacementBase, matchedFrom = rule.from) => {
+    if (!token || !ruleUsesBasicFormMatch(rule) || !matchedFrom || !replacementBase) {
+      return replacementBase;
     }
 
-    const endingInfo = inferGodanEnding(rule.from, replacementBase);
-    if (!endingInfo) {
-      return [];
+    if (token.basic_form !== matchedFrom) {
+      return replacementBase;
     }
 
-    const fromStem = rule.from.slice(0, -1);
-    const toStem = replacementBase.slice(0, -1);
-    if (!fromStem || !toStem) {
-      return [];
+    if (isAdjectiveRule(rule)) {
+      const adjectiveVariants = buildAdjectiveSurfaceFallbackVariants(
+        { ...rule, from: matchedFrom, from_options: [matchedFrom] },
+        replacementBase
+      );
+      const matchedVariant = adjectiveVariants.find((variant) => variant.from === token.surface_form);
+      return matchedVariant ? matchedVariant.to : token.surface_form;
     }
 
-    const variants = [];
-    pushUniqueVariant(variants, rule.from, replacementBase);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.a}`, `${toStem}${endingInfo.a}`);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.i}`, `${toStem}${endingInfo.i}`);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.e}`, `${toStem}${endingInfo.e}`);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.o}`, `${toStem}${endingInfo.o}`);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.te}`, `${toStem}${endingInfo.te}`);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.ta}`, `${toStem}${endingInfo.ta}`);
-
-    return variants.sort((left, right) => {
-      return right.from.length - left.from.length;
-    });
-  };
-
-  const applyVerbFallbackTransformations = (text, tokenRules) => {
-    let result = text;
-
-    for (const rule of tokenRules) {
-      const replacementBase = chooseReplacement(rule, rule.from);
-      const variants = buildVerbSurfaceFallbackVariants(rule, replacementBase);
-      for (const variant of variants) {
-        result = result.replace(new RegExp(escapeRegex(variant.from), "gu"), variant.to);
-      }
+    const sharedSuffix = getSharedSuffix(matchedFrom, replacementBase);
+    if (!sharedSuffix) {
+      return replacementBase;
     }
 
-    return result;
+    const fromStem = matchedFrom.slice(0, matchedFrom.length - sharedSuffix.length);
+    const toStem = replacementBase.slice(0, replacementBase.length - sharedSuffix.length);
+    if (!fromStem) {
+      return replacementBase;
+    }
+
+    if (!token.surface_form.startsWith(fromStem)) {
+      return replacementBase;
+    }
+
+    return `${toStem}${token.surface_form.slice(fromStem.length)}`;
   };
 
   const resolveTokenReplacement = (token, rule, matchedText) => {
     const replacement = chooseReplacement(rule, matchedText);
-    return applyBasicFormReplacement(token, rule, replacement);
+    const matchedFrom = ruleUsesBasicFormMatch(rule)
+      ? token?.basic_form
+      : token?.surface_form;
+    return applyBasicFormReplacement(token, rule, replacement, matchedFrom);
   };
 
   const surroundingConditionsMatch = (tokens, index, length, rule) => {
@@ -660,7 +810,7 @@
     };
   };
 
-  const applyDictionaryRules = (text, dictionaryRules) => {
+  const applyDictionaryRules = (text, dictionaryRules, debugCollector, stageId) => {
     let result = text;
 
     for (const rule of dictionaryRules) {
@@ -671,7 +821,19 @@
       if (rule.regex === true) {
         try {
           const regex = new RegExp(rule.from, "gu");
-          result = result.replace(regex, (matchedText) => chooseReplacement(rule, matchedText));
+          result = result.replace(regex, (matchedText) => {
+            const replacement = chooseReplacement(rule, matchedText);
+            emitDebugEvent(debugCollector, {
+              phase: "dictionary-match",
+              stageId,
+              ruleId: rule.id ?? null,
+              matchedText,
+              replacement,
+              regex: true,
+              from: rule.from
+            });
+            return replacement;
+          });
         } catch (error) {
           continue;
         }
@@ -682,14 +844,35 @@
         continue;
       }
 
-      const replacement = chooseReplacement(rule, rule.from);
-      result = result.replace(new RegExp(escapeRegex(rule.from), "gu"), replacement);
+      const fromCandidates = getRuleFromCandidates(rule);
+      for (const fromCandidate of fromCandidates) {
+        if (!fromCandidate) {
+          continue;
+        }
+
+        const replacement = chooseReplacement(
+          { ...rule, from: fromCandidate, from_options: [fromCandidate] },
+          fromCandidate
+        );
+        result = result.replace(new RegExp(escapeRegex(fromCandidate), "gu"), (matchedText) => {
+          emitDebugEvent(debugCollector, {
+            phase: "dictionary-match",
+            stageId,
+            ruleId: rule.id ?? null,
+            matchedText,
+            replacement,
+            regex: false,
+            from: fromCandidate
+          });
+          return replacement;
+        });
+      }
     }
 
     return result;
   };
 
-  const applyTransformations = (tokens, rules) => {
+  const applyTransformations = (tokens, rules, debugCollector, stageId) => {
     const outputTokens = tokens.map((token) => ({ ...token }));
 
     for (let index = 0; index < outputTokens.length; index++) {
@@ -704,7 +887,19 @@
           .map((matchedToken) => matchedToken.surface_form);
 
         const matchedText = matchedTokens.join("");
-        outputTokens[match.start].surface_form = match.replacement ?? resolveTokenReplacement(outputTokens[match.start], rule, matchedText);
+        const replacement = match.replacement ?? resolveTokenReplacement(outputTokens[match.start], rule, matchedText);
+        emitDebugEvent(debugCollector, {
+          phase: "token-match",
+          stageId,
+          ruleId: rule.id ?? null,
+          matchedText,
+          replacement,
+          matchType: match.length > 1 ? "sequence" : "single",
+          tokens: outputTokens
+            .slice(match.start, match.start + match.length)
+            .map(snapshotToken)
+        });
+        outputTokens[match.start].surface_form = replacement;
 
         for (let offset = 1; offset < match.length; offset++) {
           outputTokens[match.start + offset].surface_form = "";
@@ -718,7 +913,136 @@
     return outputTokens.map((token) => token.surface_form).join("");
   };
 
-  const tokenizeAndApplyTokenRules = (text, tokenRules, tokenizer) => {
+  const isEligibleForVerbSurfaceFallback = (rule, replacementBase) => {
+    if (!rule || rule.enabled === false || rule.regex === true) {
+      return false;
+    }
+
+    if (!rule.from || !replacementBase || rule.from === replacementBase) {
+      return false;
+    }
+
+    if (Array.isArray(rule.sequence) && rule.sequence.length > 0) {
+      return false;
+    }
+
+    if (rule.conditions?.prev || rule.conditions?.next) {
+      return false;
+    }
+
+    if (!ruleUsesBasicFormMatch(rule)) {
+      return false;
+    }
+
+    return Boolean(inferGodanEnding(rule.from, replacementBase));
+  };
+
+  const buildVerbSurfaceFallbackVariants = (rule, replacementBase) => {
+    if (!isEligibleForVerbSurfaceFallback(rule, replacementBase)) {
+      return [];
+    }
+
+    const endingInfo = inferGodanEnding(rule.from, replacementBase);
+    if (!endingInfo) {
+      return [];
+    }
+
+    const fromStem = rule.from.slice(0, -1);
+    const toStem = replacementBase.slice(0, -1);
+    if (!fromStem || !toStem) {
+      return [];
+    }
+
+    const variants = [];
+    pushUniqueVariant(variants, rule.from, replacementBase, "base");
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.a}`, `${toStem}${endingInfo.a}`, "a");
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.i}`, `${toStem}${endingInfo.i}`, "i");
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.e}`, `${toStem}${endingInfo.e}`, "e");
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.o}`, `${toStem}${endingInfo.o}`, "o");
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.te}`, `${toStem}${endingInfo.te}`, "te");
+    pushUniqueVariant(variants, `${fromStem}${endingInfo.ta}`, `${toStem}${endingInfo.ta}`, "ta");
+
+    return variants.sort((left, right) => {
+      return right.from.length - left.from.length;
+    });
+  };
+
+  const applyVerbFallbackTransformations = (text, tokenRules, debugCollector, stageId) => {
+    let result = text;
+    const safeAFollowPattern = "(?=(?:ない|なか|なけ|なく|ず|ぬ|せ|さ|れ|まい|れる|せる|せず|せぬ))";
+
+    for (const rule of tokenRules) {
+      const replacementBase = chooseReplacement(rule, rule.from);
+      const variants = buildVerbSurfaceFallbackVariants(rule, replacementBase);
+      for (const variant of variants) {
+        if (variant.kind === "a") {
+          result = result.replace(
+            new RegExp(`${escapeRegex(variant.from)}${safeAFollowPattern}`, "gu"),
+            (matchedText) => {
+              emitDebugEvent(debugCollector, {
+                phase: "verb-fallback",
+                stageId,
+                ruleId: rule.id ?? null,
+                matchedText,
+                replacement: variant.to,
+                variantKind: variant.kind
+              });
+              return variant.to;
+            }
+          );
+          continue;
+        }
+
+        result = result.replace(new RegExp(escapeRegex(variant.from), "gu"), (matchedText) => {
+          emitDebugEvent(debugCollector, {
+            phase: "verb-fallback",
+            stageId,
+            ruleId: rule.id ?? null,
+            matchedText,
+            replacement: variant.to,
+            variantKind: variant.kind
+          });
+          return variant.to;
+        });
+      }
+    }
+
+    return result;
+  };
+
+  const applyAdjectiveFallbackTransformations = (text, tokenRules, debugCollector, stageId) => {
+    let result = text;
+
+    for (const rule of tokenRules) {
+      const replacementBase = chooseReplacement(rule, rule.from);
+      if (!isEligibleForAdjectiveSurfaceFallback(rule, replacementBase)) {
+        continue;
+      }
+
+      const variants = buildAdjectiveSurfaceFallbackVariants(rule, replacementBase);
+      const hasCurrentConditions = Boolean(rule.conditions?.current);
+      for (const variant of variants) {
+        if (hasCurrentConditions && variant.kind !== "sa") {
+          continue;
+        }
+        result = result.replace(new RegExp(escapeRegex(variant.from), "gu"), (matchedText) => {
+          emitDebugEvent(debugCollector, {
+            phase: "adjective-fallback",
+            stageId,
+            ruleId: rule.id ?? null,
+            matchedText,
+            replacement: variant.to,
+            variantKind: variant.kind
+          });
+          return variant.to;
+        });
+      }
+    }
+
+    return result;
+  };
+
+    const tokenizeAndApplyTokenRules = (text, tokenRules, tokenizer, debugCollector, stageId) => {
     if (!text || !text.trim()) {
       return text;
     }
@@ -732,15 +1056,25 @@
     }
 
     const tokens = tokenizer.tokenize(text);
-    const transformed = applyTransformations(tokens, tokenRules);
-    return applyVerbFallbackTransformations(transformed, tokenRules);
+    emitDebugEvent(debugCollector, {
+      phase: "tokenize",
+      stageId,
+      text,
+      tokens: tokens.map(snapshotToken)
+    });
+    const transformed = applyTransformations(tokens, tokenRules, debugCollector, stageId);
+    const adjectiveFallbackApplied = applyAdjectiveFallbackTransformations(transformed, tokenRules, debugCollector, stageId);
+    return applyVerbFallbackTransformations(adjectiveFallbackApplied, tokenRules, debugCollector, stageId);
   };
 
-  const transformTextWithStages = (text, stages, tokenizer) => {
+  const transformTextWithStages = (text, stages, tokenizer, options = {}) => {
     if (!text || !text.trim()) {
       return text;
     }
 
+    const debugCollector = typeof options === "function"
+      ? options
+      : options?.debugCollector;
     let transformedText = text;
 
     for (const stage of Array.isArray(stages) ? stages : []) {
@@ -748,13 +1082,33 @@
         continue;
       }
 
+      const beforeStage = transformedText;
+
       if (stage.kind === "dictionary-rules") {
-        transformedText = applyDictionaryRules(transformedText, stage.rules);
+        transformedText = applyDictionaryRules(transformedText, stage.rules, debugCollector, stage.id);
+        if (beforeStage !== transformedText) {
+          emitDebugEvent(debugCollector, {
+            phase: "stage-result",
+            stageId: stage.id,
+            stageKind: stage.kind,
+            before: beforeStage,
+            after: transformedText
+          });
+        }
         continue;
       }
 
       if (stage.kind === "token-rules") {
-        transformedText = tokenizeAndApplyTokenRules(transformedText, stage.rules, tokenizer);
+        transformedText = tokenizeAndApplyTokenRules(transformedText, stage.rules, tokenizer, debugCollector, stage.id);
+        if (beforeStage !== transformedText) {
+          emitDebugEvent(debugCollector, {
+            phase: "stage-result",
+            stageId: stage.id,
+            stageKind: stage.kind,
+            before: beforeStage,
+            after: transformedText
+          });
+        }
       }
     }
 
@@ -787,13 +1141,9 @@
     return definition?.kind ?? bundle?.kind ?? "dictionary-rules";
   };
 
-  const inferStoredBundleKind = (source) => {
-    if (typeof source?.kind === "string" && source.kind.trim()) {
-      return source.kind;
-    }
-
+  const sourceHasTokenFeatures = (source) => {
     if (Array.isArray(source?.rules)) {
-      return "token-rules";
+      return true;
     }
 
     if (Array.isArray(source?.entries) && source.entries.some((entry) => {
@@ -801,14 +1151,30 @@
         entry.match_target !== undefined ||
         entry.conditions !== undefined ||
         entry.sequence !== undefined ||
-        entry.type === "verb"
+        entry.type === "verb" ||
+        entry.type === "adjective" ||
+        entry.type === "literal" ||
+        entry.type === "compound" ||
+        entry.type === "renyou"
       );
     })) {
+      return true;
+    }
+
+    if (Array.isArray(source?.children) && source.children.some((child) => sourceHasTokenFeatures(child))) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const inferStoredBundleKind = (source) => {
+    if (sourceHasTokenFeatures(source)) {
       return "token-rules";
     }
 
-    if (Array.isArray(source?.children) && source.children.some((child) => inferStoredBundleKind(child) === "token-rules")) {
-      return "token-rules";
+    if (typeof source?.kind === "string" && source.kind.trim()) {
+      return source.kind;
     }
 
     return "dictionary-rules";
@@ -883,53 +1249,57 @@
       return definition;
     }
 
-    if (definition.kind !== "dictionary-rules") {
-      if (definition.kind === "token-rules" && (Array.isArray(override.entries) || Array.isArray(override.children))) {
-        const flattenNodesToRules = (node) => {
-          const rules = [];
-          if (Array.isArray(node.entries)) {
-            for (const entry of node.entries) {
-              if (!entry || !entry.from || !entry.to) {
-                continue;
-              }
-              const baseRule = entry.raw && typeof entry.raw === "object"
-                ? { ...entry.raw }
-                : {};
-              rules.push({
-                ...baseRule,
-                id: entry.id ?? baseRule.id,
-                from: entry.from,
-                to: entry.to,
-                priority: entry.priority,
-                enabled: entry.enabled !== false,
-                regex: entry.regex === true,
-                match_target: entry.match_target ?? baseRule.match_target ?? null,
-                conditions: entry.conditions ?? baseRule.conditions ?? null,
-                sequence: entry.sequence ?? baseRule.sequence ?? null,
-                type: entry.type ?? baseRule.type
-              });
-            }
+    const flattenNodesToRules = (node) => {
+      const rules = [];
+      if (Array.isArray(node.entries)) {
+        for (const entry of node.entries) {
+          if (!entry || !entry.from || !entry.to) {
+            continue;
           }
-          if (Array.isArray(node.children)) {
-            for (const child of node.children) {
-              rules.push(...flattenNodesToRules(child));
-            }
-          }
-          return rules;
-        };
-
-        return {
-          ...definition,
-          label: override.label ?? definition.label,
-          enabled: override.enabled ?? definition.enabled,
-          rules: flattenNodesToRules(override)
-        };
+          const baseRule = entry.raw && typeof entry.raw === "object"
+            ? { ...entry.raw }
+            : {};
+          rules.push({
+            ...baseRule,
+            id: entry.id ?? baseRule.id,
+            from: entry.from,
+            from_options: Array.isArray(entry.from_options) ? [...entry.from_options] : splitMatchCandidates(entry.from),
+            to: entry.to,
+            priority: entry.priority,
+            enabled: entry.enabled !== false,
+            regex: entry.regex === true,
+            match_target: entry.match_target ?? baseRule.match_target ?? null,
+            conditions: entry.conditions ?? baseRule.conditions ?? null,
+            sequence: entry.sequence ?? baseRule.sequence ?? null,
+            type: entry.type ?? baseRule.type
+          });
+        }
       }
-      return definition;
+      if (Array.isArray(node.children)) {
+        for (const child of node.children) {
+          rules.push(...flattenNodesToRules(child));
+        }
+      }
+      return rules;
+    };
+
+    const targetKind = override.kind ?? definition.kind;
+    if (targetKind === "token-rules") {
+      const hasOverrideTree = Array.isArray(override.entries) || Array.isArray(override.children);
+      return {
+        ...definition,
+        kind: "token-rules",
+        label: override.label ?? definition.label,
+        enabled: override.enabled ?? definition.enabled,
+        rules: hasOverrideTree
+          ? flattenNodesToRules(override)
+          : (Array.isArray(definition.rules) ? definition.rules : [])
+      };
     }
 
     return {
       ...definition,
+      kind: "dictionary-rules",
       label: override.label ?? definition.label,
       enabled: override.enabled ?? definition.enabled,
       entries: Array.isArray(override.entries) ? override.entries : (definition.entries ?? []),
@@ -1057,6 +1427,7 @@
 
   return {
     applyDictionaryRules,
+    applyAdjectiveFallbackTransformations,
     applyVerbFallbackTransformations,
     loadStagesFromDefinitions,
     normalizeBundleOverridesPayload,

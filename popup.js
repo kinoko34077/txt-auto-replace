@@ -172,6 +172,32 @@
     return state.payload.roots.find((root) => root?.id === state.payload.popup_bundle_id);
   };
 
+  const splitFromCandidates = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => `${entry ?? ""}`.trim())
+        .filter(Boolean);
+    }
+
+    return `${value ?? ""}`
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  };
+
+  const getVisiblePopupRuleItems = () => {
+    const popupRoot = getPopupRoot();
+    const rules = Array.isArray(popupRoot?.rules) ? popupRoot.rules : [];
+    const selectionText = `${state.pageContext?.selectionText ?? ""}`.trim();
+    if (!selectionText) {
+      return [];
+    }
+
+    return rules
+      .map((rule, index) => ({ rule, index }))
+      .filter(({ rule }) => splitFromCandidates(rule?.from_options ?? rule?.from).includes(selectionText));
+  };
+
   const savePayload = async () => {
     await storageSet({
       [STORAGE_KEY]: state.payload
@@ -199,18 +225,23 @@
 
   const renderEntries = () => {
     popupEntriesNode.textContent = "";
-    const popupRoot = getPopupRoot();
-    const rules = Array.isArray(popupRoot?.rules) ? popupRoot.rules : [];
+    const visibleRuleItems = getVisiblePopupRuleItems();
+    const selectionText = `${state.pageContext?.selectionText ?? ""}`.trim();
 
-    if (rules.length === 0) {
+    if (!selectionText || visibleRuleItems.length === 0) {
       const empty = document.createElement("p");
       empty.className = "muted";
+      empty.textContent = !selectionText
+        ? "選択文字列があると、その文字列に一致する Popup 辞書だけ表示します。"
+        : "選択文字列に一致する Popup 辞書はありません。";
+      popupEntriesNode.appendChild(empty);
+      return;
       empty.textContent = "Popup 追加語彙はまだありません。";
       popupEntriesNode.appendChild(empty);
       return;
     }
 
-    rules.forEach((rule, index) => {
+    visibleRuleItems.forEach(({ rule, index }) => {
       const wrapper = document.createElement("div");
       wrapper.className = "entry";
 

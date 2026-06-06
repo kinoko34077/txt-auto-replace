@@ -54,16 +54,71 @@
     };
   };
 
-  const normalizeConditionValue = (value) => {
+  const MATCHER_VALUE_ALIASES = {
+    pos: {
+      "名": "名詞",
+      "動": "動詞",
+      "形": "形容詞",
+      "助": "助詞",
+      "助動": "助動詞",
+      "副": "副詞",
+      "連体": "連体詞",
+      "接続": "接続詞",
+      "記": "記号"
+    },
+    pos_detail_1: {
+      "一般": "一般",
+      "自立": "自立",
+      "非自立": "非自立",
+      "接尾": "接尾",
+      "格助": "格助詞",
+      "係助": "係助詞",
+      "副可": "副詞可能",
+      "サ変": "サ変接続"
+    },
+    conjugated_form: {
+      "基本": "基本形",
+      "連用": "連用形",
+      "連体": "連体形",
+      "未然": "未然形",
+      "命令": "命令形",
+      "仮定": "仮定形"
+    },
+    conjugated_type: {
+      "一段": "一段",
+      "五段": "五段・ワ行促音便",
+      "サ変": "サ変・スル",
+      "カ変": "カ変・クル",
+      "形容詞": "形容詞・アウオ段"
+    }
+  };
+
+  const canonicalizeMatcherToken = (field, token) => {
+    const normalized = `${token ?? ""}`.trim();
+    if (!normalized) {
+      return "";
+    }
+
+    const aliases = MATCHER_VALUE_ALIASES[field];
+    if (!aliases) {
+      return normalized;
+    }
+
+    return aliases[normalized] ?? normalized;
+  };
+
+  const normalizeConditionValue = (field, value) => {
     if (Array.isArray(value)) {
       const values = value
-        .map((entry) => `${entry ?? ""}`.trim())
+        .map((entry) => canonicalizeMatcherToken(field, entry))
         .filter(Boolean);
       return values.length > 0 ? values : undefined;
     }
 
     if (typeof value === "string") {
-      const values = splitCommaSeparatedValues(value);
+      const values = splitCommaSeparatedValues(value)
+        .map((entry) => canonicalizeMatcherToken(field, entry))
+        .filter(Boolean);
       if (values.length === 0) {
         return undefined;
       }
@@ -80,17 +135,17 @@
     }
 
     return {
-      surface_form: normalizeConditionValue(condition.surface_form ?? condition.surface),
-      basic_form: normalizeConditionValue(condition.basic_form ?? condition.basic),
-      pos: normalizeConditionValue(condition.pos),
-      pos_detail_1: normalizeConditionValue(condition.pos_detail_1 ?? condition.pos1),
-      pos_detail_2: normalizeConditionValue(condition.pos_detail_2 ?? condition.pos2),
-      pos_detail_3: normalizeConditionValue(condition.pos_detail_3 ?? condition.pos3),
-      conjugated_type: normalizeConditionValue(condition.conjugated_type ?? condition.ctype),
-      conjugated_form: normalizeConditionValue(condition.conjugated_form ?? condition.cform),
-      reading: normalizeConditionValue(condition.reading),
-      pronunciation: normalizeConditionValue(condition.pronunciation),
-      word_type: normalizeConditionValue(condition.word_type)
+      surface_form: normalizeConditionValue("surface_form", condition.surface_form ?? condition.surface),
+      basic_form: normalizeConditionValue("basic_form", condition.basic_form ?? condition.basic),
+      pos: normalizeConditionValue("pos", condition.pos),
+      pos_detail_1: normalizeConditionValue("pos_detail_1", condition.pos_detail_1 ?? condition.pos1),
+      pos_detail_2: normalizeConditionValue("pos_detail_2", condition.pos_detail_2 ?? condition.pos2),
+      pos_detail_3: normalizeConditionValue("pos_detail_3", condition.pos_detail_3 ?? condition.pos3),
+      conjugated_type: normalizeConditionValue("conjugated_type", condition.conjugated_type ?? condition.ctype),
+      conjugated_form: normalizeConditionValue("conjugated_form", condition.conjugated_form ?? condition.cform),
+      reading: normalizeConditionValue("reading", condition.reading),
+      pronunciation: normalizeConditionValue("pronunciation", condition.pronunciation),
+      word_type: normalizeConditionValue("word_type", condition.word_type)
     };
   };
 
@@ -335,6 +390,57 @@
         next: normalizeConditionList(conditions.next)
       }
     };
+  };
+
+  const TOKEN_MATCH_RULE_TYPES = new Set([
+    "verb",
+    "adjective",
+    "literal",
+    "compound",
+    "renyou"
+  ]);
+
+  const hasRuleConditionBranch = (branch) => {
+    if (Array.isArray(branch)) {
+      return branch.length > 0;
+    }
+
+    if (!branch || typeof branch !== "object") {
+      return false;
+    }
+
+    return Object.values(branch).some((value) => {
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+
+      return value !== undefined && value !== null && `${value}`.trim() !== "";
+    });
+  };
+
+  const ruleRequiresTokenMatching = (rule) => {
+    if (!rule || typeof rule !== "object") {
+      return false;
+    }
+
+    if (rule.match_target !== undefined && rule.match_target !== null && `${rule.match_target}`.trim() !== "") {
+      return true;
+    }
+
+    if (Array.isArray(rule.sequence) && rule.sequence.length > 0) {
+      return true;
+    }
+
+    if (
+      hasRuleConditionBranch(rule.conditions?.current) ||
+      hasRuleConditionBranch(rule.conditions?.prev) ||
+      hasRuleConditionBranch(rule.conditions?.next)
+    ) {
+      return true;
+    }
+
+    const normalizedType = `${rule.type ?? ""}`.trim();
+    return TOKEN_MATCH_RULE_TYPES.has(normalizedType);
   };
 
   const withBundleMetadata = (rule, bundle) => {
@@ -818,6 +924,10 @@
         continue;
       }
 
+      if (ruleRequiresTokenMatching(rule)) {
+        continue;
+      }
+
       if (rule.regex === true) {
         try {
           const regex = new RegExp(rule.from, "gu");
@@ -872,7 +982,7 @@
     return result;
   };
 
-  const applyTransformations = (tokens, rules, debugCollector, stageId) => {
+  const applyTransformationsToTokens = (tokens, rules, debugCollector, stageId) => {
     const outputTokens = tokens.map((token) => ({ ...token }));
 
     for (let index = 0; index < outputTokens.length; index++) {
@@ -910,7 +1020,15 @@
       }
     }
 
-    return outputTokens.map((token) => token.surface_form).join("");
+    return outputTokens;
+  };
+
+  const joinTokenSurfaces = (tokens) => {
+    return (Array.isArray(tokens) ? tokens : []).map((token) => token.surface_form).join("");
+  };
+
+  const applyTransformations = (tokens, rules, debugCollector, stageId) => {
+    return joinTokenSurfaces(applyTransformationsToTokens(tokens, rules, debugCollector, stageId));
   };
 
   const isEligibleForVerbSurfaceFallback = (rule, replacementBase) => {
@@ -965,6 +1083,62 @@
     return variants.sort((left, right) => {
       return right.from.length - left.from.length;
     });
+  };
+
+  const applyVerbSurfaceFallbackToTokens = (tokens, tokenRules, debugCollector, stageId) => {
+    const outputTokens = tokens.map((token) => ({ ...token }));
+
+    for (const rule of tokenRules) {
+      const replacementBase = chooseReplacement(rule, rule.from);
+      const variants = buildVerbSurfaceFallbackVariants(rule, replacementBase);
+      if (variants.length === 0) {
+        continue;
+      }
+
+      for (let index = 0; index < outputTokens.length; index += 1) {
+        const token = outputTokens[index];
+        if (!token?.surface_form) {
+          continue;
+        }
+
+        for (const variant of variants) {
+          if (!variant?.from || token.surface_form === variant.to) {
+            continue;
+          }
+
+          const isExactNounFallback =
+            token.surface_form === variant.from &&
+            token.pos === "名詞";
+          const isMergedTokenFallback =
+            token.surface_form.includes(variant.from) &&
+            typeof token.basic_form === "string" &&
+            token.basic_form.includes(rule.from);
+
+          if (!isExactNounFallback && !isMergedTokenFallback) {
+            continue;
+          }
+
+          const replacement = token.surface_form.replace(variant.from, variant.to);
+          if (replacement === token.surface_form) {
+            continue;
+          }
+
+          emitDebugEvent(debugCollector, {
+            phase: "verb-fallback",
+            stageId,
+            ruleId: rule.id ?? null,
+            matchedText: token.surface_form,
+            replacement,
+            variantKind: variant.kind,
+            tokens: [snapshotToken(token)]
+          });
+          token.surface_form = replacement;
+          break;
+        }
+      }
+    }
+
+    return outputTokens;
   };
 
   const applyVerbFallbackTransformations = (text, tokenRules, debugCollector, stageId) => {
@@ -1042,6 +1216,62 @@
     return result;
   };
 
+  const applyAdjectiveSurfaceFallbackToTokens = (tokens, tokenRules, debugCollector, stageId) => {
+    const outputTokens = tokens.map((token) => ({ ...token }));
+
+    for (const rule of tokenRules) {
+      const replacementBase = chooseReplacement(rule, rule.from);
+      if (!isEligibleForAdjectiveSurfaceFallback(rule, replacementBase)) {
+        continue;
+      }
+
+      const variants = buildAdjectiveSurfaceFallbackVariants(rule, replacementBase);
+      const hasCurrentConditions = Boolean(rule.conditions?.current);
+      for (const variant of variants) {
+        if (hasCurrentConditions && variant.kind !== "sa") {
+          continue;
+        }
+
+        for (let index = 0; index < outputTokens.length - 1; index += 1) {
+          const currentToken = outputTokens[index];
+          const nextToken = outputTokens[index + 1];
+          if (!currentToken?.surface_form || !nextToken?.surface_form) {
+            continue;
+          }
+
+          const combinedSurface = `${currentToken.surface_form}${nextToken.surface_form}`;
+          if (combinedSurface !== variant.from) {
+            continue;
+          }
+
+          const canApply =
+            currentToken.pos === "形容詞" ||
+            currentToken.basic_form === rule.from ||
+            combinedSurface === variant.from;
+          if (!canApply) {
+            continue;
+          }
+
+          emitDebugEvent(debugCollector, {
+            phase: "adjective-fallback",
+            stageId,
+            ruleId: rule.id ?? null,
+            matchedText: combinedSurface,
+            replacement: variant.to,
+            variantKind: variant.kind,
+            tokens: [snapshotToken(currentToken), snapshotToken(nextToken)]
+          });
+          currentToken.surface_form = variant.to;
+          nextToken.surface_form = "";
+          index += 1;
+          break;
+        }
+      }
+    }
+
+    return outputTokens;
+  };
+
     const tokenizeAndApplyTokenRules = (text, tokenRules, tokenizer, debugCollector, stageId) => {
     if (!text || !text.trim()) {
       return text;
@@ -1062,9 +1292,21 @@
       text,
       tokens: tokens.map(snapshotToken)
     });
-    const transformed = applyTransformations(tokens, tokenRules, debugCollector, stageId);
-    const adjectiveFallbackApplied = applyAdjectiveFallbackTransformations(transformed, tokenRules, debugCollector, stageId);
-    return applyVerbFallbackTransformations(adjectiveFallbackApplied, tokenRules, debugCollector, stageId);
+    const transformedTokens = applyTransformationsToTokens(tokens, tokenRules, debugCollector, stageId);
+    const adjectiveFallbackTokens = applyAdjectiveSurfaceFallbackToTokens(
+      transformedTokens,
+      tokenRules,
+      debugCollector,
+      stageId
+    );
+    return joinTokenSurfaces(
+      applyVerbSurfaceFallbackToTokens(
+        adjectiveFallbackTokens,
+        tokenRules,
+        debugCollector,
+        stageId
+      )
+    );
   };
 
   const transformTextWithStages = (text, stages, tokenizer, options = {}) => {
@@ -1147,16 +1389,7 @@
     }
 
     if (Array.isArray(source?.entries) && source.entries.some((entry) => {
-      return entry && typeof entry === "object" && (
-        entry.match_target !== undefined ||
-        entry.conditions !== undefined ||
-        entry.sequence !== undefined ||
-        entry.type === "verb" ||
-        entry.type === "adjective" ||
-        entry.type === "literal" ||
-        entry.type === "compound" ||
-        entry.type === "renyou"
-      );
+      return ruleRequiresTokenMatching(entry);
     })) {
       return true;
     }
@@ -1169,12 +1402,12 @@
   };
 
   const inferStoredBundleKind = (source) => {
-    if (sourceHasTokenFeatures(source)) {
-      return "token-rules";
-    }
-
     if (typeof source?.kind === "string" && source.kind.trim()) {
       return source.kind;
+    }
+
+    if (sourceHasTokenFeatures(source)) {
+      return "token-rules";
     }
 
     return "dictionary-rules";
@@ -1401,19 +1634,33 @@
         kind: resolveBundleKind(bundle, mergedDefinition)
       };
       const bundleRules = extractBundleRules(bundle, definition);
+      const dictionaryRules = definition.kind === "dictionary-rules"
+        ? bundleRules.filter((rule) => !ruleRequiresTokenMatching(rule))
+        : [];
+      const tokenRules = definition.kind === "token-rules"
+        ? bundleRules
+        : bundleRules.filter((rule) => ruleRequiresTokenMatching(rule));
 
-      stages.push({
-        id: bundle.id,
-        label: bundle.label,
-        kind: definition.kind,
-        order: bundle.order ?? 0,
-        rules: bundleRules
-      });
+      if (dictionaryRules.length > 0) {
+        stages.push({
+          id: bundle.id,
+          label: bundle.label,
+          kind: "dictionary-rules",
+          order: bundle.order ?? 0,
+          rules: dictionaryRules
+        });
+        stringRuleCount += dictionaryRules.length;
+      }
 
-      if (definition.kind === "dictionary-rules") {
-        stringRuleCount += bundleRules.length;
-      } else if (definition.kind === "token-rules") {
-        tokenRuleCount += bundleRules.length;
+      if (tokenRules.length > 0) {
+        stages.push({
+          id: bundle.id,
+          label: bundle.label,
+          kind: "token-rules",
+          order: bundle.order ?? 0,
+          rules: tokenRules
+        });
+        tokenRuleCount += tokenRules.length;
       }
     }
 

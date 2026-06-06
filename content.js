@@ -92,6 +92,7 @@
   let backgroundFlushHandleType = null;
   let scrollRefreshScheduled = false;
   let activeTransformStages = [];
+  let activeDictionaryOnlyStages = [];
   let activeTokenRules = [];
   let activeStringRules = [];
   let activeTokenizer = null;
@@ -104,6 +105,7 @@
   let activeManifestBundleIds = [];
   let cachedOrderedRuleResourcesPromise = null;
   let tokenizerPromise = null;
+  let tokenizerWarmupRevision = 0;
 
   if (!TransformEngine) {
     throw new Error("TransformEngine が未読込です。manifest.json の content_scripts の順序を確認してください。");
@@ -1427,6 +1429,46 @@
     return [...roots.values()];
   };
 
+  const collectDocumentProcessingRoots = () => {
+    const body = document.body;
+    if (!body) {
+      return [];
+    }
+
+    const roots = [];
+    let hasDirectText = false;
+
+    for (const child of body.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        if (!isSkippableTextNode(child)) {
+          hasDirectText = true;
+        }
+        continue;
+      }
+
+      if (child.nodeType !== Node.ELEMENT_NODE) {
+        continue;
+      }
+
+      if (SKIP_TAGS.has(child.tagName)) {
+        continue;
+      }
+
+      const editableHost = getEditableHost(child);
+      if (shouldSkipEditableHost(editableHost)) {
+        continue;
+      }
+
+      roots.push(child);
+    }
+
+    if (hasDirectText) {
+      roots.unshift(body);
+    }
+
+    return roots.length > 0 ? roots : [body];
+  };
+
   const buildTokenizer = () => {
     return new Promise((resolve, reject) => {
       if (typeof kuromoji === "undefined") {
@@ -1870,14 +1912,15 @@
   };
 
   const transformTextWithStages = (text) => {
+    const effectiveStages = getEffectiveTransformStages();
     if (!DEBUG && !hasDebugTargets()) {
-      return TransformEngine.transformTextWithStages(text, activeTransformStages, activeTokenizer);
+      return TransformEngine.transformTextWithStages(text, effectiveStages, activeTokenizer);
     }
 
     const events = [];
     const transformed = TransformEngine.transformTextWithStages(
       text,
-      activeTransformStages,
+      effectiveStages,
       activeTokenizer,
       (event) => events.push(event)
     );
@@ -1886,7 +1929,7 @@
       sourceText: text,
       transformedText: transformed,
       events,
-      stages: activeTransformStages.map((stage) => ({
+      stages: effectiveStages.map((stage) => ({
         id: stage.id,
         kind: stage.kind,
         ruleCount: Array.isArray(stage.rules) ? stage.rules.length : 0
@@ -2002,6 +2045,14 @@
     });
   };
 
+  const getEffectiveTransformStages = () => {
+    if (activeTokenizer || !runtimeRequiresTokenizer()) {
+      return activeTransformStages;
+    }
+
+    return activeDictionaryOnlyStages;
+  };
+
   const cancelVisibleRootFlush = () => {
     if (visibleFlushHandle === null) {
       return;
@@ -2092,7 +2143,7 @@
       return;
     }
 
-    if ((!activeTokenizer && runtimeRequiresTokenizer()) || !hasAnyActiveRules() || pendingRootQueue.size === 0) {
+    if (!hasAnyActiveRules() || pendingRootQueue.size === 0) {
       pendingRootQueue.clear();
       return;
     }
@@ -2432,12 +2483,14 @@
 
   const refreshRuntimeState = async (options = {}) => {
     const { reapply = true } = options;
-    const runtimeConfiguration = await loadRuntimeConfiguration();
+    const [runtimeConfiguration, loaded, tabState] = await Promise.all([
+      loadRuntimeConfiguration(),
+      loadOrderedRules(),
+      loadTabRuntimeState()
+    ]);
     activeRuntimeSettings = runtimeConfiguration.runtimeSettings;
     activeDisabledSites = runtimeConfiguration.disabledSites;
     activePopupBundleId = runtimeConfiguration.popupBundleId;
-
-    const loaded = await loadOrderedRules();
     activeLoadedBundles = Array.isArray(loaded?.bundles) ? loaded.bundles.map((bundle) => ({
       id: bundle.id,
       label: bundle.label,
@@ -2448,14 +2501,35 @@
     })) : [];
     activeManifestBundleIds = loaded?.manifestBundleIds ?? [];
     activeTransformStages = loaded.stages;
+    activeDictionaryOnlyStages = activeTransformStages.filter((stage) => stage.kind === "dictionary-rules");
     activeStringRules = activeTransformStages
       .filter((stage) => stage.kind === "dictionary-rules")
       .flatMap((stage) => stage.rules);
     activeTokenRules = activeTransformStages
       .filter((stage) => stage.kind === "token-rules")
       .flatMap((stage) => stage.rules);
-    activeTabDisabled = (await loadTabRuntimeState()).tabDisabled === true;
-    activeTokenizer = activeTokenRules.length > 0 ? await getTokenizer() : null;
+    activeTabDisabled = tabState.tabDisabled === true;
+    const tokenizerRevision = ++tokenizerWarmupRevision;
+    activeTokenizer = null;
+    if (activeTokenRules.length > 0) {
+      getTokenizer().then((tokenizer) => {
+        if (tokenizerRevision !== tokenizerWarmupRevision) {
+          return;
+        }
+
+        activeTokenizer = tokenizer;
+        publishRuntimeDebugSnapshot(getDebugTargetsFromDocument());
+        if (isRuntimeEnabled()) {
+          queueProcessableRoots(collectDocumentProcessingRoots(), { priority: "visible" });
+        }
+      }).catch((error) => {
+        if (tokenizerRevision !== tokenizerWarmupRevision) {
+          return;
+        }
+
+        console.error("tokenizer warmup failed", error);
+      });
+    }
     publishRuntimeDebugSnapshot(getDebugTargetsFromDocument());
 
     if (!reapply) {
@@ -2470,7 +2544,7 @@
     }
 
     pendingRootQueue.clear();
-    queueProcessableRoots(collectProcessableRoots(document.body));
+    queueProcessableRoots(collectDocumentProcessingRoots());
   };
 
   const handleRuntimeMessage = (message, sendResponse) => {
@@ -2541,7 +2615,7 @@
     bindEditableLifecycle();
     bindViewportRefresh();
     observeDebugTargetChanges();
-    const initialRoots = collectProcessableRoots(document.body);
+    const initialRoots = collectDocumentProcessingRoots();
     log("対象 root 数", initialRoots.length);
     queueProcessableRoots(initialRoots);
     observeDynamicContent();

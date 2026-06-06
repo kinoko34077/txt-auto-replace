@@ -304,6 +304,32 @@ const OVERRIDE_PAYLOAD = {
           enabled: true,
           regex: false,
           match_target: "basic_form"
+        },
+        {
+          id: "iu-entry",
+          from: "\u3044\u3046",
+          to: "\u8A00\u3046",
+          type: "verb",
+          priority: 61,
+          enabled: true,
+          regex: false,
+          match_target: "basic_form",
+          conditions: {
+            current: [{ pos: "\u52D5\u8A5E", basic: "\u3044\u3046" }]
+          }
+        },
+        {
+          id: "iru-entry",
+          from: "\u3044\u308B",
+          to: "\u3090\u308B",
+          type: "verb",
+          priority: 60,
+          enabled: true,
+          regex: false,
+          match_target: "basic_form",
+          conditions: {
+            current: [{ pos: "\u52D5\u8A5E", basic: "\u3044\u308B" }]
+          }
         }
       ],
       children: []
@@ -344,8 +370,8 @@ const OVERRIDE_PAYLOAD = {
       ],
       children: []
     },
-  {
-    id: "comma-dictionary-check",
+    {
+      id: "comma-dictionary-check",
       label: "comma dictionary check",
       kind: "dictionary-rules",
       order: 58,
@@ -358,6 +384,35 @@ const OVERRIDE_PAYLOAD = {
           priority: 50,
           enabled: true,
           regex: false
+        }
+      ],
+      children: []
+    },
+    {
+      id: "mixed-dictionary-check",
+      label: "mixed dictionary check",
+      kind: "dictionary-rules",
+      order: 59,
+      enabled: true,
+      entries: [
+        {
+          id: "plain-kana-entry",
+          from: "\u304B\u306A",
+          to: "\u4EEE\u540D",
+          priority: 51,
+          enabled: true,
+          regex: false
+        },
+        {
+          id: "ra-suffix-entry",
+          from: "\u3089",
+          to: "\u7B49",
+          priority: 52,
+          enabled: true,
+          regex: false,
+          conditions: {
+            current: [{ pos: "\u540D\u8A5E", pos1: "\u63A5\u5C3E", basic: "\u3089" }]
+          }
         }
       ],
       children: []
@@ -526,6 +581,48 @@ const OVERRIDE_FIXTURES = [
     note: "comma-separated token rule should ignore spaces and match second candidate"
   },
   {
+    id: "override-iu-basic-form",
+    input: "\u3044\u3046",
+    expected: "\u8A00\u3046",
+    activeBundles: ["okurigana-abbreviation"],
+    note: "verb token rule should still transform actual iu tokens"
+  },
+  {
+    id: "override-iu-iiko-should-stay",
+    input: "\u3044\u3044\u5B50",
+    expected: "\u3044\u3044\u5B50",
+    activeBundles: ["okurigana-abbreviation"],
+    note: "verb fallback must not rewrite non-verb substring"
+  },
+  {
+    id: "override-iru-basic-form",
+    input: "\u3044\u308B",
+    expected: "\u3090\u308B",
+    activeBundles: ["okurigana-abbreviation"],
+    note: "verb token rule should still transform actual iru tokens"
+  },
+  {
+    id: "override-mixed-dictionary-token-rule-does-not-hit-substring",
+    input: "\u50D5\u3089",
+    expected: "\u50D5\u3089",
+    activeBundles: ["mixed-dictionary-check"],
+    note: "conditioned suffix rule inside dictionary bundle must not fall back to plain substring replacement"
+  },
+  {
+    id: "override-mixed-dictionary-token-rule-token-stage-exists",
+    input: "\u3089",
+    expected: "\u3089",
+    activeBundles: ["mixed-dictionary-check"],
+    note: "conditioned suffix rule may stay unmatched, but must remain on token path instead of plain replacement"
+  },
+  {
+    id: "override-mixed-dictionary-plain-rule-still-runs",
+    input: "\u304B\u306A",
+    expected: "\u4EEE\u540D",
+    activeBundles: ["mixed-dictionary-check"],
+    note: "plain dictionary rule should remain on dictionary path in mixed bundle"
+  },
+  {
     id: "override-tsuyoi-should-stay",
     input: "\u3064\u3088\u3044",
     expected: "\u3064\u3088\u3044",
@@ -591,6 +688,59 @@ const verifyOverrideRestoration = (stages) => {
   };
 };
 
+const verifyOverrideRestorationV2 = (stages) => {
+  const targetStage = stages.find((stage) => stage.id === "runtime-override-check" && stage.kind === "token-rules");
+  if (!targetStage) {
+    return {
+      passed: false,
+      details: "runtime-override-check is not restored as token-rules"
+    };
+  }
+
+  const hasConditionRule = targetStage.rules.some((rule) => rule.conditions?.prev && rule.conditions?.current);
+  const hasSequenceRule = targetStage.rules.some((rule) => Array.isArray(rule.sequence) && rule.sequence.length === 2);
+  const okuriganaStages = stages.filter((stage) => stage.id === "okurigana-abbreviation");
+  const hasBasicFormVerb = okuriganaStages.some((stage) => {
+    return stage.kind === "token-rules" && stage.rules.some((rule) => {
+      return rule.to === "\u5206\u308B" && rule.match_target === "basic_form" && rule.type === "verb";
+    });
+  });
+  const generalReplacementStage = stages.find((stage) => {
+    return stage.id === "general-character-replacements" && stage.kind === "token-rules";
+  });
+  const hasTokenizedGeneralReplacement = generalReplacementStage?.rules.some((rule) => {
+    return rule.from === "\u306A\u3044" && rule.match_target === "basic_form";
+  });
+  const mixedDictionaryStages = stages.filter((stage) => stage.id === "mixed-dictionary-check");
+  const hasMixedDictionaryStage = mixedDictionaryStages.some((stage) => {
+    return stage.kind === "dictionary-rules" && stage.rules.some((rule) => rule.from === "\u304B\u306A");
+  });
+  const hasMixedTokenStage = mixedDictionaryStages.some((stage) => {
+    return stage.kind === "token-rules" && stage.rules.some((rule) => rule.from === "\u3089" && rule.conditions?.current);
+  });
+
+  return {
+    passed: Boolean(
+      hasConditionRule &&
+      hasSequenceRule &&
+      hasBasicFormVerb &&
+      hasTokenizedGeneralReplacement &&
+      hasMixedDictionaryStage &&
+      hasMixedTokenStage
+    ),
+    details: {
+      hasConditionRule,
+      hasSequenceRule,
+      hasBasicFormVerb,
+      generalReplacementStageKind: generalReplacementStage?.kind ?? null,
+      hasTokenizedGeneralReplacement,
+      mixedDictionaryStageKinds: mixedDictionaryStages.map((stage) => stage.kind),
+      hasMixedDictionaryStage,
+      hasMixedTokenStage
+    }
+  };
+};
+
 const runFixtureSet = (label, stages, fixtures, tokenizer, caseId = null) => {
   const targetFixtures = caseId
     ? fixtures.filter((fixture) => fixture.id === caseId)
@@ -645,7 +795,7 @@ const main = async () => {
     ? `PASS [stage-order] ${orderCheck.actualIds.join(" -> ")}`
     : `FAIL [stage-order] expected=${orderCheck.expectedIds.join(" -> ")} actual=${orderCheck.actualIds.join(" -> ")}`);
 
-  const overrideCheck = verifyOverrideRestoration(overrideLoaded.stages);
+  const overrideCheck = verifyOverrideRestorationV2(overrideLoaded.stages);
   console.log(overrideCheck.passed
     ? "PASS [override-restore] token-rules / basic_form / conditions / sequence"
     : `FAIL [override-restore] ${JSON.stringify(overrideCheck.details)}`);

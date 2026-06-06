@@ -1144,12 +1144,12 @@
   };
 
   const inferBundleKind = (source) => {
-    if (sourceHasTokenFeatures(source)) {
-      return "token-rules";
-    }
-
     if (typeof source?.kind === "string" && source.kind.trim()) {
       return source.kind;
+    }
+
+    if (sourceHasTokenFeatures(source)) {
+      return "token-rules";
     }
 
     return "dictionary-rules";
@@ -1760,13 +1760,25 @@
     input.size = Math.min(max, valueLength);
   };
 
-  const createCompactInput = (value, { type = "text", min = 4, max = 32, className = "cell-input" } = {}) => {
+  const createCompactInput = (value, {
+    type = "text",
+    min = 4,
+    max = 32,
+    className = "cell-input",
+    placeholder = "",
+    title = ""
+  } = {}) => {
     const input = document.createElement("input");
     input.type = type;
     input.className = className;
     input.value = value;
+    input.placeholder = placeholder;
+    input.title = title || `${value ?? ""}`;
     autosizeInput(input, min, max);
-    input.addEventListener("input", () => autosizeInput(input, min, max));
+    input.addEventListener("input", () => {
+      autosizeInput(input, min, max);
+      input.title = input.value;
+    });
     return input;
   };
 
@@ -1817,6 +1829,61 @@
   const COMMON_POS1_VALUES = ["一般", "自立", "非自立", "接尾", "格助詞", "係助詞", "副詞可能", "サ変接続"];
   const COMMON_CFORM_VALUES = ["基本形", "連体形", "連用形", "未然形", "仮定形", "命令形"];
   const COMMON_CTYPE_VALUES = ["五段・ラ行", "五段・ワ行促音便", "一段", "サ変・スル", "カ変・クル", "形容詞・イ段"];
+
+  const MATCHER_VALUE_ALIASES = {
+    pos: {
+      "名": "名詞",
+      "動": "動詞",
+      "形": "形容詞",
+      "助": "助詞",
+      "助動": "助動詞",
+      "副": "副詞",
+      "連体": "連体詞",
+      "接続": "接続詞",
+      "記": "記号"
+    },
+    pos1: {
+      "格助": "格助詞",
+      "係助": "係助詞",
+      "副可": "副詞可能",
+      "サ変": "サ変接続"
+    },
+    cform: {
+      "基本": "基本形",
+      "連用": "連用形",
+      "連体": "連体形",
+      "未然": "未然形",
+      "命令": "命令形",
+      "仮定": "仮定形"
+    },
+    ctype: {
+      "一段": "一段",
+      "五段": "五段・ワ行促音便",
+      "サ変": "サ変・スル",
+      "カ変": "カ変・クル",
+      "形容詞": "形容詞・アウオ段"
+    }
+  };
+
+  const canonicalizeMatcherFieldValue = (key, value) => {
+    const tokens = splitCommaSeparatedValues(value);
+    if (tokens.length === 0) {
+      return `${value ?? ""}`.trim();
+    }
+
+    const aliases = MATCHER_VALUE_ALIASES[key];
+    const normalized = tokens
+      .map((token) => {
+        const trimmed = `${token ?? ""}`.trim();
+        if (!trimmed) {
+          return "";
+        }
+        return aliases?.[trimmed] ?? trimmed;
+      })
+      .filter(Boolean);
+
+    return [...new Set(normalized)].join(",");
+  };
 
   const ensureDatalist = (id, values) => {
     let datalist = document.getElementById(id);
@@ -1877,7 +1944,7 @@
     const normalized = {};
     const keys = ["surface", "basic", "pos", "pos1", "pos2", "pos3", "ctype", "cform", "reading", "pronunciation", "word_type"];
     for (const key of keys) {
-      const value = `${draft?.[key] ?? ""}`.trim();
+      const value = canonicalizeMatcherFieldValue(key, draft?.[key] ?? "");
       if (value) {
         normalized[key] = value;
       }
@@ -2435,6 +2502,170 @@
     return wrap;
   };
 
+  const renderSequenceEditorV3 = (entry) => {
+    const wrap = document.createElement("div");
+    wrap.className = "panel-block";
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = "sequence";
+    const hint = document.createElement("span");
+    hint.className = "count";
+    hint.textContent = "完全一致 / OR はカンマ区切り / 値は下に JSON で表示";
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(createButton("Token追加", "secondary", () => {
+      const next = Array.isArray(entry.sequence) ? cloneValue(entry.sequence) : [];
+      next.push({ surface: "", pos: "" });
+      entry.sequence = next;
+      renderApp();
+    }));
+    head.append(title, hint, actions);
+
+    const sequence = Array.isArray(entry.sequence) ? entry.sequence : [];
+    if (sequence.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "count";
+      empty.textContent = "sequence は未設定です";
+      wrap.append(head, empty);
+      return wrap;
+    }
+
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "scroll-area sequence-scroll";
+    const table = document.createElement("table");
+    table.className = "sequence-table";
+    const thead = document.createElement("thead");
+    thead.innerHTML = `
+      <tr>
+        <th>表層</th>
+        <th>原形</th>
+        <th>品詞</th>
+        <th>品詞1</th>
+        <th>活用形</th>
+        <th>活用型</th>
+        <th>操作</th>
+      </tr>
+    `;
+    const tbody = document.createElement("tbody");
+    const preview = document.createElement("pre");
+    preview.className = "json-block";
+    const syncPreview = () => {
+      preview.textContent = JSON.stringify(entry.sequence, null, 2);
+    };
+
+    sequence.forEach((matcher, matcherIndex) => {
+      const row = document.createElement("tr");
+      const draft = normalizeMatcherDraft(matcher);
+      const updateMatcher = (key, value) => {
+        const next = Array.isArray(entry.sequence) ? cloneValue(entry.sequence) : [];
+        const matcherDraft = normalizeMatcherDraft(next[matcherIndex]);
+        matcherDraft[key] = value;
+        next[matcherIndex] = cleanupMatcherDraft(matcherDraft) ?? {};
+        entry.sequence = next;
+        renderDiagnostics();
+        syncPreview();
+      };
+
+      const appendCell = (node) => {
+        const td = document.createElement("td");
+        td.appendChild(node);
+        row.appendChild(td);
+      };
+
+      appendCell(createCompactInput(draft.surface ?? "", {
+        min: 6,
+        max: 24,
+        className: "cell-input sequence-field sequence-surface",
+        placeholder: "表層"
+      }));
+      row.lastChild.firstChild.addEventListener("input", (event) => updateMatcher("surface", event.currentTarget.value));
+
+      appendCell(createCompactInput(draft.basic ?? "", {
+        min: 6,
+        max: 24,
+        className: "cell-input sequence-field sequence-basic",
+        placeholder: "原形"
+      }));
+      row.lastChild.firstChild.addEventListener("input", (event) => updateMatcher("basic", event.currentTarget.value));
+
+      const posInput = createCompactInput(draft.pos ?? "", {
+        min: 6,
+        max: 18,
+        className: "cell-input sequence-field sequence-pos",
+        placeholder: "品詞"
+      });
+      ensureDatalist("pos-values", COMMON_POS_VALUES);
+      posInput.setAttribute("list", "pos-values");
+      posInput.addEventListener("input", (event) => updateMatcher("pos", event.currentTarget.value));
+      appendCell(posInput);
+
+      const pos1Input = createCompactInput(draft.pos1 ?? "", {
+        min: 6,
+        max: 18,
+        className: "cell-input sequence-field sequence-pos1",
+        placeholder: "品詞1"
+      });
+      ensureDatalist("pos1-values", COMMON_POS1_VALUES);
+      pos1Input.setAttribute("list", "pos1-values");
+      pos1Input.addEventListener("input", (event) => updateMatcher("pos1", event.currentTarget.value));
+      appendCell(pos1Input);
+
+      const cformInput = createCompactInput(draft.cform ?? "", {
+        min: 6,
+        max: 18,
+        className: "cell-input sequence-field sequence-cform",
+        placeholder: "活用形"
+      });
+      ensureDatalist("cform-values", COMMON_CFORM_VALUES);
+      cformInput.setAttribute("list", "cform-values");
+      cformInput.addEventListener("input", (event) => updateMatcher("cform", event.currentTarget.value));
+      appendCell(cformInput);
+
+      const ctypeInput = createCompactInput(draft.ctype ?? "", {
+        min: 6,
+        max: 24,
+        className: "cell-input sequence-field sequence-ctype",
+        placeholder: "活用型"
+      });
+      ensureDatalist("ctype-values", COMMON_CTYPE_VALUES);
+      ctypeInput.setAttribute("list", "ctype-values");
+      ctypeInput.addEventListener("input", (event) => updateMatcher("ctype", event.currentTarget.value));
+      appendCell(ctypeInput);
+
+      const actionTd = document.createElement("td");
+      actionTd.className = "action-col";
+      actionTd.appendChild(createButton("↑", "ghost", () => {
+        if (moveItem(sequence, matcherIndex, -1)) {
+          entry.sequence = cloneValue(sequence);
+          renderApp();
+        }
+      }));
+      actionTd.appendChild(createButton("↓", "ghost", () => {
+        if (moveItem(sequence, matcherIndex, 1)) {
+          entry.sequence = cloneValue(sequence);
+          renderApp();
+        }
+      }));
+      actionTd.appendChild(createButton("削除", "danger", () => {
+        const next = cloneValue(sequence);
+        next.splice(matcherIndex, 1);
+        entry.sequence = next.length > 0 ? next : null;
+        renderApp();
+      }));
+      row.appendChild(actionTd);
+
+      tbody.appendChild(row);
+    });
+
+    syncPreview();
+    table.append(thead, tbody);
+    tableWrap.appendChild(table);
+    wrap.append(head, tableWrap, preview);
+    return wrap;
+  };
+
   const renderBulkImportPanel = (node, effectiveKind) => {
     const panel = document.createElement("div");
     panel.className = "panel-block";
@@ -2701,7 +2932,7 @@
           renderConditionGroupEditor(entry, "prev", "前"),
           renderConditionGroupEditor(entry, "current", "現"),
           renderConditionGroupEditor(entry, "next", "後"),
-          renderSequenceEditorV2(entry)
+          renderSequenceEditorV3(entry)
         );
         detailWrap.append(detailHead, detailGrid);
         detailCell.appendChild(detailWrap);

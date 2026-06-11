@@ -277,9 +277,194 @@
       font-size: 12px;
     }
 
+    .bundle-workspace {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .bundle-explorer,
+    .bundle-grid-shell {
+      background: var(--panel);
+      border: 1px solid rgba(124, 45, 18, 0.12);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 8px 10px;
+    }
+
+    .workspace-head,
+    .workspace-toolbar,
+    .workspace-toolbar-group,
+    .row-actions,
+    .grid-detail-panel {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .workspace-toolbar {
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .workspace-head h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .tree-root-button,
+    .tree-label,
+    .sort-button,
+    .icon-button {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      padding: 2px 4px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .tree-root-button[data-selected="true"],
+    .explorer-row[data-selected="true"] .tree-label,
+    .sort-button:focus-visible,
+    .tree-label:focus-visible,
+    .tree-root-button:focus-visible {
+      background: rgba(124, 45, 18, 0.12);
+      outline: 0;
+    }
+
+    .explorer-tree {
+      display: grid;
+      gap: 2px;
+    }
+
+    .explorer-row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      min-height: 28px;
+      border-radius: 8px;
+    }
+
+    .grid-search {
+      min-width: 18ch;
+      padding: 4px 8px;
+      border: 1px solid rgba(29, 26, 22, 0.16);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.9);
+    }
+
+    .column-picker {
+      position: relative;
+    }
+
+    .column-picker-menu,
+    .row-menu-panel {
+      display: grid;
+      gap: 6px;
+      position: absolute;
+      z-index: 5;
+      min-width: 180px;
+      padding: 8px;
+      margin-top: 6px;
+      border: 1px solid rgba(124, 45, 18, 0.12);
+      border-radius: 12px;
+      background: #fffaf1;
+      box-shadow: var(--shadow);
+    }
+
+    .row-menu {
+      position: relative;
+    }
+
+    .row-menu summary,
+    .column-picker summary {
+      list-style: none;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .row-menu summary::-webkit-details-marker,
+    .column-picker summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .grid-scroll {
+      overflow: auto;
+      border: 1px solid rgba(216, 199, 170, 0.7);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.74);
+    }
+
+    .notion-grid {
+      min-width: 1440px;
+    }
+
+    .notion-grid th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f9f1e5;
+    }
+
+    .grid-row[data-selected="true"] {
+      background: rgba(124, 45, 18, 0.08);
+    }
+
+    .selection-col {
+      width: 52px;
+      min-width: 52px;
+      text-align: center;
+    }
+
+    .row-index {
+      display: inline-flex;
+      min-width: 24px;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .grid-cell-input {
+      width: 100%;
+      min-width: 8ch;
+      max-width: none;
+    }
+
+    .grid-sequence-input {
+      width: 100%;
+      min-width: 18ch;
+      max-width: none;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .grid-detail-row td {
+      background: rgba(124, 45, 18, 0.04);
+      white-space: normal;
+    }
+
+    .grid-detail-panel {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .grid-shortcuts {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
     @media (max-width: 780px) {
       .shell { width: min(100% - 8px, 100%); }
       .hero, .toolbar, .tabbar, .bundle-card, .diagnostics-card, .group-card, .panel-block { padding-inline: 8px; }
+      .bundle-workspace { grid-template-columns: 1fr; }
     }
   </style>
 </head>

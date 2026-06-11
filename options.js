@@ -4,12 +4,12 @@
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
   const STORAGE_KEY = "bundleOverrideSettingsV1";
   const DIAGNOSTIC_UI_STATE_KEY = "diagnosticUiStateV1";
+  const BUNDLE_UI_STATE_KEY = "bundleOptionsUiStateV1";
   const DICT_PATH = "./dict/";
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
   const MESSAGE_TYPES = {
     APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
-    OPEN_SHORTCUTS_PAGE: "OPEN_SHORTCUTS_PAGE",
-    GET_RUNTIME_DEBUG_SNAPSHOT: "GET_RUNTIME_DEBUG_SNAPSHOT"
+    OPEN_SHORTCUTS_PAGE: "OPEN_SHORTCUTS_PAGE"
   };
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
     skipEditableInputs: false,
@@ -37,11 +37,11 @@
     clipboard: null,
     focusedNodeId: null,
     dragPayload: null,
-    payloadInspectorQuery: "ない, よい, いま",
-    payloadInspector: {
-      storedPayload: null,
-      storedNormalizedRoots: [],
-      runtimeSnapshot: null
+    undoAction: null,
+    bundleUi: {
+      selectedNodeId: "__all__",
+      expandedTreeIds: {},
+      searchText: ""
     }
   };
 
@@ -51,14 +51,11 @@
   const sitesRoot = document.getElementById("sites-root");
   const panelBundles = document.getElementById("panel-bundles");
   const panelDiagnostics = document.getElementById("panel-diagnostics");
-  const panelPayload = document.getElementById("panel-payload");
   const panelTokenizer = document.getElementById("panel-tokenizer");
   const panelHotkeys = document.getElementById("panel-hotkeys");
   const panelSites = document.getElementById("panel-sites");
-  const payloadRoot = document.getElementById("payload-root");
   const tabBundlesButton = document.getElementById("tab-bundles");
   const tabDiagnosticsButton = document.getElementById("tab-diagnostics");
-  const tabPayloadButton = document.getElementById("tab-payload");
   const tabTokenizerButton = document.getElementById("tab-tokenizer");
   const tabHotkeysButton = document.getElementById("tab-hotkeys");
   const tabSitesButton = document.getElementById("tab-sites");
@@ -77,6 +74,8 @@
   const tokenizerResult = document.getElementById("tokenizer-result");
   const openShortcutsButton = document.getElementById("open-shortcuts");
   const addCurrentSiteButton = document.getElementById("add-current-site");
+  document.getElementById("tab-payload")?.remove();
+  document.getElementById("panel-payload")?.remove();
 
   const setStatus = (message, type = "info") => {
     statusNode.textContent = message;
@@ -97,18 +96,107 @@
       return [];
     }
 
-    return normalized
-      .split(",")
-      .map((item) => item.trim())
+    const ESCAPE_SENTINEL = "\u0000";
+    const tokenizeEscapes = (text) => {
+      let output = "";
+      for (let index = 0; index < text.length; index += 1) {
+        const char = text[index];
+        if (char === "\\" && index + 1 < text.length) {
+          const next = text[index + 1];
+          if (next === "[" || next === "]" || next === "," || next === "\\") {
+            output += `${ESCAPE_SENTINEL}${next}`;
+            index += 1;
+            continue;
+          }
+        }
+        output += char;
+      }
+      return output;
+    };
+    const unescapeText = (text) => {
+      return text
+        .replaceAll(`${ESCAPE_SENTINEL}[`, "[")
+        .replaceAll(`${ESCAPE_SENTINEL}]`, "]")
+        .replaceAll(`${ESCAPE_SENTINEL},`, ",")
+        .replaceAll(`${ESCAPE_SENTINEL}\\`, "\\");
+    };
+    const splitTopLevel = (text) => {
+      const parts = [];
+      let current = "";
+      let depth = 0;
+      for (const char of tokenizeEscapes(text)) {
+        if (char === "[") {
+          depth += 1;
+        } else if (char === "]") {
+          depth = Math.max(0, depth - 1);
+        } else if (char === "," && depth === 0 && current[current.length - 1] !== ESCAPE_SENTINEL) {
+          parts.push(current.trim());
+          current = "";
+          continue;
+        }
+        current += char;
+      }
+      if (current || text.endsWith(",")) {
+        parts.push(current.trim());
+      }
+      return parts.filter(Boolean);
+    };
+    const expand = (text) => {
+      const source = tokenizeEscapes(text.trim());
+      if (!source) {
+        return [""];
+      }
+      let openIndex = -1;
+      for (let index = 0; index < source.length; index += 1) {
+        if (source[index] === "[" && source[index - 1] !== ESCAPE_SENTINEL) {
+          openIndex = index;
+          break;
+        }
+      }
+      if (openIndex < 0) {
+        return [source];
+      }
+      let depth = 0;
+      let closeIndex = -1;
+      for (let index = openIndex; index < source.length; index += 1) {
+        const char = source[index];
+        if (char === "[" && source[index - 1] !== ESCAPE_SENTINEL) {
+          depth += 1;
+        } else if (char === "]" && source[index - 1] !== ESCAPE_SENTINEL) {
+          depth -= 1;
+          if (depth === 0) {
+            closeIndex = index;
+            break;
+          }
+        }
+      }
+      if (closeIndex < 0) {
+        return [unescapeText(source)];
+      }
+      const prefix = source.slice(0, openIndex);
+      const inner = source.slice(openIndex + 1, closeIndex);
+      const suffix = source.slice(closeIndex + 1);
+      return splitTopLevel(inner).flatMap((branch) => expand(`${prefix}${branch}${suffix}`));
+    };
+
+    return splitTopLevel(normalized)
+      .flatMap((item) => expand(item))
+      .map((item) => unescapeText(item.trim()))
       .filter(Boolean);
   };
 
   const splitCommaSeparatedValues = typeof TransformEngine?.splitCommaSeparatedValues === "function"
     ? TransformEngine.splitCommaSeparatedValues
     : fallbackSplitCommaSeparatedValues;
+  const splitMatchCandidates = typeof TransformEngine?.splitMatchCandidates === "function"
+    ? TransformEngine.splitMatchCandidates
+    : splitCommaSeparatedValues;
+  const splitReplacementCandidates = typeof TransformEngine?.splitReplacementCandidates === "function"
+    ? TransformEngine.splitReplacementCandidates
+    : splitCommaSeparatedValues;
 
   const normalizeFromOptions = (value, fallbackValue = "") => {
-    const candidates = splitCommaSeparatedValues(value);
+    const candidates = splitMatchCandidates(value);
     if (candidates.length > 0) {
       return [...new Set(candidates)];
     }
@@ -268,6 +356,26 @@
       }
     }).catch((error) => {
       console.error("診断 UI 状態の保存に失敗しました", error);
+    });
+  };
+
+  const normalizeBundleUiState = (value) => {
+    return {
+      selectedNodeId: `${value?.selectedNodeId ?? "__all__"}` || "__all__",
+      expandedTreeIds: value?.expandedTreeIds && typeof value.expandedTreeIds === "object" ? value.expandedTreeIds : {},
+      searchText: `${value?.searchText ?? ""}`
+    };
+  };
+
+  const saveBundleUiState = () => {
+    storageSet({
+      [BUNDLE_UI_STATE_KEY]: {
+        selectedNodeId: state.bundleUi.selectedNodeId,
+        expandedTreeIds: state.bundleUi.expandedTreeIds,
+        searchText: state.bundleUi.searchText
+      }
+    }).catch((error) => {
+      console.error("bundle UI state save failed", error);
     });
   };
 
@@ -540,9 +648,163 @@
     return line.includes("\t") ? "\t" : ",";
   };
 
+  const normalizeBulkFieldName = (value) => {
+    return `${value ?? ""}`.trim().toLowerCase();
+  };
+
+  const setEntryFieldFromBulk = (entry, fieldName, rawValue, effectiveKind) => {
+    const value = `${rawValue ?? ""}`.trim();
+    switch (normalizeBulkFieldName(fieldName)) {
+      case "enabled":
+      case "有効":
+        entry.enabled = parseBooleanLike(value, true);
+        return;
+      case "regex":
+      case "正規":
+      case "正規表現":
+        entry.regex = parseBooleanLike(value, false);
+        return;
+      case "basic_match":
+      case "basic":
+      case "原形一致":
+        entry.match_target = effectiveKind === "token-rules" && parseBooleanLike(value, false) ? "basic_form" : null;
+        return;
+      case "from":
+      case "変更前":
+        entry.from = value;
+        entry.from_options = normalizeFromOptions(value);
+        return;
+      case "to":
+      case "変更後":
+        entry.to = value;
+        return;
+      case "priority":
+      case "優先":
+        entry.priority = Number.isFinite(Number(value)) ? Number(value) : 90;
+        return;
+      case "sequence":
+        entry.sequence = parseSequenceDsl(value);
+        return;
+      default:
+        break;
+    }
+
+    const conditionMatch = normalizeBulkFieldName(fieldName).match(/^(prev|current|next)\.(surface|basic|pos|pos1|cform|ctype)$/);
+    if (conditionMatch) {
+      const [, slot, field] = conditionMatch;
+      setEntryConditionInlineValue(entry, slot, field, value);
+    }
+  };
+
+  const applyBulkDefaults = (entry, defaults, effectiveKind) => {
+    for (const [fieldName, value] of Object.entries(defaults ?? {})) {
+      setEntryFieldFromBulk(entry, fieldName, value, effectiveKind);
+    }
+  };
+
+  const parseBulkTableBlock = (lines, meta, effectiveKind) => {
+    const delimiter = typeof meta.delimiter === "string" && meta.delimiter.length > 0
+      ? meta.delimiter.replace("\\t", "\t")
+      : detectBulkImportDelimiter(lines[0] ?? "");
+    const rows = lines
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => parseDelimitedRow(line, delimiter));
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const headers = rows[0].map((header) => normalizeBulkFieldName(header));
+    return rows.slice(1).flatMap((cells) => {
+      if (cells.every((cell) => !`${cell ?? ""}`.trim())) {
+        return [];
+      }
+      const entry = {
+        id: createEntryId(),
+        from: "",
+        from_options: [],
+        to: "",
+        priority: 90,
+        enabled: true,
+        regex: false,
+        match_target: null,
+        conditions: null,
+        sequence: null,
+        raw: null,
+        metaOpen: false,
+        selected: false
+      };
+      applyBulkDefaults(entry, meta.defaults, effectiveKind);
+      headers.forEach((header, index) => {
+        if (header) {
+          setEntryFieldFromBulk(entry, header, cells[index] ?? "", effectiveKind);
+        }
+      });
+      if (!entry.from && Array.isArray(entry.sequence) && entry.sequence.length > 0) {
+        entry.from = formatSequenceDsl(entry.sequence);
+      }
+      return entry.from && entry.to ? [entry] : [];
+    });
+  };
+
+  const parseBulkMetadataBlock = (text, effectiveKind) => {
+    const lines = `${text ?? ""}`.split(/\r?\n/);
+    const meta = {
+      defaults: {},
+      delimiter: null
+    };
+    const bodyLines = [];
+    let inBody = false;
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!inBody && (!line || line === "---")) {
+        inBody = true;
+        continue;
+      }
+      if (!inBody && line.startsWith("@")) {
+        const separatorIndex = line.indexOf(":");
+        if (separatorIndex < 0) {
+          continue;
+        }
+        const key = line.slice(1, separatorIndex).trim();
+        const value = line.slice(separatorIndex + 1).trim();
+        if (key === "delimiter") {
+          meta.delimiter = value;
+        } else if (key.startsWith("defaults.")) {
+          meta.defaults[key.slice("defaults.".length)] = value;
+        } else {
+          meta[key] = value;
+        }
+        continue;
+      }
+      inBody = true;
+      if (line) {
+        bodyLines.push(rawLine);
+      }
+    }
+
+    if (bodyLines.length === 0) {
+      return [];
+    }
+
+    return parseBulkTableBlock(bodyLines, meta, effectiveKind);
+  };
+
   const parseBulkImportText = (text, effectiveKind) => {
+    const normalizedText = `${text ?? ""}`.trim();
+    if (!normalizedText) {
+      return [];
+    }
+
+    if (/@(?:bundle|group|kind|delimiter|defaults\.)/m.test(normalizedText)) {
+      return normalizedText
+        .split(/\n\s*\n/g)
+        .flatMap((block) => parseBulkMetadataBlock(block, effectiveKind));
+    }
+
     const entries = [];
-    for (const rawLine of `${text ?? ""}`.split(/\r?\n/)) {
+    for (const rawLine of normalizedText.split(/\r?\n/)) {
       const line = rawLine.trim();
       if (!line || line.startsWith("//") || line.startsWith("#")) {
         continue;
@@ -567,6 +829,7 @@
       entries.push({
         id: createEntryId(),
         from: cells[0],
+        from_options: normalizeFromOptions(cells[0]),
         to: cells[1],
         priority: Number.isFinite(priority) ? priority : 90,
         enabled: parseBooleanLike(cells[3], true),
@@ -1363,8 +1626,6 @@
     state.runtimeSettings = extractRuntimeSettings(payload);
     state.disabledSites = extractDisabledSites(payload);
     state.popupBundleId = extractPopupBundleId(payload);
-    state.payloadInspector.storedPayload = cloneValue(payload);
-    state.payloadInspector.storedNormalizedRoots = importedRoots;
     ensurePopupBundleRoot(state.roots);
   };
 
@@ -1865,6 +2126,86 @@
     }
   };
 
+  const CONDITION_SLOT_KEYS = ["prev", "current", "next"];
+  const MATCHER_FIELD_KEYS = ["surface", "basic", "pos", "pos1", "cform", "ctype"];
+
+  const formatSequenceDsl = (value) => {
+    if (!Array.isArray(value) || value.length === 0) {
+      return "";
+    }
+
+    return value
+      .map((token) => {
+        const matcher = cleanupMatcherDraft(token) ?? {};
+        const surface = matcher.surface ?? "";
+        const pairs = Object.entries(matcher)
+          .filter(([key]) => key !== "surface")
+          .map(([key, fieldValue]) => `${key}=${fieldValue}`);
+        if (pairs.length === 0) {
+          return surface;
+        }
+        return `${surface}{${pairs.join(";")}}`;
+      })
+      .join(" ");
+  };
+
+  const parseSequenceDsl = (text) => {
+    const trimmed = `${text ?? ""}`.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const tokenTexts = [];
+    let current = "";
+    let braceDepth = 0;
+    for (const char of trimmed) {
+      if (char === "{") {
+        braceDepth += 1;
+        current += char;
+        continue;
+      }
+      if (char === "}") {
+        braceDepth = Math.max(0, braceDepth - 1);
+        current += char;
+        continue;
+      }
+      if (/\s/.test(char) && braceDepth === 0) {
+        if (current.trim()) {
+          tokenTexts.push(current.trim());
+          current = "";
+        }
+        continue;
+      }
+      current += char;
+    }
+    if (current.trim()) {
+      tokenTexts.push(current.trim());
+    }
+
+    return tokenTexts
+      .map((tokenText) => {
+        const openIndex = tokenText.indexOf("{");
+        if (openIndex < 0) {
+          return cleanupMatcherDraft({ surface: tokenText });
+        }
+        if (!tokenText.endsWith("}")) {
+          throw new Error(`invalid sequence token: ${tokenText}`);
+        }
+        const surface = tokenText.slice(0, openIndex).trim();
+        const body = tokenText.slice(openIndex + 1, -1).trim();
+        const matcher = surface ? { surface } : {};
+        for (const pairText of body.split(";").map((item) => item.trim()).filter(Boolean)) {
+          const separatorIndex = pairText.indexOf("=");
+          if (separatorIndex < 0) {
+            throw new Error(`invalid sequence field: ${pairText}`);
+          }
+          matcher[pairText.slice(0, separatorIndex).trim()] = pairText.slice(separatorIndex + 1).trim();
+        }
+        return cleanupMatcherDraft(matcher);
+      })
+      .filter(Boolean);
+  };
+
   const canonicalizeMatcherFieldValue = (key, value) => {
     const tokens = splitCommaSeparatedValues(value);
     if (tokens.length === 0) {
@@ -1983,6 +2324,27 @@
       delete nextConditions[slot];
     }
     entry.conditions = Object.keys(nextConditions).length > 0 ? nextConditions : null;
+  };
+
+  const getConditionDraftListForSlot = (entry, slot) => {
+    const drafts = getConditionDraftList(entry, slot);
+    return Array.isArray(drafts) ? drafts : [{}];
+  };
+
+  const getEntryConditionInlineValue = (entry, slot, field) => {
+    return getConditionDraftListForSlot(entry, slot)
+      .map((draft) => `${draft?.[field] ?? ""}`.trim())
+      .filter(Boolean)
+      .join(" || ");
+  };
+
+  const setEntryConditionInlineValue = (entry, slot, field, value) => {
+    const drafts = getConditionDraftListForSlot(entry, slot).map((draft) => ({ ...draft }));
+    if (drafts.length === 0) {
+      drafts.push({});
+    }
+    drafts[0][field] = value;
+    assignConditionSlot(entry, slot, drafts);
   };
 
   const setAllRowsSelected = (entries, selected) => {
@@ -3619,41 +3981,1052 @@
   const renderTabState = () => {
     const bundlesActive = state.activeTab === "bundles";
     const diagnosticsActive = state.activeTab === "diagnostics";
-    const payloadActive = state.activeTab === "payload";
     const tokenizerActive = state.activeTab === "tokenizer";
     const hotkeysActive = state.activeTab === "hotkeys";
     const sitesActive = state.activeTab === "sites";
     panelBundles.hidden = !bundlesActive;
     panelDiagnostics.hidden = !diagnosticsActive;
-    panelPayload.hidden = !payloadActive;
     panelTokenizer.hidden = !tokenizerActive;
     panelHotkeys.hidden = !hotkeysActive;
     panelSites.hidden = !sitesActive;
     tabBundlesButton.setAttribute("aria-selected", bundlesActive ? "true" : "false");
     tabDiagnosticsButton.setAttribute("aria-selected", diagnosticsActive ? "true" : "false");
-    tabPayloadButton.setAttribute("aria-selected", payloadActive ? "true" : "false");
     tabTokenizerButton.setAttribute("aria-selected", tokenizerActive ? "true" : "false");
     tabHotkeysButton.setAttribute("aria-selected", hotkeysActive ? "true" : "false");
     tabSitesButton.setAttribute("aria-selected", sitesActive ? "true" : "false");
     tabBundlesButton.className = bundlesActive ? "tab-button secondary" : "tab-button ghost";
     tabDiagnosticsButton.className = diagnosticsActive ? "tab-button secondary" : "tab-button ghost";
-    tabPayloadButton.className = payloadActive ? "tab-button secondary" : "tab-button ghost";
     tabTokenizerButton.className = tokenizerActive ? "tab-button secondary" : "tab-button ghost";
     tabHotkeysButton.className = hotkeysActive ? "tab-button secondary" : "tab-button ghost";
     tabSitesButton.className = sitesActive ? "tab-button secondary" : "tab-button ghost";
   };
 
+  const getNodeTrailById = (nodeId, nodes = state.roots, trail = []) => {
+    for (const node of nodes) {
+      const nextTrail = [...trail, node];
+      if (node.id === nodeId) {
+        return nextTrail;
+      }
+      const nested = getNodeTrailById(nodeId, node.children ?? [], nextTrail);
+      if (nested) {
+        return nested;
+      }
+    }
+    return null;
+  };
+
+  const getNodeById = (nodeId) => findNodeLocation(nodeId)?.node ?? null;
+
+  /*
+  const collectGridRows = (nodes = state.roots, trail = []) => {
+    const rows = [];
+    for (const node of nodes) {
+      const nextTrail = [...trail, node];
+      node.entries.forEach((entry, entryIndex) => {
+        rows.push({
+          entry,
+          entryId: entry.id,
+          node,
+          nodeId: node.id,
+          entryIndex,
+          trail: nextTrail,
+          bundleNode: nextTrail[0] ?? node,
+          bundleLabel: nextTrail[0]?.label ?? node.label,
+          groupLabel: nextTrail.slice(1).map((item) => item.label).join(" / "),
+          pathLabel: nextTrail.map((item) => item.label).join(" / "),
+          effectiveKind: `${(nextTrail[0] ?? node).kind ?? "dictionary-rules"}`
+        });
+      });
+      rows.push(...collectGridRows(node.children ?? [], nextTrail));
+    }
+    return rows;
+  };
+
+  const GRID_COLUMN_DEFS = [
+    { id: "enabled", label: "有効", kind: "checkbox", width: "56px" },
+    { id: "regex", label: "正規", kind: "checkbox", width: "56px" },
+    { id: "basicMatch", label: "原形一致", kind: "checkbox", width: "72px" },
+    { id: "from", label: "変更前", kind: "text", width: "180px" },
+    { id: "to", label: "変更後", kind: "text", width: "180px" },
+    { id: "priority", label: "優先", kind: "number", width: "68px" },
+    { id: "bundle", label: "bundle", kind: "readonly", width: "160px" },
+    { id: "group", label: "group", kind: "readonly", width: "180px" },
+    { id: "path", label: "path", kind: "readonly", width: "220px" },
+    { id: "sequence", label: "sequence", kind: "text", width: "320px" },
+    ...CONDITION_SLOT_KEYS.flatMap((slot) => MATCHER_FIELD_KEYS.map((field) => ({
+      id: `${slot}.${field}`,
+      label: `${slot}.${field}`,
+      kind: "text",
+      width: "120px"
+    }))),
+    { id: "actions", label: "操作", kind: "actions", width: "120px" }
+  ];
+
+  const GRID_COLUMN_MAP = new Map(GRID_COLUMN_DEFS.map((column) => [column.id, column]));
+
+  const getVisibleGridColumns = () => {
+    const visibleIds = Array.isArray(state.bundleUi.visibleColumns) && state.bundleUi.visibleColumns.length > 0
+      ? state.bundleUi.visibleColumns
+      : DEFAULT_GRID_COLUMN_IDS;
+    const columns = visibleIds
+      .map((columnId) => GRID_COLUMN_MAP.get(columnId))
+      .filter(Boolean);
+    return [...columns, GRID_COLUMN_MAP.get("actions")].filter(Boolean);
+  };
+
+  const getGridCellValue = (row, columnId) => {
+    switch (columnId) {
+      case "enabled":
+        return row.entry.enabled !== false;
+      case "regex":
+        return row.entry.regex === true;
+      case "basicMatch":
+        return row.entry.match_target === "basic_form";
+      case "from":
+        return row.entry.from ?? "";
+      case "to":
+        return row.entry.to ?? "";
+      case "priority":
+        return row.entry.priority ?? 90;
+      case "bundle":
+        return row.bundleLabel ?? "";
+      case "group":
+        return row.groupLabel ?? "";
+      case "path":
+        return row.pathLabel ?? "";
+      case "sequence":
+        return formatSequenceDsl(row.entry.sequence);
+      default:
+        break;
+    }
+
+    const conditionMatch = columnId.match(/^(prev|current|next)\.(surface|basic|pos|pos1|cform|ctype)$/);
+    if (conditionMatch) {
+      const [, slot, field] = conditionMatch;
+      return getEntryConditionInlineValue(row.entry, slot, field);
+    }
+
+    return "";
+  };
+
+  const applyGridCellValue = (row, columnId, value) => {
+    switch (columnId) {
+      case "enabled":
+        row.entry.enabled = value === true;
+        return;
+      case "regex":
+        row.entry.regex = value === true;
+        return;
+      case "basicMatch":
+        row.entry.match_target = value === true ? "basic_form" : null;
+        return;
+      case "from":
+        row.entry.from = `${value ?? ""}`;
+        row.entry.from_options = normalizeFromOptions(row.entry.from);
+        return;
+      case "to":
+        row.entry.to = `${value ?? ""}`;
+        return;
+      case "priority":
+        row.entry.priority = Number.isFinite(Number(value)) ? Number(value) : 90;
+        return;
+      case "sequence":
+        row.entry.sequence = parseSequenceDsl(value);
+        return;
+      default:
+        break;
+    }
+
+    const conditionMatch = columnId.match(/^(prev|current|next)\.(surface|basic|pos|pos1|cform|ctype)$/);
+    if (conditionMatch) {
+      const [, slot, field] = conditionMatch;
+      setEntryConditionInlineValue(row.entry, slot, field, `${value ?? ""}`);
+    }
+  };
+
+  const matchesBundleSearch = (row, searchText) => {
+    const needle = `${searchText ?? ""}`.trim().toLowerCase();
+    if (!needle) {
+      return true;
+    }
+    return [
+      row.entry.from,
+      row.entry.to,
+      row.bundleLabel,
+      row.groupLabel,
+      row.pathLabel,
+      formatSequenceDsl(row.entry.sequence),
+      ...CONDITION_SLOT_KEYS.flatMap((slot) => MATCHER_FIELD_KEYS.map((field) => getEntryConditionInlineValue(row.entry, slot, field)))
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(needle);
+  };
+
+  const getRowsForSelectedScope = () => {
+    const allRows = collectGridRows();
+    const searchText = state.bundleUi.searchText;
+    if (`${searchText ?? ""}`.trim()) {
+      return allRows.filter((row) => matchesBundleSearch(row, searchText));
+    }
+
+    if (!state.bundleUi.selectedNodeId || state.bundleUi.selectedNodeId === "__all__") {
+      return allRows;
+    }
+
+    const selectedTrail = getNodeTrailById(state.bundleUi.selectedNodeId);
+    if (!selectedTrail) {
+      return allRows;
+    }
+
+    const selectedPath = selectedTrail.map((item) => item.id);
+    return allRows.filter((row) => {
+      const rowPath = row.trail.map((item) => item.id);
+      return selectedPath.every((nodeId, index) => rowPath[index] === nodeId);
+    });
+  };
+
+  const sortGridRows = (rows) => {
+    if (!state.bundleUi.sortKey || state.bundleUi.sortDirection === 0) {
+      return rows;
+    }
+
+    const sorted = [...rows];
+    sorted.sort((left, right) => {
+      const leftValue = getGridCellValue(left, state.bundleUi.sortKey);
+      const rightValue = getGridCellValue(right, state.bundleUi.sortKey);
+      if (leftValue === rightValue) {
+        return 0;
+      }
+      if (typeof leftValue === "number" && typeof rightValue === "number") {
+        return (leftValue - rightValue) * state.bundleUi.sortDirection;
+      }
+      return `${leftValue ?? ""}`.localeCompare(`${rightValue ?? ""}`, "ja") * state.bundleUi.sortDirection;
+    });
+    return sorted;
+  };
+
+  const getSelectedEntryIdSet = () => new Set(state.bundleUi.selectedEntryIds ?? []);
+
+  const setSelectedEntryIds = (entryIds, anchorEntryId = null) => {
+    state.bundleUi.selectedEntryIds = [...new Set(entryIds)];
+    state.bundleUi.anchorEntryId = anchorEntryId;
+    saveBundleUiState();
+  };
+
+  const isBundleRowSelected = (entryId) => getSelectedEntryIdSet().has(entryId);
+
+  const selectBundleRow = (rows, row, event) => {
+    const selectedIds = new Set(state.bundleUi.selectedEntryIds ?? []);
+    if (event.shiftKey && state.bundleUi.anchorEntryId) {
+      const anchorIndex = rows.findIndex((item) => item.entryId === state.bundleUi.anchorEntryId);
+      const currentIndex = rows.findIndex((item) => item.entryId === row.entryId);
+      if (anchorIndex >= 0 && currentIndex >= 0) {
+        const [start, end] = anchorIndex <= currentIndex ? [anchorIndex, currentIndex] : [currentIndex, anchorIndex];
+        setSelectedEntryIds(rows.slice(start, end + 1).map((item) => item.entryId), row.entryId);
+        return;
+      }
+    }
+
+    if (event.ctrlKey || event.metaKey) {
+      if (selectedIds.has(row.entryId)) {
+        selectedIds.delete(row.entryId);
+      } else {
+        selectedIds.add(row.entryId);
+      }
+      setSelectedEntryIds([...selectedIds], row.entryId);
+      return;
+    }
+
+    setSelectedEntryIds([row.entryId], row.entryId);
+  };
+
+  const setUndoAction = (label, applyUndo) => {
+    state.undoAction = { label, applyUndo };
+  };
+
+  const runUndoAction = () => {
+    if (!state.undoAction) {
+      return;
+    }
+    const action = state.undoAction;
+    state.undoAction = null;
+    action.applyUndo();
+    renderApp();
+    setStatus(`${action.label} を取り消しました。`, "info");
+  };
+
+  const clearUndoAction = () => {
+    state.undoAction = null;
+  };
+
+  const copySelectedGridRows = (rows, cut = false) => {
+    const selectedRows = rows.filter((row) => isBundleRowSelected(row.entryId));
+    if (selectedRows.length === 0) {
+      return false;
+    }
+
+    state.clipboard = {
+      type: "entries",
+      entries: selectedRows.map((row) => createDeepEntryClone(row.entry))
+    };
+
+    if (!cut) {
+      setStatus(`${selectedRows.length} 行をコピーしました。`, "success");
+      return true;
+    }
+
+    const snapshot = selectedRows.map((row) => ({
+      nodeId: row.nodeId,
+      entryIndex: row.entryIndex,
+      entry: cloneValue(row.entry)
+    }));
+    selectedRows
+      .sort((left, right) => right.entryIndex - left.entryIndex)
+      .forEach((row) => {
+        row.node.entries.splice(row.entryIndex, 1);
+      });
+    setUndoAction("切り取り", () => {
+      snapshot
+        .sort((left, right) => left.entryIndex - right.entryIndex)
+        .forEach((item) => {
+          const node = getNodeById(item.nodeId);
+          if (node) {
+            node.entries.splice(item.entryIndex, 0, normalizeEntryFromObject(item.entry, item.entry.priority ?? 90) ?? item.entry);
+          }
+        });
+    });
+    setSelectedEntryIds([]);
+    setStatus(`${selectedRows.length} 行を切り取りました。`, "success");
+    return true;
+  };
+
+  const pasteGridRows = (targetRow = null) => {
+    if (!state.clipboard || state.clipboard.type !== "entries" || !Array.isArray(state.clipboard.entries) || state.clipboard.entries.length === 0) {
+      return false;
+    }
+
+    const targetNode = targetRow?.node ?? getNodeById(state.bundleUi.selectedNodeId) ?? state.roots[0];
+    if (!targetNode) {
+      return false;
+    }
+
+    const insertIndex = targetRow ? targetRow.entryIndex + 1 : targetNode.entries.length;
+    const pastedEntries = state.clipboard.entries.map((entry) => createDeepEntryClone(entry));
+    targetNode.entries.splice(insertIndex, 0, ...pastedEntries);
+    setSelectedEntryIds(pastedEntries.map((entry) => entry.id), pastedEntries[pastedEntries.length - 1]?.id ?? null);
+    setStatus(`${pastedEntries.length} 行を貼り付けました。`, "success");
+    return true;
+  };
+
+  const insertGridRowAfter = (row) => {
+    const nextEntry = normalizeEntryFromObject({
+      from: "",
+      to: "",
+      priority: row.entry.priority ?? 90,
+      enabled: true,
+      regex: false
+    }, row.entry.priority ?? 90) ?? {
+      id: createEntryId(),
+      from: "",
+      from_options: [],
+      to: "",
+      priority: row.entry.priority ?? 90,
+      enabled: true,
+      regex: false,
+      match_target: null,
+      conditions: null,
+      sequence: null,
+      raw: null,
+      metaOpen: false,
+      selected: false
+    };
+    row.node.entries.splice(row.entryIndex + 1, 0, nextEntry);
+    setSelectedEntryIds([nextEntry.id], nextEntry.id);
+  };
+
+  const deleteGridRows = (rows, targetRow = null) => {
+    const selectedRows = targetRow
+      ? rows.filter((row) => row.entryId === targetRow.entryId || isBundleRowSelected(row.entryId))
+      : rows.filter((row) => isBundleRowSelected(row.entryId));
+    if (selectedRows.length === 0) {
+      return false;
+    }
+    const snapshot = selectedRows.map((row) => ({
+      nodeId: row.nodeId,
+      entryIndex: row.entryIndex,
+      entry: cloneValue(row.entry)
+    }));
+    selectedRows
+      .sort((left, right) => right.entryIndex - left.entryIndex)
+      .forEach((row) => {
+        row.node.entries.splice(row.entryIndex, 1);
+      });
+    setUndoAction("削除", () => {
+      snapshot
+        .sort((left, right) => left.entryIndex - right.entryIndex)
+        .forEach((item) => {
+          const node = getNodeById(item.nodeId);
+          if (node) {
+            node.entries.splice(item.entryIndex, 0, normalizeEntryFromObject(item.entry, item.entry.priority ?? 90) ?? item.entry);
+          }
+        });
+    });
+    setSelectedEntryIds([]);
+    setStatus(`${selectedRows.length} 行を削除しました。`, "success");
+    return true;
+  };
+
+  const moveSelectedGridRows = (rows, direction) => {
+    const selectedRows = rows.filter((row) => isBundleRowSelected(row.entryId));
+    if (selectedRows.length === 0) {
+      return false;
+    }
+    selectedRows
+      .sort((left, right) => direction < 0 ? left.entryIndex - right.entryIndex : right.entryIndex - left.entryIndex)
+      .forEach((row) => {
+        moveItem(row.node.entries, row.entryIndex, direction);
+      });
+    return true;
+  };
+
+  const toggleGridSort = (columnId) => {
+    if (state.bundleUi.sortKey !== columnId) {
+      state.bundleUi.sortKey = columnId;
+      state.bundleUi.sortDirection = 1;
+    } else if (state.bundleUi.sortDirection === 1) {
+      state.bundleUi.sortDirection = -1;
+    } else if (state.bundleUi.sortDirection === -1) {
+      state.bundleUi.sortKey = null;
+      state.bundleUi.sortDirection = 0;
+    } else {
+      state.bundleUi.sortDirection = 1;
+    }
+    saveBundleUiState();
+  };
+
+  */
+  const renderTreeNode = (node, depth = 0) => {
+    const row = document.createElement("div");
+    row.className = "explorer-row";
+    row.style.paddingLeft = `${depth * 14 + 8}px`;
+    row.dataset.selected = state.bundleUi.selectedNodeId === node.id ? "true" : "false";
+    row.draggable = true;
+    row.addEventListener("dragstart", (event) => {
+      state.dragPayload = { type: "node", nodeId: node.id };
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", node.id);
+    });
+    row.addEventListener("dragend", () => {
+      state.dragPayload = null;
+    });
+    row.addEventListener("dragover", (event) => {
+      if (state.dragPayload?.type === "node") {
+        event.preventDefault();
+      }
+    });
+    row.addEventListener("drop", (event) => {
+      if (state.dragPayload?.type !== "node") {
+        return;
+      }
+      event.preventDefault();
+      const payload = state.dragPayload;
+      const location = findNodeLocation(node.id);
+      if (!location || payload.nodeId === node.id || isNodeAncestorOf(payload.nodeId, node.id)) {
+        state.dragPayload = null;
+        return;
+      }
+      if (moveNodeBetweenParents(payload.nodeId, location.parentChildren, location.index)) {
+        renderApp();
+      }
+      state.dragPayload = null;
+    });
+
+    const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+    const expandButton = document.createElement("button");
+    expandButton.type = "button";
+    expandButton.className = "icon-button";
+    expandButton.textContent = hasChildren ? (state.bundleUi.expandedTreeIds?.[node.id] === false ? "▸" : "▾") : "•";
+    expandButton.title = hasChildren ? "展開切替" : "leaf";
+    expandButton.disabled = !hasChildren;
+    expandButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const isExpanded = state.bundleUi.expandedTreeIds?.[node.id] !== false;
+      state.bundleUi.expandedTreeIds = {
+        ...(state.bundleUi.expandedTreeIds ?? {}),
+        [node.id]: isExpanded ? false : true
+      };
+      if (state.bundleUi.expandedTreeIds[node.id] === true) {
+        delete state.bundleUi.expandedTreeIds[node.id];
+      }
+      saveBundleUiState();
+      renderBundles();
+    });
+    row.appendChild(expandButton);
+
+    const labelButton = document.createElement("button");
+    labelButton.type = "button";
+    labelButton.className = "tree-label";
+    labelButton.textContent = node.label || "Group";
+    labelButton.addEventListener("click", () => {
+      state.bundleUi.selectedNodeId = node.id;
+      saveBundleUiState();
+      renderBundles();
+    });
+    row.appendChild(labelButton);
+
+    const wrap = document.createElement("div");
+    wrap.appendChild(row);
+    const isExpanded = state.bundleUi.expandedTreeIds?.[node.id] !== false;
+    if (hasChildren && isExpanded) {
+      const childWrap = document.createElement("div");
+      node.children.forEach((child) => {
+        childWrap.appendChild(renderTreeNode(child, depth + 1));
+      });
+      wrap.appendChild(childWrap);
+    }
+    return wrap;
+  };
+
+  /*
+  const renderSelectedNodeInspector = (rows) => {
+    const node = getNodeById(state.bundleUi.selectedNodeId);
+    if (!node || state.bundleUi.selectedNodeId === "__all__") {
+      return null;
+    }
+
+    const location = findNodeLocation(node.id);
+    const isRoot = !location?.parentNode;
+    const effectiveKind = `${(isRoot ? node.kind : getNodeTrailById(node.id)?.[0]?.kind) ?? "dictionary-rules"}`;
+    const panel = document.createElement("section");
+    panel.className = "panel-block";
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "workspace-head";
+    titleWrap.appendChild(createEditableTitle("h3", node, isRoot ? "Bundle" : "Group", () => {
+      saveBundleUiState();
+      renderApp();
+    }));
+    const path = document.createElement("span");
+    path.className = "count";
+    path.textContent = getNodeTrailById(node.id)?.map((item) => item.label).join(" / ") ?? "";
+    titleWrap.appendChild(path);
+    head.appendChild(titleWrap);
+
+    const actions = document.createElement("div");
+    actions.className = "workspace-toolbar-group";
+    const enabledLabel = document.createElement("label");
+    enabledLabel.className = "toggle";
+    const enabledInput = document.createElement("input");
+    enabledInput.type = "checkbox";
+    enabledInput.checked = node.enabled !== false;
+    enabledInput.addEventListener("change", () => {
+      node.enabled = enabledInput.checked;
+      renderApp();
+    });
+    enabledLabel.append(enabledInput, document.createTextNode("有効"));
+    actions.appendChild(enabledLabel);
+
+    if (isRoot) {
+      const kindSelect = document.createElement("select");
+      kindSelect.innerHTML = `
+        <option value="token-rules">token-rules</option>
+        <option value="dictionary-rules">dictionary-rules</option>
+      `;
+      kindSelect.value = effectiveKind;
+      kindSelect.addEventListener("change", () => {
+        node.kind = kindSelect.value;
+        renderApp();
+      });
+      actions.appendChild(kindSelect);
+    }
+
+    actions.appendChild(createButton("↑", "ghost", () => {
+      if (location && moveItem(location.parentChildren, location.index, -1)) {
+        renderApp();
+      }
+    }));
+    actions.appendChild(createButton("↓", "ghost", () => {
+      if (location && moveItem(location.parentChildren, location.index, 1)) {
+        renderApp();
+      }
+    }));
+    actions.appendChild(createButton("子箱追加", "secondary", () => {
+      node.children.push(normalizeNode({
+        id: createNodeId(),
+        label: "Group",
+        kind: effectiveKind,
+        enabled: true,
+        entries: [],
+        children: []
+      }, "group", "Group"));
+      renderApp();
+    }));
+    actions.appendChild(createButton("行追加", "secondary", () => {
+      const entry = normalizeEntryFromObject({
+        from: "",
+        to: "",
+        priority: 90,
+        enabled: true,
+        regex: false
+      }, 90) ?? {
+        id: createEntryId(),
+        from: "",
+        from_options: [],
+        to: "",
+        priority: 90,
+        enabled: true,
+        regex: false,
+        match_target: null,
+        conditions: null,
+        sequence: null,
+        raw: null,
+        metaOpen: false,
+        selected: false
+      };
+      node.entries.push(entry);
+      setSelectedEntryIds([entry.id], entry.id);
+      renderApp();
+    }));
+    actions.appendChild(createButton(node.bulkImportOpen === true ? "一括登録を閉じる" : "一括登録", "secondary", () => {
+      node.bulkImportOpen = node.bulkImportOpen !== true;
+      renderApp();
+    }));
+    if (isRoot) {
+      actions.appendChild(createButton("初期化", "ghost", () => {
+        resetRoot(node.id);
+      }));
+    }
+    actions.appendChild(createButton(isRoot ? "Bundle削除" : "箱削除", "warn", () => {
+      if (!location) {
+        return;
+      }
+      location.parentChildren.splice(location.index, 1);
+      state.bundleUi.selectedNodeId = "__all__";
+      saveBundleUiState();
+      renderApp();
+    }));
+    head.appendChild(actions);
+    panel.appendChild(head);
+
+    if (node.bulkImportOpen === true) {
+      panel.appendChild(renderBulkImportPanel(node, effectiveKind));
+    }
+
+    const hint = document.createElement("div");
+    hint.className = "count";
+    hint.textContent = `${node.entries.length} entries / ${node.children.length} children`;
+    panel.appendChild(hint);
+    return panel;
+  };
+
+  const renderBundleContextMenu = (row) => {
+    const menu = document.createElement("details");
+    menu.className = "row-menu";
+    const summary = document.createElement("summary");
+    summary.textContent = "…";
+    summary.title = "行メニュー";
+    menu.appendChild(summary);
+
+    const panel = document.createElement("div");
+    panel.className = "row-menu-panel";
+    panel.appendChild(createButton("複製", "ghost", () => {
+      state.clipboard = {
+        type: "entries",
+        entries: [createDeepEntryClone(row.entry)]
+      };
+      pasteGridRows(row);
+      renderApp();
+    }));
+    panel.appendChild(createButton("切取", "ghost", () => {
+      setSelectedEntryIds([row.entryId], row.entryId);
+      copySelectedGridRows([row], true);
+      renderApp();
+    }));
+    panel.appendChild(createButton("貼付", "ghost", () => {
+      pasteGridRows(row);
+      renderApp();
+    }));
+    panel.appendChild(createButton("下に追加", "ghost", () => {
+      insertGridRowAfter(row);
+      renderApp();
+    }));
+    panel.appendChild(createButton("削除", "danger", () => {
+      setSelectedEntryIds([row.entryId], row.entryId);
+      deleteGridRows([row], row);
+      renderApp();
+    }));
+    menu.appendChild(panel);
+    return menu;
+  };
+
+  */
   const renderBundles = () => {
     bundleRoot.textContent = "";
-    state.roots.forEach((root, index) => {
-      bundleRoot.appendChild(renderNodeSection({
-        node: root,
-        parentChildren: state.roots,
-        index,
-        depth: 0,
-        isRoot: true
-      }));
+    const workspace = document.createElement("section");
+    workspace.className = "bundle-workspace";
+
+    const left = document.createElement("aside");
+    left.className = "bundle-explorer";
+    const explorerHead = document.createElement("div");
+    explorerHead.className = "workspace-head";
+    const explorerTitle = document.createElement("h3");
+    explorerTitle.textContent = "Explorer";
+    explorerHead.appendChild(explorerTitle);
+    left.appendChild(explorerHead);
+    const allButton = document.createElement("button");
+    allButton.type = "button";
+    allButton.className = "tree-root-button";
+    allButton.dataset.selected = state.bundleUi.selectedNodeId === "__all__" ? "true" : "false";
+    allButton.textContent = "全体";
+    allButton.addEventListener("click", () => {
+      state.bundleUi.selectedNodeId = "__all__";
+      saveBundleUiState();
+      renderBundles();
     });
+    left.appendChild(allButton);
+    const tree = document.createElement("div");
+    tree.className = "explorer-tree";
+    state.roots.forEach((root) => {
+      tree.appendChild(renderTreeNode(root));
+    });
+    left.appendChild(tree);
+
+    const right = document.createElement("div");
+    right.className = "bundle-grid-shell";
+
+    {
+      const controls = document.createElement("div");
+      controls.className = "workspace-toolbar";
+      const controlsLeft = document.createElement("div");
+      controlsLeft.className = "workspace-toolbar-group";
+
+      const search = document.createElement("input");
+      search.type = "text";
+      search.className = "grid-search";
+      search.placeholder = "検索";
+      search.value = state.bundleUi.searchText ?? "";
+      search.addEventListener("input", () => {
+        state.bundleUi.searchText = search.value;
+        saveBundleUiState();
+        renderBundles();
+      });
+      controlsLeft.appendChild(search);
+
+      const scopeLabel = document.createElement("span");
+      scopeLabel.className = "count";
+      if (state.bundleUi.selectedNodeId === "__all__") {
+        scopeLabel.textContent = `${state.roots.length} bundles`;
+      } else {
+        scopeLabel.textContent = getNodeTrailById(state.bundleUi.selectedNodeId)?.map((item) => item.label).join(" / ") ?? "";
+      }
+      controlsLeft.appendChild(scopeLabel);
+      controls.appendChild(controlsLeft);
+
+      const controlsRight = document.createElement("div");
+      controlsRight.className = "workspace-toolbar-group";
+      if (state.undoAction) {
+        controlsRight.appendChild(createButton(`Undo: ${state.undoAction.label}`, "ghost", () => {
+          runUndoAction();
+        }));
+      }
+      controls.appendChild(controlsRight);
+      right.appendChild(controls);
+
+      const content = document.createElement("div");
+      content.className = "bundle-sections";
+      const searchText = `${state.bundleUi.searchText ?? ""}`.trim().toLowerCase();
+
+      const appendNodeSection = ({ node, parentChildren, index, isRoot = false, inheritedKind = null }) => {
+        const section = renderNodeSection({
+          node,
+          parentChildren,
+          index,
+          isRoot,
+          inheritedKind
+        });
+        if (!searchText || `${section.textContent ?? ""}`.toLowerCase().includes(searchText)) {
+          content.appendChild(section);
+        }
+      };
+
+      if (state.bundleUi.selectedNodeId === "__all__") {
+        state.roots.forEach((root, index) => {
+          appendNodeSection({
+            node: root,
+            parentChildren: state.roots,
+            index,
+            isRoot: true
+          });
+        });
+      } else {
+        const location = findNodeLocation(state.bundleUi.selectedNodeId);
+        if (location) {
+          appendNodeSection({
+            node: location.node,
+            parentChildren: location.parentChildren,
+            index: location.index,
+            isRoot: !location.parentNode,
+            inheritedKind: location.parentNode?.kind ?? null
+          });
+        }
+      }
+
+      if (content.childElementCount === 0) {
+        const empty = document.createElement("p");
+        empty.className = "diag-summary";
+        empty.textContent = searchText
+          ? "検索条件に一致する bundle / group / rule はありません。"
+          : "表示できる bundle がありません。";
+        content.appendChild(empty);
+      }
+
+      right.appendChild(content);
+      workspace.append(left, right);
+      bundleRoot.appendChild(workspace);
+      return;
+    }
+
+    /*
+    const controls = document.createElement("div");
+    controls.className = "workspace-toolbar";
+    const controlsLeft = document.createElement("div");
+    controlsLeft.className = "workspace-toolbar-group";
+    const search = document.createElement("input");
+    search.type = "text";
+    search.className = "grid-search";
+    search.placeholder = "検索";
+    search.value = state.bundleUi.searchText ?? "";
+    search.addEventListener("input", () => {
+      state.bundleUi.searchText = search.value;
+      saveBundleUiState();
+      renderBundles();
+    });
+    controlsLeft.appendChild(search);
+    const columnPicker = document.createElement("details");
+    columnPicker.className = "column-picker";
+    const columnSummary = document.createElement("summary");
+    columnSummary.textContent = "列";
+    columnPicker.appendChild(columnSummary);
+    const columnMenu = document.createElement("div");
+    columnMenu.className = "column-picker-menu";
+    GRID_COLUMN_DEFS.filter((column) => column.id !== "actions").forEach((column) => {
+      const label = document.createElement("label");
+      label.className = "toggle";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = (state.bundleUi.visibleColumns ?? DEFAULT_GRID_COLUMN_IDS).includes(column.id);
+      checkbox.addEventListener("change", () => {
+        const next = new Set(state.bundleUi.visibleColumns ?? DEFAULT_GRID_COLUMN_IDS);
+        if (checkbox.checked) {
+          next.add(column.id);
+        } else {
+          next.delete(column.id);
+        }
+        state.bundleUi.visibleColumns = [...next];
+        saveBundleUiState();
+        renderBundles();
+      });
+      label.append(checkbox, document.createTextNode(column.label));
+      columnMenu.appendChild(label);
+    });
+    columnPicker.appendChild(columnMenu);
+    controlsLeft.appendChild(columnPicker);
+    controls.appendChild(controlsLeft);
+
+    const controlsRight = document.createElement("div");
+    controlsRight.className = "workspace-toolbar-group";
+    controlsRight.appendChild(createButton("行追加", "secondary", () => {
+      const node = getNodeById(state.bundleUi.selectedNodeId) ?? state.roots[0];
+      if (!node) {
+        return;
+      }
+      const entry = normalizeEntryFromObject({
+        from: "",
+        to: "",
+        priority: 90,
+        enabled: true,
+        regex: false
+      }, 90) ?? {
+        id: createEntryId(),
+        from: "",
+        from_options: [],
+        to: "",
+        priority: 90,
+        enabled: true,
+        regex: false,
+        match_target: null,
+        conditions: null,
+        sequence: null,
+        raw: null,
+        metaOpen: false,
+        selected: false
+      };
+      node.entries.push(entry);
+      setSelectedEntryIds([entry.id], entry.id);
+      renderApp();
+    }));
+    if (state.undoAction) {
+      controlsRight.appendChild(createButton(`Undo: ${state.undoAction.label}`, "ghost", () => {
+        runUndoAction();
+      }));
+    }
+    controls.appendChild(controlsRight);
+    right.appendChild(controls);
+
+    const rows = sortGridRows(getRowsForSelectedScope());
+    const inspector = renderSelectedNodeInspector(rows);
+    if (inspector) {
+      right.appendChild(inspector);
+    }
+
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "grid-scroll";
+    const table = document.createElement("table");
+    table.className = "notion-grid";
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    const selectionHead = document.createElement("th");
+    selectionHead.className = "selection-col";
+    selectionHead.textContent = "行";
+    headRow.appendChild(selectionHead);
+    getVisibleGridColumns().forEach((column) => {
+      const th = document.createElement("th");
+      th.style.minWidth = column.width;
+      if (column.id === "actions") {
+        th.textContent = column.label;
+      } else {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "sort-button";
+        const marker = state.bundleUi.sortKey === column.id
+          ? state.bundleUi.sortDirection === 1
+            ? " ▲"
+            : state.bundleUi.sortDirection === -1
+              ? " ▼"
+              : ""
+          : "";
+        button.textContent = `${column.label}${marker}`;
+        button.addEventListener("click", () => {
+          toggleGridSort(column.id);
+          renderBundles();
+        });
+        th.appendChild(button);
+      }
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      tr.className = "grid-row";
+      tr.dataset.selected = isBundleRowSelected(row.entryId) ? "true" : "false";
+      tr.addEventListener("click", (event) => {
+        selectBundleRow(rows, row, event);
+        renderBundles();
+      });
+
+      const selectionCell = document.createElement("td");
+      selectionCell.className = "selection-col";
+      const rowLabel = document.createElement("span");
+      rowLabel.className = "row-index";
+      rowLabel.textContent = `${row.entryIndex + 1}`;
+      selectionCell.appendChild(rowLabel);
+      tr.appendChild(selectionCell);
+
+      getVisibleGridColumns().forEach((column) => {
+        const td = document.createElement("td");
+        td.dataset.columnId = column.id;
+        if (column.kind === "checkbox") {
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = getGridCellValue(row, column.id) === true;
+          checkbox.addEventListener("click", (event) => event.stopPropagation());
+          checkbox.addEventListener("change", () => {
+            applyGridCellValue(row, column.id, checkbox.checked);
+            clearUndoAction();
+            renderApp();
+          });
+          td.appendChild(checkbox);
+        } else if (column.kind === "readonly") {
+          td.textContent = `${getGridCellValue(row, column.id) ?? ""}`;
+        } else if (column.kind === "actions") {
+          const actionWrap = document.createElement("div");
+          actionWrap.className = "row-actions";
+          actionWrap.appendChild(createButton("＋", "ghost", () => {
+            insertGridRowAfter(row);
+            renderApp();
+          }));
+          actionWrap.appendChild(createButton(state.bundleUi.expandedEntryId === row.entryId ? "詳細▲" : "詳細▼", "ghost", () => {
+            state.bundleUi.expandedEntryId = state.bundleUi.expandedEntryId === row.entryId ? null : row.entryId;
+            saveBundleUiState();
+            renderBundles();
+          }));
+          actionWrap.appendChild(renderBundleContextMenu(row));
+          td.appendChild(actionWrap);
+        } else {
+          const input = createCompactInput(`${getGridCellValue(row, column.id) ?? ""}`, {
+            min: 4,
+            max: column.id === "sequence" ? 42 : 24,
+            className: column.id === "sequence" ? "cell-input grid-sequence-input" : "cell-input grid-cell-input"
+          });
+          input.addEventListener("click", (event) => event.stopPropagation());
+          input.addEventListener("focus", () => {
+            state.bundleUi.selectedCell = {
+              entryId: row.entryId,
+              columnId: column.id
+            };
+            saveBundleUiState();
+          });
+          input.addEventListener("change", () => {
+            try {
+              applyGridCellValue(row, column.id, input.value);
+              clearUndoAction();
+              renderApp();
+            } catch (error) {
+              console.error(error);
+              setStatus(`${column.label}: ${error.message}`, "error");
+            }
+          });
+          td.appendChild(input);
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+
+      if (state.bundleUi.expandedEntryId === row.entryId) {
+        const detailRow = document.createElement("tr");
+        detailRow.className = "grid-detail-row";
+        const detailCell = document.createElement("td");
+        detailCell.colSpan = getVisibleGridColumns().length + 1;
+        const detailWrap = document.createElement("div");
+        detailWrap.className = "grid-detail-panel";
+        detailWrap.appendChild(renderConditionGroupEditor(row.entry, "prev", "前条件"));
+        detailWrap.appendChild(renderConditionGroupEditor(row.entry, "current", "現条件"));
+        detailWrap.appendChild(renderConditionGroupEditor(row.entry, "next", "後条件"));
+        detailWrap.appendChild(renderSequenceEditorV3(row.entry));
+        detailCell.appendChild(detailWrap);
+        detailRow.appendChild(detailCell);
+        tbody.appendChild(detailRow);
+      }
+    });
+
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    right.appendChild(tableWrap);
+
+    const keyHint = document.createElement("div");
+    keyHint.className = "grid-shortcuts";
+    keyHint.textContent = "Ctrl/Cmd+C コピー, Ctrl/Cmd+X 切取, Ctrl/Cmd+V 貼付, Insert 追加, Delete 削除, Alt+↑/↓ 行移動";
+    right.appendChild(keyHint);
+
+    workspace.append(left, right);
+    bundleRoot.appendChild(workspace);
+    */
   };
 
   const renderRuntimeSettings = () => {
@@ -3753,15 +5126,6 @@
     sitesRoot.appendChild(addRow);
   };
 
-  const getPayloadInspectorTargets = () => {
-    return [...new Set(
-      `${state.payloadInspectorQuery ?? ""}`
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
-    )];
-  };
-
   const countNodeEntriesDeep = (node) => {
     const ownEntries = Array.isArray(node?.entries) ? node.entries.length : 0;
     const childEntries = Array.isArray(node?.children)
@@ -3770,6 +5134,7 @@
     return ownEntries + childEntries;
   };
 
+  /*
   const collectMatchingEntriesFromRoots = (roots, targets) => {
     const targetSet = new Set(targets);
     const matches = [];
@@ -4092,11 +5457,72 @@
     payloadRoot.appendChild(runtimeCard);
   };
 
+  const handleBundleGridKeydown = (event) => {
+    if (state.activeTab !== "bundles") {
+      return;
+    }
+
+    const target = event.target;
+    const isTypingTarget = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+    const rows = sortGridRows(getRowsForSelectedScope());
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
+      if (copySelectedGridRows(rows, false)) {
+        event.preventDefault();
+        renderApp();
+      }
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "x") {
+      if (copySelectedGridRows(rows, true)) {
+        event.preventDefault();
+        renderApp();
+      }
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") {
+      if (pasteGridRows(rows.find((row) => row.entryId === state.bundleUi.anchorEntryId) ?? null)) {
+        event.preventDefault();
+        renderApp();
+      }
+      return;
+    }
+    if (event.key === "Insert" && !isTypingTarget) {
+      const anchorRow = rows.find((row) => row.entryId === state.bundleUi.anchorEntryId);
+      if (anchorRow) {
+        insertGridRowAfter(anchorRow);
+        event.preventDefault();
+        renderApp();
+      }
+      return;
+    }
+    if (event.key === "Delete" && !isTypingTarget) {
+      if (deleteGridRows(rows)) {
+        event.preventDefault();
+        renderApp();
+      }
+      return;
+    }
+    if (event.altKey && event.key === "ArrowUp" && !isTypingTarget) {
+      if (moveSelectedGridRows(rows, -1)) {
+        event.preventDefault();
+        renderApp();
+      }
+      return;
+    }
+    if (event.altKey && event.key === "ArrowDown" && !isTypingTarget) {
+      if (moveSelectedGridRows(rows, 1)) {
+        event.preventDefault();
+        renderApp();
+      }
+    }
+  };
+
+  */
   const renderApp = () => {
     renderRuntimeSettings();
     renderBundles();
     renderDiagnostics();
-    renderPayloadInspector();
     renderHotkeys();
     renderDisabledSites();
     renderTabState();
@@ -4129,8 +5555,6 @@
     state.runtimeSettings = extractRuntimeSettings(parsed);
     state.disabledSites = extractDisabledSites(parsed);
     state.popupBundleId = extractPopupBundleId(parsed);
-    state.payloadInspector.storedPayload = cloneValue(parsed);
-    state.payloadInspector.storedNormalizedRoots = importedRoots;
     ensurePopupBundleRoot(state.roots);
     renderApp();
     setStatus(`${fileName} を読み込みました。`, "success");
@@ -4153,8 +5577,11 @@
       baseRoots.push(normalizeManifestDefinition(bundle, definition));
     }
 
-    const storedPayload = await storageGet(STORAGE_KEY);
-    const storedDiagnosticUiState = await storageGet(DIAGNOSTIC_UI_STATE_KEY);
+    const [storedPayload, storedDiagnosticUiState, storedBundleUiState] = await Promise.all([
+      storageGet(STORAGE_KEY),
+      storageGet(DIAGNOSTIC_UI_STATE_KEY),
+      storageGet(BUNDLE_UI_STATE_KEY)
+    ]);
     let currentRoots = cloneValue(baseRoots);
     if (storedPayload) {
       const importedRoots = normalizeImportedRoots(storedPayload);
@@ -4176,8 +5603,6 @@
     state.runtimeSettings = extractRuntimeSettings(storedPayload);
     state.disabledSites = extractDisabledSites(storedPayload);
     state.popupBundleId = extractPopupBundleId(storedPayload);
-    state.payloadInspector.storedPayload = storedPayload ?? null;
-    state.payloadInspector.storedNormalizedRoots = storedPayload ? normalizeImportedRoots(storedPayload) : [];
     ensurePopupBundleRoot(state.roots);
     state.commands = await getAllCommands();
     state.dismissedDiagnostics = storedDiagnosticUiState?.dismissedDiagnostics && typeof storedDiagnosticUiState.dismissedDiagnostics === "object"
@@ -4187,6 +5612,7 @@
     state.collapsedNodes = storedDiagnosticUiState?.collapsedNodes && typeof storedDiagnosticUiState.collapsedNodes === "object"
       ? storedDiagnosticUiState.collapsedNodes
       : {};
+    state.bundleUi = normalizeBundleUiState(storedBundleUiState);
     renderApp();
     setStatus("設定を読み込みました。", "info");
   };
@@ -4201,6 +5627,7 @@
     renderTabState();
   });
 
+  /*
   tabPayloadButton.addEventListener("click", async () => {
     state.activeTab = "payload";
     renderTabState();
@@ -4213,6 +5640,7 @@
     }
   });
 
+  */
   tabTokenizerButton.addEventListener("click", async () => {
     state.activeTab = "tokenizer";
     renderTabState();

@@ -7,10 +7,134 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
+  const ESCAPE_SENTINEL = "\u0000";
+
+  const unescapeCandidateText = (value) => {
+    if (typeof value !== "string") {
+      return `${value ?? ""}`;
+    }
+
+    return value
+      .replaceAll(`${ESCAPE_SENTINEL}[`, "[")
+      .replaceAll(`${ESCAPE_SENTINEL}]`, "]")
+      .replaceAll(`${ESCAPE_SENTINEL},`, ",")
+      .replaceAll(`${ESCAPE_SENTINEL}\\`, "\\");
+  };
+
+  const tokenizeEscapes = (value) => {
+    if (typeof value !== "string") {
+      return `${value ?? ""}`;
+    }
+
+    let output = "";
+    for (let index = 0; index < value.length; index += 1) {
+      const char = value[index];
+      if (char === "\\" && index + 1 < value.length) {
+        const next = value[index + 1];
+        if (next === "[" || next === "]" || next === "," || next === "\\") {
+          output += `${ESCAPE_SENTINEL}${next}`;
+          index += 1;
+          continue;
+        }
+      }
+      output += char;
+    }
+    return output;
+  };
+
+  const splitTopLevelCommaCandidates = (value) => {
+    const text = tokenizeEscapes(`${value ?? ""}`);
+    const parts = [];
+    let current = "";
+    let bracketDepth = 0;
+
+    for (const char of text) {
+      if (char === "[" && !current.endsWith(ESCAPE_SENTINEL)) {
+        bracketDepth += 1;
+        current += char;
+        continue;
+      }
+      if (char === "]" && !current.endsWith(ESCAPE_SENTINEL)) {
+        bracketDepth = Math.max(0, bracketDepth - 1);
+        current += char;
+        continue;
+      }
+      if (char === "," && bracketDepth === 0 && current[current.length - 1] !== ESCAPE_SENTINEL) {
+        parts.push(current.trim());
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+
+    if (current || text.endsWith(",")) {
+      parts.push(current.trim());
+    }
+
+    return parts
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  };
+
+  const expandBracketAlternatives = (value) => {
+    const text = tokenizeEscapes(`${value ?? ""}`.trim());
+    if (!text) {
+      return [""];
+    }
+
+    let openIndex = -1;
+    for (let index = 0; index < text.length; index += 1) {
+      if (text[index] === "[" && text[index - 1] !== ESCAPE_SENTINEL) {
+        openIndex = index;
+        break;
+      }
+    }
+    if (openIndex < 0) {
+      return [text];
+    }
+
+    let depth = 0;
+    let closeIndex = -1;
+    for (let index = openIndex; index < text.length; index += 1) {
+      const char = text[index];
+      if (char === "[" && text[index - 1] !== ESCAPE_SENTINEL) {
+        depth += 1;
+      } else if (char === "]" && text[index - 1] !== ESCAPE_SENTINEL) {
+        depth -= 1;
+        if (depth === 0) {
+          closeIndex = index;
+          break;
+        }
+      }
+    }
+
+    if (closeIndex < 0) {
+      return [text];
+    }
+
+    const prefix = text.slice(0, openIndex);
+    const inner = text.slice(openIndex + 1, closeIndex);
+    const suffix = text.slice(closeIndex + 1);
+    const branches = splitTopLevelCommaCandidates(inner);
+    if (branches.length === 0) {
+      return [text];
+    }
+
+    const variants = [];
+    for (const branch of branches) {
+      const nested = expandBracketAlternatives(`${prefix}${branch}${suffix}`);
+      for (const candidate of nested) {
+        variants.push(candidate);
+      }
+    }
+
+    return variants;
+  };
+
   const splitCommaSeparatedValues = (value) => {
     if (Array.isArray(value)) {
       return value
-        .map((entry) => `${entry ?? ""}`.trim())
+        .flatMap((entry) => splitCommaSeparatedValues(entry))
         .filter(Boolean);
     }
 
@@ -18,9 +142,9 @@
       return [];
     }
 
-    return value
-      .split(",")
-      .map((entry) => entry.trim())
+    return splitTopLevelCommaCandidates(value)
+      .flatMap((entry) => expandBracketAlternatives(entry))
+      .map((entry) => unescapeCandidateText(`${entry ?? ""}`.trim()))
       .filter(Boolean);
   };
 
@@ -1477,9 +1601,42 @@
     };
   };
 
+  const hasOverrideEntriesOrChildren = (override) => {
+    return (
+      (Array.isArray(override?.entries) && override.entries.length > 0) ||
+      (Array.isArray(override?.children) && override.children.length > 0)
+    );
+  };
+
+  const isMetadataOnlyManifestOverride = (definition, override) => {
+    if (!override || hasOverrideEntriesOrChildren(override)) {
+      return false;
+    }
+
+    if (override.enabled === false) {
+      return false;
+    }
+
+    const targetKind = override.kind ?? definition?.kind ?? null;
+    if (targetKind && definition?.kind && targetKind !== definition.kind) {
+      return false;
+    }
+
+    return true;
+  };
+
   const mergeBundleDefinition = (definition, override) => {
     if (!override) {
       return definition;
+    }
+
+    if (isMetadataOnlyManifestOverride(definition, override)) {
+      return {
+        ...definition,
+        label: override.label ?? definition.label,
+        enabled: override.enabled ?? definition.enabled,
+        kind: override.kind ?? definition.kind
+      };
     }
 
     const flattenNodesToRules = (node) => {
@@ -1518,7 +1675,7 @@
 
     const targetKind = override.kind ?? definition.kind;
     if (targetKind === "token-rules") {
-      const hasOverrideTree = Array.isArray(override.entries) || Array.isArray(override.children);
+      const hasOverrideTree = hasOverrideEntriesOrChildren(override);
       return {
         ...definition,
         kind: "token-rules",

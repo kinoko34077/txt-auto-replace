@@ -776,6 +776,57 @@ const printFixtureResults = (results) => {
   }
 };
 
+const verifyCandidateParsing = () => {
+  const matchExpanded = TransformEngine.splitMatchCandidates("A[B,C]D");
+  const replacementExpanded = TransformEngine.splitReplacementCandidates("A[B,C]D");
+  const escapedExpanded = TransformEngine.splitMatchCandidates("A\\[B\\,C\\]");
+  const unmatchedExpanded = TransformEngine.splitMatchCandidates("[");
+  const danglingExpanded = TransformEngine.splitMatchCandidates("abc[");
+  const emptyBracketExpanded = TransformEngine.splitMatchCandidates("[]");
+
+  return {
+    passed: JSON.stringify(matchExpanded) === JSON.stringify(["ABD", "ACD"]) &&
+      JSON.stringify(replacementExpanded) === JSON.stringify(["ABD", "ACD"]) &&
+      JSON.stringify(escapedExpanded) === JSON.stringify(["A[B,C]"]) &&
+      JSON.stringify(unmatchedExpanded) === JSON.stringify(["["]) &&
+      JSON.stringify(danglingExpanded) === JSON.stringify(["abc["]) &&
+      JSON.stringify(emptyBracketExpanded) === JSON.stringify(["[]"]),
+    details: {
+      matchExpanded,
+      replacementExpanded,
+      escapedExpanded,
+      unmatchedExpanded,
+      danglingExpanded,
+      emptyBracketExpanded
+    }
+  };
+};
+
+const verifyEmptyManifestOverrideFallback = () => {
+  const loaded = loadStages({
+    roots: [
+      {
+        id: "surface-normalization",
+        label: "surface-normalization",
+        kind: "token-rules",
+        enabled: true,
+        order: 10,
+        entries: [],
+        children: []
+      }
+    ]
+  });
+
+  const stage = loaded.stages.find((candidate) => candidate.id === "surface-normalization");
+  return {
+    passed: Boolean(stage) && Array.isArray(stage.rules) && stage.rules.length > 0,
+    details: {
+      stageRuleCount: Array.isArray(stage?.rules) ? stage.rules.length : 0,
+      stageIds: loaded.stages.map((candidate) => candidate.id)
+    }
+  };
+};
+
 const main = async () => {
   const { caseId } = parseArgs();
   const tokenizer = await buildTokenizer();
@@ -800,6 +851,16 @@ const main = async () => {
     ? "PASS [override-restore] token-rules / basic_form / conditions / sequence"
     : `FAIL [override-restore] ${JSON.stringify(overrideCheck.details)}`);
 
+  const parserCheck = verifyCandidateParsing();
+  console.log(parserCheck.passed
+    ? "PASS [parser] bracket shorthand / escape"
+    : `FAIL [parser] ${JSON.stringify(parserCheck.details)}`);
+
+  const emptyOverrideCheck = verifyEmptyManifestOverrideFallback();
+  console.log(emptyOverrideCheck.passed
+    ? "PASS [override-empty] empty manifest override keeps default bundle rules"
+    : `FAIL [override-empty] ${JSON.stringify(emptyOverrideCheck.details)}`);
+
   const defaultResults = runFixtureSet("default", defaultLoaded.stages, FIXTURES, tokenizer, caseId);
   const overrideResults = runFixtureSet("override", overrideLoaded.stages, OVERRIDE_FIXTURES, tokenizer, caseId);
 
@@ -808,6 +869,8 @@ const main = async () => {
 
   const allPassed = orderCheck.passed &&
     overrideCheck.passed &&
+    parserCheck.passed &&
+    emptyOverrideCheck.passed &&
     [...defaultResults, ...overrideResults].every((result) => result.passed);
 
   if (!allPassed) {

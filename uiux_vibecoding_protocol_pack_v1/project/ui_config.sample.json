@@ -1,0 +1,50 @@
+{
+  "density": "compact",
+  "controlHeight": {
+    "sm": 28,
+    "md": 32,
+    "lg": 40
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24
+  },
+  "layout": {
+    "toolbarHeight": 36,
+    "sidebar": {
+      "mode": "resizable-collapsible",
+      "defaultWidth": 240,
+      "minWidth": 200,
+      "maxWidth": 320
+    },
+    "detailsPanel": {
+      "enabled": true,
+      "mode": "collapse-on-narrow",
+      "defaultWidth": 320,
+      "minWidth": 280,
+      "maxWidth": 420
+    }
+  },
+  "actions": {
+    "maxPrimaryActions": 1,
+    "rowActions": "trailing-hover-or-menu",
+    "dangerActions": "separated-with-confirm",
+    "overflowForLowFrequency": true
+  },
+  "forms": {
+    "labelPlacement": "top",
+    "usePlaceholderAsLabel": false,
+    "showErrorSummary": true,
+    "showFieldLevelErrors": true
+  },
+  "accessibility": {
+    "minTargetSize": 24,
+    "touchTargetSize": 44,
+    "focusVisible": true,
+    "requireAriaLabelForIconOnly": true,
+    "announceStatusMessages": true
+  }
+}

@@ -1,0 +1,12 @@
+answers:
+  target_device: "PC"
+  screen_type: "業務管理/制作エディタ"
+  primary_experience: "常用効率"
+  density: "compact"
+  data_view: "table/list"
+  icon_only_policy: "補助操作のみ許可"
+  detail_display: "right_panel"
+  danger_policy: "separated_with_confirm_or_undo"
+  user_adjustable_scope: "density_and_panel_layout"
+notes:
+  - "このファイルは初期質問への回答を保存するための例。実プロジェクトでは回答に応じて更新する。"

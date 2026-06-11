@@ -2136,6 +2136,16 @@
     return changedCount;
   };
 
+  const reapplyDocumentImmediately = (root = document.body) => {
+    if (!root || !isRuntimeEnabled() || !hasAnyActiveRules()) {
+      return 0;
+    }
+
+    pendingRootQueue.clear();
+    cancelRootFlushes();
+    return processTextRoot(root);
+  };
+
   const processQueuedRootBatch = ({ includeBackground = false, budgetMs = VISIBLE_FLUSH_BUDGET_MS } = {}) => {
     if (!isRuntimeEnabled()) {
       pendingRootQueue.clear();
@@ -2520,6 +2530,7 @@
         activeTokenizer = tokenizer;
         publishRuntimeDebugSnapshot(getDebugTargetsFromDocument());
         if (isRuntimeEnabled()) {
+          reapplyDocumentImmediately(document.body);
           queueProcessableRoots(collectDocumentProcessingRoots(), { priority: "visible" });
         }
       }).catch((error) => {
@@ -2544,6 +2555,7 @@
     }
 
     pendingRootQueue.clear();
+    reapplyDocumentImmediately(document.body);
     queueProcessableRoots(collectDocumentProcessingRoots());
   };
 
@@ -2617,6 +2629,7 @@
     observeDebugTargetChanges();
     const initialRoots = collectDocumentProcessingRoots();
     log("対象 root 数", initialRoots.length);
+    reapplyDocumentImmediately(document.body);
     queueProcessableRoots(initialRoots);
     observeDynamicContent();
   };

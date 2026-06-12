@@ -18,6 +18,7 @@
       .replaceAll(`${ESCAPE_SENTINEL}[`, "[")
       .replaceAll(`${ESCAPE_SENTINEL}]`, "]")
       .replaceAll(`${ESCAPE_SENTINEL},`, ",")
+      .replaceAll(`${ESCAPE_SENTINEL}*`, "\\*")
       .replaceAll(`${ESCAPE_SENTINEL}\\`, "\\");
   };
 
@@ -31,7 +32,7 @@
       const char = value[index];
       if (char === "\\" && index + 1 < value.length) {
         const next = value[index + 1];
-        if (next === "[" || next === "]" || next === "," || next === "\\") {
+        if (next === "[" || next === "]" || next === "," || next === "*" || next === "\\") {
           output += `${ESCAPE_SENTINEL}${next}`;
           index += 1;
           continue;
@@ -196,6 +197,130 @@
   const splitReplacementCandidates = (value) => splitCommaSeparatedValues(value);
   const splitMatchCandidates = (value) => splitCommaSeparatedValues(value);
 
+  const decodeEscapedLiteral = (value) => {
+    const source = tokenizeEscapes(`${value ?? ""}`);
+    let output = "";
+
+    for (let index = 0; index < source.length; index += 1) {
+      const char = source[index];
+      if (char === ESCAPE_SENTINEL && index + 1 < source.length) {
+        output += source[index + 1];
+        index += 1;
+        continue;
+      }
+      output += char;
+    }
+
+    return output;
+  };
+
+  const hasWildcard = (value) => {
+    const text = tokenizeEscapes(`${value ?? ""}`);
+    for (let index = 0; index < text.length; index += 1) {
+      if (text[index] === "*" && text[index - 1] !== ESCAPE_SENTINEL) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const escapeRegex = (value) => {
+    return `${value ?? ""}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  };
+
+  const compileWildcardPattern = (pattern, options = {}) => {
+    const source = tokenizeEscapes(`${pattern ?? ""}`);
+    const anchored = options.anchored !== false;
+    let regexSource = anchored ? "^" : "";
+    let captureCount = 0;
+
+    for (let index = 0; index < source.length; index += 1) {
+      const char = source[index];
+      if (char === ESCAPE_SENTINEL && index + 1 < source.length) {
+        regexSource += escapeRegex(source[index + 1]);
+        index += 1;
+        continue;
+      }
+      if (char === "*") {
+        regexSource += "(.*?)";
+        captureCount += 1;
+        continue;
+      }
+      regexSource += escapeRegex(char);
+    }
+
+    if (anchored) {
+      regexSource += "$";
+    }
+
+    return {
+      pattern: `${pattern ?? ""}`,
+      captureCount,
+      regex: new RegExp(regexSource, options.flags ?? "u")
+    };
+  };
+
+  const matchWildcardPattern = (value, pattern) => {
+    if (!hasWildcard(pattern)) {
+      const literalPattern = decodeEscapedLiteral(pattern);
+      return value === literalPattern
+        ? { matched: true, captures: [], pattern: literalPattern }
+        : null;
+    }
+
+    const compiled = compileWildcardPattern(pattern);
+    const match = `${value ?? ""}`.match(compiled.regex);
+    if (!match) {
+      return null;
+    }
+
+    return {
+      matched: true,
+      captures: match.slice(1),
+      pattern
+    };
+  };
+
+  const applyWildcardReplacement = (template, captures = []) => {
+    const source = tokenizeEscapes(`${template ?? ""}`);
+    let output = "";
+    let captureIndex = 0;
+
+    for (let index = 0; index < source.length; index += 1) {
+      const char = source[index];
+      if (char === ESCAPE_SENTINEL && index + 1 < source.length) {
+        output += source[index + 1];
+        index += 1;
+        continue;
+      }
+      if (char === "*") {
+        output += `${captures[captureIndex] ?? ""}`;
+        captureIndex += 1;
+        continue;
+      }
+      output += char;
+    }
+
+    return output;
+  };
+
+  const replaceWildcardPattern = (text, pattern, replacement) => {
+    const sourceText = `${text ?? ""}`;
+    const sourcePattern = `${pattern ?? ""}`;
+    if (!hasWildcard(sourcePattern)) {
+      const literalReplacement = applyWildcardReplacement(replacement, []);
+      return sourceText
+        .split(decodeEscapedLiteral(sourcePattern))
+        .join(literalReplacement);
+    }
+
+    const compiled = compileWildcardPattern(sourcePattern, { anchored: false, flags: "gu" });
+    return sourceText.replace(compiled.regex, (...args) => {
+      const captures = args.slice(1, 1 + compiled.captureCount);
+      return applyWildcardReplacement(replacement, captures);
+    });
+  };
+
   const normalizePhraseRuleRecord = (from, rawRule) => {
     const fromCandidates = splitMatchCandidates(from);
 
@@ -301,7 +426,7 @@
         : "";
       const from = `${entry.from ?? sequenceLabel ?? ""}`.trim();
       const to = `${entry.to ?? ""}`.trim();
-      if (!from || !to || entry.enabled === false) {
+      if (!from || !to) {
         continue;
       }
 
@@ -627,6 +752,11 @@
     splitDelimitedRow,
     splitMatchCandidates,
     splitReplacementCandidates,
+    hasWildcard,
+    compileWildcardPattern,
+    matchWildcardPattern,
+    applyWildcardReplacement,
+    replaceWildcardPattern,
     normalizePhraseRuleRecord,
     normalizePhraseRulesInput,
     splitNodeEntries,

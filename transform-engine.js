@@ -20,6 +20,10 @@
   const normalizePhraseRulesInput = TransformShared.normalizePhraseRulesInput;
   const splitNodeEntries = TransformShared.splitNodeEntries;
   const normalizeDictionaryNode = TransformShared.normalizeDictionaryNode;
+  const hasWildcard = TransformShared.hasWildcard;
+  const matchWildcardPattern = TransformShared.matchWildcardPattern;
+  const applyWildcardReplacement = TransformShared.applyWildcardReplacement;
+  const replaceWildcardPattern = TransformShared.replaceWildcardPattern;
   const containsKanji = TransformShared.containsKanji;
   const splitTrailingKana = TransformShared.splitTrailingKana;
   const hasKanjiWithTrailingKana = TransformShared.hasKanjiWithTrailingKana;
@@ -312,7 +316,7 @@
     return hash >>> 0;
   };
 
-  const chooseReplacement = (rule, matchedText) => {
+  const chooseReplacementTemplate = (rule, matchedText) => {
     const candidates = Array.isArray(rule.candidates) && rule.candidates.length > 0
       ? rule.candidates
       : splitReplacementCandidates(rule.to);
@@ -335,6 +339,13 @@
     return candidates[selectedIndex];
   };
 
+  const chooseReplacement = (rule, matchedText, wildcardCaptures = []) => {
+    return applyWildcardReplacement(
+      chooseReplacementTemplate(rule, matchedText),
+      wildcardCaptures
+    );
+  };
+
   const escapeRegex = (value) => {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   };
@@ -345,10 +356,54 @@
     }
 
     if (Array.isArray(expected)) {
-      return expected.includes(actual);
+      return expected.some((entry) => valueMatches(actual, entry));
+    }
+
+    if (typeof actual === "string" && typeof expected === "string") {
+      if (hasWildcard(expected)) {
+        return Boolean(matchWildcardPattern(actual, expected));
+      }
+      return actual === expected;
     }
 
     return actual === expected;
+  };
+
+  const matchAnyCandidate = (actual, candidates) => {
+    for (const candidate of Array.isArray(candidates) ? candidates : []) {
+      if (typeof actual !== "string" || typeof candidate !== "string") {
+        if (actual === candidate) {
+          return {
+            matched: true,
+            matchedFrom: candidate,
+            wildcardCaptures: []
+          };
+        }
+        continue;
+      }
+
+      if (hasWildcard(candidate)) {
+        const wildcardMatch = matchWildcardPattern(actual, candidate);
+        if (wildcardMatch) {
+          return {
+            matched: true,
+            matchedFrom: candidate,
+            wildcardCaptures: wildcardMatch.captures ?? []
+          };
+        }
+        continue;
+      }
+
+      if (actual === candidate) {
+        return {
+          matched: true,
+          matchedFrom: candidate,
+          wildcardCaptures: []
+        };
+      }
+    }
+
+    return null;
   };
 
   const getRuleFromCandidates = (rule) => {
@@ -363,15 +418,15 @@
 
     if (typeof condition === "string") {
       return (
-        token.surface_form === condition ||
-        token.basic_form === condition ||
-        token.pos === condition ||
-        token.pos_detail_1 === condition ||
-        token.pos_detail_2 === condition ||
-        token.pos_detail_3 === condition ||
-        token.conjugated_form === condition ||
-        `${token.pos}${token.conjugated_form}` === condition ||
-        `${token.pos}${token.pos_detail_1}` === condition
+        valueMatches(token.surface_form, condition) ||
+        valueMatches(token.basic_form, condition) ||
+        valueMatches(token.pos, condition) ||
+        valueMatches(token.pos_detail_1, condition) ||
+        valueMatches(token.pos_detail_2, condition) ||
+        valueMatches(token.pos_detail_3, condition) ||
+        valueMatches(token.conjugated_form, condition) ||
+        valueMatches(`${token.pos}${token.conjugated_form}`, condition) ||
+        valueMatches(`${token.pos}${token.pos_detail_1}`, condition)
       );
     }
 
@@ -560,6 +615,45 @@
     return false;
   };
 
+  const singleTokenMatchInfo = (tokens, index, rule) => {
+    const token = tokens[index];
+    if (!token) {
+      return null;
+    }
+
+    const fromCandidates = getRuleFromCandidates(rule);
+    if (expectsVerbToken(rule) && token.pos !== "動詞") {
+      return null;
+    }
+    if (expectsAdjectiveToken(rule) && token.pos !== "形容詞") {
+      return null;
+    }
+
+    if (ruleRequiresStrictBasicFormMatch(rule)) {
+      return matchAnyCandidate(token.basic_form, fromCandidates);
+    }
+
+    const surfaceMatch = matchAnyCandidate(token.surface_form, fromCandidates);
+    if (surfaceMatch) {
+      return {
+        ...surfaceMatch,
+        matchedTarget: "surface_form"
+      };
+    }
+
+    if (ruleUsesBasicFormMatch(rule)) {
+      const basicMatch = matchAnyCandidate(token.basic_form, fromCandidates);
+      if (basicMatch) {
+        return {
+          ...basicMatch,
+          matchedTarget: "basic_form"
+        };
+      }
+    }
+
+    return null;
+  };
+
     const getSharedSuffix = (left, right) => {
     const leftChars = Array.from(left ?? "");
     const rightChars = Array.from(right ?? "");
@@ -680,11 +774,11 @@
     return `${toStem}${token.surface_form.slice(fromStem.length)}`;
   };
 
-  const resolveTokenReplacement = (token, rule, matchedText) => {
-    const replacement = chooseReplacement(rule, matchedText);
+  const resolveTokenReplacement = (token, rule, matchedText, wildcardCaptures = [], matchedFromOverride = null) => {
+    const replacement = chooseReplacement(rule, matchedText, wildcardCaptures);
     const matchedFrom = ruleUsesBasicFormMatch(rule)
-      ? token?.basic_form
-      : token?.surface_form;
+      ? (matchedFromOverride ?? token?.basic_form)
+      : (matchedFromOverride ?? token?.surface_form);
     return applyBasicFormReplacement(token, rule, replacement, matchedFrom);
   };
 
@@ -743,7 +837,8 @@
       return sequenceMatch;
     }
 
-    if (!singleTokenMatches(tokens, index, rule)) {
+    const singleTokenMatch = singleTokenMatchInfo(tokens, index, rule);
+    if (!singleTokenMatch) {
       return null;
     }
 
@@ -753,7 +848,9 @@
 
     return {
       start: index,
-      length: 1
+      length: 1,
+      matchedFrom: singleTokenMatch.matchedFrom ?? null,
+      wildcardCaptures: Array.isArray(singleTokenMatch.wildcardCaptures) ? singleTokenMatch.wildcardCaptures : []
     };
   };
 
@@ -801,22 +898,17 @@
           continue;
         }
 
-        const replacement = chooseReplacement(
+        const replacementTemplate = chooseReplacementTemplate(
           { ...rule, from: fromCandidate, from_options: [fromCandidate] },
           fromCandidate
         );
-        result = result.replace(new RegExp(escapeRegex(fromCandidate), "gu"), (matchedText) => {
-          emitDebugEvent(debugCollector, {
-            phase: "dictionary-match",
-            stageId,
-            ruleId: rule.id ?? null,
-            matchedText,
-            replacement,
-            regex: false,
-            from: fromCandidate
-          });
-          return replacement;
-        });
+
+        if (hasWildcard(fromCandidate)) {
+          result = replaceWildcardPattern(result, fromCandidate, replacementTemplate);
+          continue;
+        }
+
+        result = replaceWildcardPattern(result, fromCandidate, replacementTemplate);
       }
     }
 
@@ -838,7 +930,13 @@
           .map((matchedToken) => matchedToken.surface_form);
 
         const matchedText = matchedTokens.join("");
-        const replacement = match.replacement ?? resolveTokenReplacement(outputTokens[match.start], rule, matchedText);
+        const replacement = match.replacement ?? resolveTokenReplacement(
+          outputTokens[match.start],
+          rule,
+          matchedText,
+          match.wildcardCaptures ?? [],
+          match.matchedFrom ?? null
+        );
         emitDebugEvent(debugCollector, {
           phase: "token-match",
           stageId,
@@ -1484,12 +1582,17 @@
   const normalizeBundleOverridesPayload = (storedValue) => {
     const storedRoots = Array.isArray(storedValue?.roots) ? storedValue.roots : null;
     if (storedRoots) {
-      return Object.fromEntries(
+      const normalized = Object.fromEntries(
         storedRoots
           .filter((root) => root?.id)
           .map((root) => [root.id, normalizeStoredBundleOverride(root)])
           .filter(([, override]) => override)
       );
+      Object.defineProperty(normalized, "__hasStoredRootsPayload", {
+        value: true,
+        enumerable: false
+      });
+      return normalized;
     }
 
     const storedBundles = storedValue?.bundles;
@@ -1520,47 +1623,16 @@
     };
   };
 
-  const hasOverrideEntriesOrChildren = (override) => {
-    return (
-      (Array.isArray(override?.entries) && override.entries.length > 0) ||
-      (Array.isArray(override?.children) && override.children.length > 0)
-    );
-  };
-
-  const isMetadataOnlyManifestOverride = (definition, override) => {
-    if (!override || hasOverrideEntriesOrChildren(override)) {
-      return false;
-    }
-
-    if (override.enabled === false) {
-      return false;
-    }
-
-    const targetKind = override.kind ?? definition?.kind ?? null;
-    if (targetKind && definition?.kind && targetKind !== definition.kind) {
-      return false;
-    }
-
-    return true;
-  };
-
   const mergeBundleDefinition = (definition, override) => {
     if (!override) {
       return definition;
     }
 
-    if (isMetadataOnlyManifestOverride(definition, override)) {
-      return {
-        ...definition,
-        label: override.label ?? definition.label,
-        enabled: override.enabled ?? definition.enabled,
-        kind: override.kind ?? definition.kind,
-        runtime_mode: override.runtime_mode ?? definition.runtime_mode
-      };
-    }
-
     const flattenNodesToRules = (node) => {
       const rules = [];
+      if (!node || node.enabled === false) {
+        return rules;
+      }
       if (Array.isArray(node.entries)) {
         for (const entry of node.entries) {
           if (!entry || !entry.from || !entry.to) {
@@ -1595,16 +1667,13 @@
 
     const targetKind = override.kind ?? definition.kind;
     if (targetKind === "token-rules") {
-      const hasOverrideTree = hasOverrideEntriesOrChildren(override);
       return {
         ...definition,
         kind: "token-rules",
         runtime_mode: override.runtime_mode ?? definition.runtime_mode,
         label: override.label ?? definition.label,
         enabled: override.enabled ?? definition.enabled,
-        rules: hasOverrideTree
-          ? flattenNodesToRules(override)
-          : (Array.isArray(definition.rules) ? definition.rules : [])
+        rules: flattenNodesToRules(override)
       };
     }
 
@@ -1678,6 +1747,10 @@
   const loadStagesFromDefinitions = (bundleManifest, bundleFiles, overrides = {}) => {
     const manifestBundles = (bundleManifest?.bundles || []).map(normalizeBundle);
     const manifestBundleIds = new Set(manifestBundles.map((bundle) => bundle.id));
+    const storedRootsAreAuthoritative = overrides?.__hasStoredRootsPayload === true;
+    const manifestRuntimeBundles = storedRootsAreAuthoritative
+      ? manifestBundles.filter((bundle) => Object.prototype.hasOwnProperty.call(overrides, bundle.id))
+      : manifestBundles;
     const virtualBundles = Object.values(overrides)
       .filter((override) => override?.id && !manifestBundleIds.has(override.id))
       .map((override) => normalizeBundle({
@@ -1688,7 +1761,7 @@
         order: override.order ?? 0,
         enabled: override.enabled !== false
       }));
-    const bundles = [...manifestBundles, ...virtualBundles]
+    const bundles = [...manifestRuntimeBundles, ...virtualBundles]
       .map((bundle) => applyBundleOverrideToManifest(bundle, overrides[bundle.id]))
       .filter((bundle) => bundle.enabled)
       .sort((left, right) => {

@@ -1620,12 +1620,18 @@
   };
 
   const reapplyDocumentImmediately = (root = document.body) => {
-    if (!root || !isRuntimeEnabled() || !hasAnyActiveRules()) {
+    if (!root) {
       return 0;
     }
 
     pendingRootQueue.clear();
     cancelRootFlushes();
+    restoreDocumentRuns(root);
+
+    if (!isRuntimeEnabled() || !hasAnyActiveRules()) {
+      return 0;
+    }
+
     return processTextRoot(root);
   };
 

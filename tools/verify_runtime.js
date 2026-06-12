@@ -986,7 +986,19 @@ const verifyCandidateParsing = () => {
   };
 };
 
-const verifyEmptyManifestOverrideFallback = () => {
+const verifyManifestFallbackWithoutStorageOverride = () => {
+  const loaded = loadStages();
+  const stage = loaded.stages.find((candidate) => candidate.id === "surface-normalization");
+  return {
+    passed: Boolean(stage) && Array.isArray(stage.rules) && stage.rules.length > 0,
+    details: {
+      stageRuleCount: Array.isArray(stage?.rules) ? stage.rules.length : 0,
+      stageIds: loaded.stages.map((candidate) => candidate.id)
+    }
+  };
+};
+
+const verifyEmptyOverrideSuppressesManifestRules = () => {
   const loaded = loadStages({
     roots: [
       {
@@ -1003,10 +1015,270 @@ const verifyEmptyManifestOverrideFallback = () => {
 
   const stage = loaded.stages.find((candidate) => candidate.id === "surface-normalization");
   return {
-    passed: Boolean(stage) && Array.isArray(stage.rules) && stage.rules.length > 0,
+    passed: !stage || (Array.isArray(stage.rules) && stage.rules.length === 0),
     details: {
       stageRuleCount: Array.isArray(stage?.rules) ? stage.rules.length : 0,
       stageIds: loaded.stages.map((candidate) => candidate.id)
+    }
+  };
+};
+
+const verifyStoredRootsSuppressMissingManifestBundles = () => {
+  const loaded = loadStages({
+    roots: [
+      {
+        id: "runtime-managed-only",
+        label: "runtime-managed-only",
+        kind: "dictionary-rules",
+        enabled: true,
+        order: 1,
+        entries: [
+          {
+            id: "runtime-managed-entry",
+            from: "managed-source",
+            to: "managed-target",
+            enabled: true,
+            regex: false
+          }
+        ],
+        children: []
+      }
+    ]
+  });
+
+  const manifestStage = loaded.stages.find((candidate) => candidate.id === "legacy-kanji");
+  const managedStage = loaded.stages.find((candidate) => candidate.id === "runtime-managed-only");
+  return {
+    passed: !manifestStage && Boolean(managedStage) && managedStage.rules?.length === 1,
+    details: {
+      stageIds: loaded.stages.map((candidate) => candidate.id),
+      managedRuleCount: Array.isArray(managedStage?.rules) ? managedStage.rules.length : 0
+    }
+  };
+};
+
+const verifyDisabledTokenSubtree = () => {
+  const loaded = loadStages({
+    roots: [
+      {
+        id: "runtime-override-check",
+        label: "runtime-override-check",
+        kind: "token-rules",
+        enabled: true,
+        order: 90,
+        entries: [
+          {
+            id: "root-entry",
+            from: "甲",
+            to: "甲-root",
+            enabled: true,
+            regex: false
+          }
+        ],
+        children: [
+          {
+            id: "disabled-child",
+            label: "disabled-child",
+            kind: "token-rules",
+            enabled: false,
+            entries: [
+              {
+                id: "disabled-entry",
+                from: "乙",
+                to: "乙-disabled",
+                enabled: true,
+                regex: false
+              }
+            ],
+            children: []
+          },
+          {
+            id: "enabled-child",
+            label: "enabled-child",
+            kind: "token-rules",
+            enabled: true,
+            entries: [
+              {
+                id: "enabled-entry",
+                from: "丙",
+                to: "丙-enabled",
+                enabled: true,
+                regex: false
+              }
+            ],
+            children: []
+          }
+        ]
+      }
+    ]
+  });
+
+  const stage = loaded.stages.find((candidate) => candidate.id === "runtime-override-check" && candidate.kind === "token-rules");
+  const ruleMap = new Map((stage?.rules ?? []).map((rule) => [rule.from, rule.to]));
+  return {
+    passed: Boolean(stage) &&
+      ruleMap.get("甲") === "甲-root" &&
+      ruleMap.get("丙") === "丙-enabled" &&
+      !ruleMap.has("乙"),
+    details: {
+      rules: stage?.rules?.map((rule) => ({
+        from: rule.from,
+        to: rule.to,
+        enabled: rule.enabled !== false
+      })) ?? []
+    }
+  };
+};
+
+const verifyDisabledOverrideEntries = () => {
+  const loaded = loadStages({
+    roots: [
+      {
+        id: "disabled-entry-dictionary",
+        label: "disabled-entry-dictionary",
+        kind: "dictionary-rules",
+        enabled: true,
+        order: 91,
+        entries: [
+          {
+            id: "disabled-dictionary-entry",
+            from: "disabled-dic",
+            to: "disabled-dic-hit",
+            enabled: false,
+            regex: false
+          },
+          {
+            id: "enabled-dictionary-entry",
+            from: "enabled-dic",
+            to: "enabled-dic-hit",
+            enabled: true,
+            regex: false
+          }
+        ],
+        children: []
+      },
+      {
+        id: "disabled-entry-token",
+        label: "disabled-entry-token",
+        kind: "token-rules",
+        enabled: true,
+        order: 92,
+        entries: [
+          {
+            id: "disabled-token-entry",
+            from: "disabled-token",
+            to: "disabled-token-hit",
+            enabled: false,
+            regex: false
+          },
+          {
+            id: "enabled-token-entry",
+            from: "enabled-token",
+            to: "enabled-token-hit",
+            enabled: true,
+            regex: false
+          }
+        ],
+        children: []
+      }
+    ]
+  });
+
+  const dictionaryStage = loaded.stages.find((candidate) => candidate.id === "disabled-entry-dictionary");
+  const tokenStage = loaded.stages.find((candidate) => candidate.id === "disabled-entry-token");
+  const dictionaryRuleMap = new Map((dictionaryStage?.rules ?? []).map((rule) => [rule.from, rule.to]));
+  const tokenRuleMap = new Map((tokenStage?.rules ?? []).map((rule) => [rule.from, rule.to]));
+  return {
+    passed:
+      dictionaryRuleMap.get("enabled-dic") === "enabled-dic-hit" &&
+      !dictionaryRuleMap.has("disabled-dic") &&
+      tokenRuleMap.get("enabled-token") === "enabled-token-hit" &&
+      !tokenRuleMap.has("disabled-token"),
+    details: {
+      dictionaryRules: dictionaryStage?.rules?.map((rule) => ({ from: rule.from, enabled: rule.enabled !== false })) ?? [],
+      tokenRules: tokenStage?.rules?.map((rule) => ({ from: rule.from, enabled: rule.enabled !== false })) ?? []
+    }
+  };
+};
+
+const verifyWildcardBehavior = (tokenizer) => {
+  const dictionaryStages = [
+    {
+      id: "wildcard-dictionary",
+      kind: "dictionary-rules",
+      order: 1,
+      rules: [
+        {
+          from: "*い",
+          from_options: ["*い"],
+          to: "*",
+          candidates: ["*"],
+          regex: false,
+          enabled: true,
+          priority: 10
+        },
+        {
+          from: "A*B*C",
+          from_options: ["A*B*C"],
+          to: "X*Y*",
+          candidates: ["X*Y*"],
+          regex: false,
+          enabled: true,
+          priority: 10
+        },
+        {
+          from: "\\*印",
+          from_options: ["\\*印"],
+          to: "記号",
+          candidates: ["記号"],
+          regex: false,
+          enabled: true,
+          priority: 10
+        }
+      ]
+    }
+  ];
+
+  const tokenStages = [
+    {
+      id: "wildcard-token",
+      kind: "token-rules",
+      order: 1,
+      rules: [
+        {
+          from: "高い",
+          from_options: ["高い"],
+          to: "高",
+          candidates: ["高"],
+          regex: false,
+          enabled: true,
+          priority: 10,
+          conditions: {
+            current: {
+              pos: "形*"
+            }
+          }
+        }
+      ]
+    }
+  ];
+
+  const dictionarySuffix = TransformEngine.transformTextWithStages("高い", dictionaryStages, tokenizer);
+  const dictionaryCaptured = TransformEngine.transformTextWithStages("AfooBbarC", dictionaryStages, tokenizer);
+  const dictionaryEscaped = TransformEngine.transformTextWithStages("*印", dictionaryStages, tokenizer);
+  const tokenConditionWildcard = TransformEngine.transformTextWithStages("高い", tokenStages, tokenizer);
+
+  return {
+    passed:
+      dictionarySuffix === "高" &&
+      dictionaryCaptured === "XfooYbar" &&
+      dictionaryEscaped === "記号" &&
+      tokenConditionWildcard === "高",
+    details: {
+      dictionarySuffix,
+      dictionaryCaptured,
+      dictionaryEscaped,
+      tokenConditionWildcard
     }
   };
 };
@@ -1040,10 +1312,35 @@ const main = async () => {
     ? "PASS [parser] bracket shorthand / escape"
     : `FAIL [parser] ${JSON.stringify(parserCheck.details)}`);
 
-  const emptyOverrideCheck = verifyEmptyManifestOverrideFallback();
+  const manifestFallbackCheck = verifyManifestFallbackWithoutStorageOverride();
+  console.log(manifestFallbackCheck.passed
+    ? "PASS [manifest-fallback] missing storage override uses bundled defaults"
+    : `FAIL [manifest-fallback] ${JSON.stringify(manifestFallbackCheck.details)}`);
+
+  const emptyOverrideCheck = verifyEmptyOverrideSuppressesManifestRules();
   console.log(emptyOverrideCheck.passed
-    ? "PASS [override-empty] empty manifest override keeps default bundle rules"
+    ? "PASS [override-empty] empty stored override suppresses bundled defaults"
     : `FAIL [override-empty] ${JSON.stringify(emptyOverrideCheck.details)}`);
+
+  const missingManifestBundleCheck = verifyStoredRootsSuppressMissingManifestBundles();
+  console.log(missingManifestBundleCheck.passed
+    ? "PASS [override-authoritative] stored roots suppress missing manifest bundles"
+    : `FAIL [override-authoritative] ${JSON.stringify(missingManifestBundleCheck.details)}`);
+
+  const disabledSubtreeCheck = verifyDisabledTokenSubtree();
+  console.log(disabledSubtreeCheck.passed
+    ? "PASS [override-disabled] disabled token subtree stays out of runtime stage"
+    : `FAIL [override-disabled] ${JSON.stringify(disabledSubtreeCheck.details)}`);
+
+  const disabledEntryCheck = verifyDisabledOverrideEntries();
+  console.log(disabledEntryCheck.passed
+    ? "PASS [override-disabled-entry] disabled dictionary/token entries stay out of runtime stages"
+    : `FAIL [override-disabled-entry] ${JSON.stringify(disabledEntryCheck.details)}`);
+
+  const wildcardCheck = verifyWildcardBehavior(tokenizer);
+  console.log(wildcardCheck.passed
+    ? "PASS [wildcard] matcher / replacement / conditions"
+    : `FAIL [wildcard] ${JSON.stringify(wildcardCheck.details)}`);
 
   const defaultResults = runFixtureSet("default", defaultLoaded.stages, FIXTURES, tokenizer, caseId);
   const overrideResults = runFixtureSet("override", overrideLoaded.stages, OVERRIDE_FIXTURES, tokenizer, caseId);
@@ -1054,7 +1351,12 @@ const main = async () => {
   const allPassed = orderCheck.passed &&
     overrideCheck.passed &&
     parserCheck.passed &&
+    manifestFallbackCheck.passed &&
     emptyOverrideCheck.passed &&
+    missingManifestBundleCheck.passed &&
+    disabledSubtreeCheck.passed &&
+    disabledEntryCheck.passed &&
+    wildcardCheck.passed &&
     [...defaultResults, ...overrideResults].every((result) => result.passed);
 
   if (!allPassed) {

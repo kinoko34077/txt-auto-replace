@@ -354,6 +354,7 @@
 
     <nav class="tabbar" aria-label="設定タブ">
       <button id="tab-bundles" class="tab-button secondary" type="button" aria-selected="true">Bundle編集</button>
+      <button id="tab-stage4" class="tab-button ghost" type="button" aria-selected="false">Stage4</button>
       <button id="tab-diagnostics" class="tab-button ghost" type="button" aria-selected="false">診断</button>
       <button id="tab-tokenizer" class="tab-button ghost" type="button" aria-selected="false">形態素解析</button>
       <button id="tab-hotkeys" class="tab-button ghost" type="button" aria-selected="false">Hotkey</button>
@@ -362,6 +363,10 @@
 
     <section id="panel-bundles" class="tab-panel">
       <main id="bundle-root" class="bundle-grid" aria-live="polite"></main>
+    </section>
+
+    <section id="panel-stage4" class="tab-panel" hidden>
+      <div id="stage4-root" class="diagnostics-grid" aria-live="polite"></div>
     </section>
 
     <section id="panel-diagnostics" class="tab-panel" hidden>

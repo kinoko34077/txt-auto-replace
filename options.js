@@ -7,6 +7,7 @@
   const BUNDLE_UI_STATE_KEY = "bundleOptionsUiStateV1";
   const DICT_PATH = "./dict/";
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
+  const STAGE4_BUNDLE_ID = "okurigana-abbreviation-stage4";
   const MESSAGE_TYPES = {
     APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
     OPEN_SHORTCUTS_PAGE: "OPEN_SHORTCUTS_PAGE"
@@ -40,11 +41,14 @@
     focusedNodeId: null,
     dragPayload: null,
     undoAction: null,
+    searchDebounceTimer: null,
+    editSession: null,
     tableUi: {},
     bundleUi: {
       selectedNodeId: "__all__",
       expandedTreeIds: {},
-      searchText: ""
+      searchText: "",
+      searchTextDraft: ""
     }
   };
 
@@ -53,16 +57,19 @@
   const hotkeysRoot = document.getElementById("hotkeys-root");
   const sitesRoot = document.getElementById("sites-root");
   const panelBundles = document.getElementById("panel-bundles");
+  const panelStage4 = document.getElementById("panel-stage4");
   const panelDiagnostics = document.getElementById("panel-diagnostics");
   const panelTokenizer = document.getElementById("panel-tokenizer");
   const panelHotkeys = document.getElementById("panel-hotkeys");
   const panelSites = document.getElementById("panel-sites");
   const tabBundlesButton = document.getElementById("tab-bundles");
+  const tabStage4Button = document.getElementById("tab-stage4");
   const tabDiagnosticsButton = document.getElementById("tab-diagnostics");
   const tabTokenizerButton = document.getElementById("tab-tokenizer");
   const tabHotkeysButton = document.getElementById("tab-hotkeys");
   const tabSitesButton = document.getElementById("tab-sites");
   const statusNode = document.getElementById("status");
+  const stage4Root = document.getElementById("stage4-root");
   const saveAllButton = document.getElementById("save-all");
   const addBundleButton = document.getElementById("add-bundle");
   const reloadDefaultsButton = document.getElementById("reload-defaults");
@@ -419,10 +426,12 @@
   };
 
   const normalizeBundleUiState = (value) => {
+    const searchText = `${value?.searchText ?? ""}`;
     return {
       selectedNodeId: `${value?.selectedNodeId ?? "__all__"}` || "__all__",
       expandedTreeIds: value?.expandedTreeIds && typeof value.expandedTreeIds === "object" ? value.expandedTreeIds : {},
-      searchText: `${value?.searchText ?? ""}`
+      searchText,
+      searchTextDraft: searchText
     };
   };
 
@@ -439,6 +448,14 @@
   };
 
   const CURRENT_CONDITION_FIELDS = ["surface", "basic", "pos", "pos1", "cform", "ctype"];
+
+  const getStage4Root = () => {
+    return state.roots.find((root) => root?.id === STAGE4_BUNDLE_ID) ?? null;
+  };
+
+  const getBundleEditorRoots = () => {
+    return state.roots.filter((root) => root?.id !== STAGE4_BUNDLE_ID);
+  };
 
   const createEmptyCurrentBulkDraft = () => ({
     surface: "",
@@ -1873,6 +1890,10 @@
       throw new Error(t("options.invalidImportedRoots"));
   };
 
+  const hasStoredRootsPayload = (payload) => {
+    return Array.isArray(payload?.roots) || Array.isArray(payload?.[STORAGE_KEY]?.roots);
+  };
+
   const serializeEntry = (entry, index) => {
     const inferredType = inferEntryType(entry);
     const fromOptions = normalizeFromOptions(entry.from_options ?? entry.from, entry.from);
@@ -1963,7 +1984,7 @@
 
   const applyPersistedPayloadToState = (payload) => {
     const importedRoots = normalizeImportedRoots(payload);
-    state.roots = mergeImportedRootsWithBaseRoots(importedRoots, state.baseRoots);
+    state.roots = importedRoots;
     state.runtimeSettings = extractRuntimeSettings(payload);
     state.disabledSites = extractDisabledSites(payload);
     state.popupBundleId = extractPopupBundleId(payload);
@@ -2158,6 +2179,14 @@
         entry.selected = false;
       });
     });
+  };
+
+  const hasAnySelectedItems = () => {
+    return collectSelectedNodes().length > 0 || collectSelectedEntries().length > 0;
+  };
+
+  const hasClipboardItems = () => {
+    return Boolean(state.clipboard && Array.isArray(state.clipboard.items) && state.clipboard.items.length > 0);
   };
 
   const getPreferredPasteTargetNode = () => {
@@ -3573,8 +3602,61 @@
       entry.regex ? "regex" : "plain",
       entry.from,
       entry.to,
+      entry.match_target === "basic_form" ? "basic_form" : "",
+      formatSequenceDsl(entry.sequence ?? []),
       ...CURRENT_CONDITION_FIELDS.map((field) => getEntryConditionInlineValue(entry, "current", field))
     ].join(" ");
+  };
+
+  const normalizeSearchText = (value) => `${value ?? ""}`.trim().toLowerCase();
+
+  const composeNodeOwnSearchValue = (node, effectiveKind = null) => {
+    return [
+      node?.label ?? "",
+      effectiveKind ?? node?.kind ?? "dictionary-rules"
+    ].join(" ").toLowerCase();
+  };
+
+  const entryMatchesSearchText = (entry, searchText) => {
+    if (!searchText) {
+      return true;
+    }
+    return composeEntrySearchValue(entry).toLowerCase().includes(searchText);
+  };
+
+  const composeNodeSearchValue = (node, inheritedKind = null) => {
+    const effectiveKind = inheritedKind ?? node?.kind ?? "dictionary-rules";
+    const entryValues = (Array.isArray(node?.entries) ? node.entries : [])
+      .map((entry) => composeEntrySearchValue(entry))
+      .join(" ");
+    const childValues = (Array.isArray(node?.children) ? node.children : [])
+      .map((child) => composeNodeSearchValue(child, effectiveKind))
+      .join(" ");
+
+    return [
+      composeNodeOwnSearchValue(node, effectiveKind),
+      entryValues,
+      childValues
+    ].join(" ").toLowerCase();
+  };
+
+  const nodeHasSearchMatch = (node, inheritedKind = null, searchText = "") => {
+    if (!searchText) {
+      return true;
+    }
+
+    const effectiveKind = inheritedKind ?? node?.kind ?? "dictionary-rules";
+    if (composeNodeOwnSearchValue(node, effectiveKind).includes(searchText)) {
+      return true;
+    }
+
+    if ((Array.isArray(node?.entries) ? node.entries : []).some((entry) => entryMatchesSearchText(entry, searchText))) {
+      return true;
+    }
+
+    return (Array.isArray(node?.children) ? node.children : []).some((child) => {
+      return nodeHasSearchMatch(child, effectiveKind, searchText);
+    });
   };
 
   const refreshEntryRowEffects = (nodeId, sortKey) => {
@@ -3584,6 +3666,41 @@
       return;
     }
     renderDiagnostics();
+  };
+
+  const beginEditSession = (session) => {
+    state.editSession = {
+      composing: false,
+      ...session
+    };
+  };
+
+  const clearEditSession = () => {
+    state.editSession = null;
+  };
+
+  const commitSortedEditIfNeeded = (nodeId, sortKey = null) => {
+    clearEditSession();
+    if (sortKey && getTableSortState(nodeId)?.key === sortKey) {
+      renderApp();
+      return;
+    }
+    renderDiagnostics();
+  };
+
+  const clearSearchDebounce = () => {
+    if (state.searchDebounceTimer) {
+      clearTimeout(state.searchDebounceTimer);
+      state.searchDebounceTimer = null;
+    }
+  };
+
+  const applyBundleSearchText = (value) => {
+    clearSearchDebounce();
+    state.bundleUi.searchText = `${value ?? ""}`;
+    state.bundleUi.searchTextDraft = state.bundleUi.searchText;
+    saveBundleUiState();
+    renderBundles();
   };
 
   const renderSelectedCurrentConditionBar = (node) => {
@@ -3893,9 +4010,12 @@
     return wrapper;
   };
 
-  const renderEntryTableV2 = (node, effectiveKind) => {
+  const renderEntryTableV2 = (node, effectiveKind, searchText = "") => {
     const wrapper = document.createElement("div");
     wrapper.className = "panel-block";
+    const sortedEntries = getSortedEntriesForNode(node).filter((entry) => {
+      return entryMatchesSearchText(entry, searchText);
+    });
 
     const head = document.createElement("div");
     head.className = "panel-head";
@@ -3907,6 +4027,9 @@
       ? `token ${node.entries.length} 件 / 選択 ${getSelectedCount(node.entries)} 件`
       : `dictionary ${node.entries.length} 件 / 選択 ${getSelectedCount(node.entries)} 件`;
     head.append(title, count);
+    count.textContent = effectiveKind === "token-rules"
+      ? `token ${sortedEntries.length} 莉ｶ / 驕ｸ謚・${getSelectedCount(sortedEntries)} 莉ｶ`
+      : `dictionary ${sortedEntries.length} 莉ｶ / 驕ｸ謚・${getSelectedCount(sortedEntries)} 莉ｶ`;
     wrapper.appendChild(head);
 
     const selectedBar = renderSelectedCurrentConditionBar(node);
@@ -3955,7 +4078,6 @@
     thead.appendChild(headerRow);
 
     const tbody = document.createElement("tbody");
-    const sortedEntries = getSortedEntriesForNode(node);
     sortedEntries.forEach((entry) => {
       const entryIndex = node.entries.indexOf(entry);
       const row = document.createElement("tr");
@@ -4042,10 +4164,26 @@
         ? "変更前を辞書形 basic_form に対して一致させる"
         : "dictionary-rules では使用しません";
 
-      const createTextCell = (value, options, onInput) => {
+      const createTextCell = (value, options, onInput, sortKey = null) => {
         const td = document.createElement("td");
         const input = createCompactInput(value, options);
-        input.addEventListener("input", () => onInput(input.value));
+        input.addEventListener("focus", () => beginEditSession({ nodeId: node.id, entryId: entry.id, sortKey }));
+        input.addEventListener("compositionstart", () => beginEditSession({ nodeId: node.id, entryId: entry.id, sortKey, composing: true }));
+        input.addEventListener("compositionend", () => {
+          beginEditSession({ nodeId: node.id, entryId: entry.id, sortKey, composing: false });
+        });
+        input.addEventListener("input", () => {
+          onInput(input.value);
+          renderDiagnostics();
+        });
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            commitSortedEditIfNeeded(node.id, sortKey);
+          }
+        });
+        input.addEventListener("blur", () => {
+          commitSortedEditIfNeeded(node.id, sortKey);
+        });
         td.appendChild(input);
         return td;
       };
@@ -4054,14 +4192,12 @@
         entry.from = value;
         entry.from_options = normalizeFromOptions(value);
         row.dataset.searchValue = composeEntrySearchValue(entry);
-        refreshEntryRowEffects(node.id, "from");
-      });
+      }, "from");
 
       const toTd = createTextCell(entry.to, { min: 2, max: 24 }, (value) => {
         entry.to = value;
         row.dataset.searchValue = composeEntrySearchValue(entry);
-        refreshEntryRowEffects(node.id, "to");
-      });
+      }, "to");
 
       const priorityTd = createTextCell(String(entry.priority ?? 90), {
         type: "number",
@@ -4070,8 +4206,7 @@
         className: "cell-input compact"
       }, (value) => {
         entry.priority = Number(value) || 0;
-        refreshEntryRowEffects(node.id, "priority");
-      });
+      }, "priority");
 
       const currentFieldCell = (field, label) => createTextCell(
         getEntryConditionInlineValue(entry, "current", field),
@@ -4079,8 +4214,8 @@
         (value) => {
           setEntryConditionInlineValue(entry, "current", field, value);
           row.dataset.searchValue = composeEntrySearchValue(entry);
-          refreshEntryRowEffects(node.id, `current.${field}`);
-        }
+        },
+        `current.${field}`
       );
 
       const actionTd = document.createElement("td");
@@ -4163,11 +4298,12 @@
     return wrapper;
   };
 
-  const renderNodeSection = ({ node, parentChildren, index, depth = 0, isRoot = false, inheritedKind = null }) => {
+  const renderNodeSection = ({ node, parentChildren, index, depth = 0, isRoot = false, inheritedKind = null, searchText = "" }) => {
     const card = document.createElement("section");
     card.className = isRoot ? "bundle-card" : "group-card";
     card.id = `node-${node.id}`;
     card.dataset.focused = state.focusedNodeId === node.id ? "true" : "false";
+    card.dataset.enabled = node.enabled !== false ? "true" : "false";
     const effectiveKind = isRoot
       ? (node.kind ?? "dictionary-rules")
       : (inheritedKind ?? node.kind ?? "dictionary-rules");
@@ -4258,7 +4394,7 @@
     enabledCheckbox.checked = node.enabled !== false;
     enabledCheckbox.addEventListener("change", () => {
       node.enabled = enabledCheckbox.checked;
-      renderDiagnostics();
+      renderApp();
     });
     enabledLabel.append(enabledCheckbox, document.createTextNode(t("options.fieldEnabled")));
     actions.appendChild(enabledLabel);
@@ -4366,24 +4502,34 @@
       card.appendChild(renderBulkImportPanel(node, effectiveKind));
     }
 
-    if (node.entries.length > 0 || node.children.length === 0) {
-      card.appendChild(renderEntryTableV2(node, effectiveKind));
+    const visibleEntryCount = searchText
+      ? node.entries.filter((entry) => entryMatchesSearchText(entry, searchText)).length
+      : node.entries.length;
+
+    if (visibleEntryCount > 0 || (node.children.length === 0 && !searchText)) {
+      card.appendChild(renderEntryTableV2(node, effectiveKind, searchText));
     }
 
     if (node.children.length > 0) {
       const childrenWrap = document.createElement("div");
       childrenWrap.className = "bundle-body";
       node.children.forEach((child, childIndex) => {
+        if (searchText && !nodeHasSearchMatch(child, effectiveKind, searchText)) {
+          return;
+        }
         childrenWrap.appendChild(renderNodeSection({
           node: child,
           parentChildren: node.children,
           index: childIndex,
           depth: depth + 1,
           isRoot: false,
-          inheritedKind: effectiveKind
+          inheritedKind: effectiveKind,
+          searchText
         }));
       });
-      card.appendChild(childrenWrap);
+      if (childrenWrap.childElementCount > 0) {
+        card.appendChild(childrenWrap);
+      }
     }
 
     return card;
@@ -4828,21 +4974,25 @@
 
   const renderTabState = () => {
     const bundlesActive = state.activeTab === "bundles";
+    const stage4Active = state.activeTab === "stage4";
     const diagnosticsActive = state.activeTab === "diagnostics";
     const tokenizerActive = state.activeTab === "tokenizer";
     const hotkeysActive = state.activeTab === "hotkeys";
     const sitesActive = state.activeTab === "sites";
     panelBundles.hidden = !bundlesActive;
+    panelStage4.hidden = !stage4Active;
     panelDiagnostics.hidden = !diagnosticsActive;
     panelTokenizer.hidden = !tokenizerActive;
     panelHotkeys.hidden = !hotkeysActive;
     panelSites.hidden = !sitesActive;
     tabBundlesButton.setAttribute("aria-selected", bundlesActive ? "true" : "false");
+    tabStage4Button.setAttribute("aria-selected", stage4Active ? "true" : "false");
     tabDiagnosticsButton.setAttribute("aria-selected", diagnosticsActive ? "true" : "false");
     tabTokenizerButton.setAttribute("aria-selected", tokenizerActive ? "true" : "false");
     tabHotkeysButton.setAttribute("aria-selected", hotkeysActive ? "true" : "false");
     tabSitesButton.setAttribute("aria-selected", sitesActive ? "true" : "false");
     tabBundlesButton.className = bundlesActive ? "tab-button secondary" : "tab-button ghost";
+    tabStage4Button.className = stage4Active ? "tab-button secondary" : "tab-button ghost";
     tabDiagnosticsButton.className = diagnosticsActive ? "tab-button secondary" : "tab-button ghost";
     tabTokenizerButton.className = tokenizerActive ? "tab-button secondary" : "tab-button ghost";
     tabHotkeysButton.className = hotkeysActive ? "tab-button secondary" : "tab-button ghost";
@@ -4948,7 +5098,21 @@
   };
 
   const renderBundles = () => {
+    const previousActiveElement = document.activeElement;
+    const shouldRestoreSearchFocus = previousActiveElement?.classList?.contains("grid-search") === true;
+    const previousSearchSelectionStart = shouldRestoreSearchFocus && typeof previousActiveElement.selectionStart === "number"
+      ? previousActiveElement.selectionStart
+      : null;
+    const previousSearchSelectionEnd = shouldRestoreSearchFocus && typeof previousActiveElement.selectionEnd === "number"
+      ? previousActiveElement.selectionEnd
+      : null;
+
     bundleRoot.textContent = "";
+    const visibleRoots = getBundleEditorRoots();
+    if (state.bundleUi.selectedNodeId !== "__all__" && !visibleRoots.some((root) => getNodeTrailById(state.bundleUi.selectedNodeId, [root]))) {
+      state.bundleUi.selectedNodeId = "__all__";
+      saveBundleUiState();
+    }
     const workspace = document.createElement("section");
     workspace.className = "bundle-workspace";
 
@@ -4957,7 +5121,7 @@
     const explorerHead = document.createElement("div");
     explorerHead.className = "workspace-head";
     const explorerTitle = document.createElement("h3");
-    explorerTitle.textContent = "Explorer";
+    explorerTitle.textContent = t("options.explorerTitle");
     explorerHead.appendChild(explorerTitle);
     left.appendChild(explorerHead);
     const allButton = document.createElement("button");
@@ -4973,7 +5137,7 @@
     left.appendChild(allButton);
     const tree = document.createElement("div");
     tree.className = "explorer-tree";
-    state.roots.forEach((root) => {
+    visibleRoots.forEach((root) => {
       tree.appendChild(renderTreeNode(root));
     });
     left.appendChild(tree);
@@ -4991,20 +5155,33 @@
       search.type = "text";
       search.className = "grid-search";
       search.placeholder = t("options.searchPlaceholder");
-      search.value = state.bundleUi.searchText ?? "";
+      search.value = state.bundleUi.searchTextDraft ?? state.bundleUi.searchText ?? "";
+      let isComposing = false;
+      search.addEventListener("compositionstart", () => {
+        isComposing = true;
+      });
+      search.addEventListener("compositionend", () => {
+        isComposing = false;
+        applyBundleSearchText(search.value);
+      });
       search.addEventListener("input", () => {
-        state.bundleUi.searchText = search.value;
-        saveBundleUiState();
-        renderBundles();
+        state.bundleUi.searchTextDraft = search.value;
+        if (isComposing) {
+          return;
+        }
+        clearSearchDebounce();
+        state.searchDebounceTimer = setTimeout(() => {
+          applyBundleSearchText(search.value);
+        }, 200);
       });
       controlsLeft.appendChild(search);
 
       const scopeLabel = document.createElement("span");
       scopeLabel.className = "count";
       if (state.bundleUi.selectedNodeId === "__all__") {
-        scopeLabel.textContent = `${state.roots.length} bundles`;
+        scopeLabel.textContent = `${visibleRoots.length} bundles`;
       } else {
-        scopeLabel.textContent = getNodeTrailById(state.bundleUi.selectedNodeId)?.map((item) => item.label).join(" / ") ?? "";
+        scopeLabel.textContent = getNodeTrailById(state.bundleUi.selectedNodeId, visibleRoots)?.map((item) => item.label).join(" / ") ?? "";
       }
       controlsLeft.appendChild(scopeLabel);
       controls.appendChild(controlsLeft);
@@ -5021,27 +5198,30 @@
 
       const content = document.createElement("div");
       content.className = "bundle-sections";
-      const searchText = `${state.bundleUi.searchText ?? ""}`.trim().toLowerCase();
+      const searchText = normalizeSearchText(state.bundleUi.searchText);
 
       const appendNodeSection = ({ node, parentChildren, index, isRoot = false, inheritedKind = null }) => {
-        const section = renderNodeSection({
-          node,
-          parentChildren,
-          index,
-          isRoot,
-          inheritedKind
-        });
-        if (!searchText || `${section.textContent ?? ""}`.toLowerCase().includes(searchText)) {
-          content.appendChild(section);
+        const effectiveKind = isRoot
+          ? (node.kind ?? inheritedKind ?? "dictionary-rules")
+          : (inheritedKind ?? node.kind ?? "dictionary-rules");
+        if (nodeHasSearchMatch(node, effectiveKind, searchText)) {
+          content.appendChild(renderNodeSection({
+            node,
+            parentChildren,
+            index,
+            isRoot,
+            inheritedKind,
+            searchText
+          }));
         }
       };
 
       if (state.bundleUi.selectedNodeId === "__all__") {
-        state.roots.forEach((root, index) => {
+        visibleRoots.forEach((root, index) => {
           appendNodeSection({
             node: root,
             parentChildren: state.roots,
-            index,
+            index: state.roots.indexOf(root),
             isRoot: true
           });
         });
@@ -5064,15 +5244,100 @@
         empty.textContent = searchText
           ? "検索条件に一致する bundle / group / rule はありません。"
           : "表示できる bundle がありません。";
+        empty.textContent = searchText
+          ? t("options.noSearchResult")
+          : t("options.noVisibleBundle");
         content.appendChild(empty);
       }
 
       right.appendChild(content);
       workspace.append(left, right);
       bundleRoot.appendChild(workspace);
+
+      if (shouldRestoreSearchFocus) {
+        const nextSearch = bundleRoot.querySelector(".grid-search");
+        if (nextSearch) {
+          nextSearch.focus({ preventScroll: true });
+          if (
+            typeof previousSearchSelectionStart === "number" &&
+            typeof previousSearchSelectionEnd === "number" &&
+            typeof nextSearch.setSelectionRange === "function"
+          ) {
+            const nextLength = `${nextSearch.value ?? ""}`.length;
+            nextSearch.setSelectionRange(
+              Math.min(previousSearchSelectionStart, nextLength),
+              Math.min(previousSearchSelectionEnd, nextLength)
+            );
+          }
+        }
+      }
       return;
     }
 
+  };
+
+  const renderStage4Panel = () => {
+    if (!stage4Root) {
+      return;
+    }
+
+    stage4Root.textContent = "";
+    const root = getStage4Root();
+    const card = document.createElement("section");
+    card.className = "diagnostics-card";
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h2");
+    title.textContent = "Stage4 送り仮名省略";
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+
+    if (root) {
+      const enabledLabel = document.createElement("label");
+      enabledLabel.className = "toggle";
+      const enabledCheckbox = document.createElement("input");
+      enabledCheckbox.type = "checkbox";
+      enabledCheckbox.checked = root.enabled !== false;
+      enabledCheckbox.addEventListener("change", () => {
+        root.enabled = enabledCheckbox.checked;
+        renderStage4Panel();
+        renderDiagnostics();
+      });
+      enabledLabel.append(enabledCheckbox, document.createTextNode(t("options.fieldEnabled")));
+      actions.appendChild(enabledLabel);
+    }
+
+    head.append(title, actions);
+
+    const body = document.createElement("div");
+    body.className = "bundle-body";
+    const summary = document.createElement("p");
+    summary.className = "diag-summary";
+    summary.textContent = root
+      ? "Stage4 は複合動詞や未列挙動詞の送り仮名省略を runtime 側で補完します。通常の Bundle 編集一覧からは分離されています。"
+      : "Stage4 bundle が見つかりません。";
+    body.appendChild(summary);
+
+    if (root) {
+      const list = document.createElement("ul");
+      list.style.margin = "0";
+      list.style.paddingLeft = "1.2rem";
+      [
+        "語幹作用: 変わる→変る / 行なう→行う / 上がる→上る",
+        "連用形省略: 書き始める→書始める / 走り度い→走度い",
+        "最後尾動詞圧縮: 持ち上がる→持上る / 積み上げ→積上",
+        "サ変特例: 確認する→確認す / 確認すれば→確認せば"
+      ].forEach((text) => {
+        const item = document.createElement("li");
+        item.textContent = text;
+        list.appendChild(item);
+      });
+      body.appendChild(list);
+    }
+
+    card.append(head, body);
+    stage4Root.appendChild(card);
   };
 
   const renderRuntimeSettings = () => {
@@ -5183,6 +5448,7 @@
   const renderApp = () => {
     renderRuntimeSettings();
     renderBundles();
+    renderStage4Panel();
     renderDiagnostics();
     renderHotkeys();
     renderDisabledSites();
@@ -5245,19 +5511,9 @@
       storageGet(BUNDLE_UI_STATE_KEY)
     ]);
     let currentRoots = cloneValue(baseRoots);
-    if (storedPayload) {
-      const importedRoots = normalizeImportedRoots(storedPayload);
-      const importedById = new Map(importedRoots.map((root) => [root.id, root]));
-
-      currentRoots = baseRoots.map((baseRoot) => {
-        return cloneValue(importedById.get(baseRoot.id) ?? baseRoot);
-      });
-
-      for (const importedRoot of importedRoots) {
-        if (!baseRoots.some((baseRoot) => baseRoot.id === importedRoot.id)) {
-          currentRoots.push(cloneValue(importedRoot));
-        }
-      }
+    const shouldSeedStorage = !hasStoredRootsPayload(storedPayload);
+    if (storedPayload && !shouldSeedStorage) {
+      currentRoots = normalizeImportedRoots(storedPayload);
     }
 
     state.baseRoots = cloneValue(baseRoots);
@@ -5275,12 +5531,20 @@
       ? storedDiagnosticUiState.collapsedNodes
       : {};
     state.bundleUi = normalizeBundleUiState(storedBundleUiState);
+    if (shouldSeedStorage) {
+      await storageSet(buildStoragePayload());
+    }
     renderApp();
     setStatus("設定を読み込みました。", "info");
   };
 
   tabBundlesButton.addEventListener("click", () => {
     state.activeTab = "bundles";
+    renderTabState();
+  });
+
+  tabStage4Button.addEventListener("click", () => {
+    state.activeTab = "stage4";
     renderTabState();
   });
 
@@ -5327,9 +5591,15 @@
     setStatus("Bundle を追加しました。", "info");
   });
 
-  reloadDefaultsButton.addEventListener("click", () => {
-    applyDefaultState();
-    renderApp();
+  reloadDefaultsButton.addEventListener("click", async () => {
+    try {
+      applyDefaultState();
+      await saveAllAndNotify();
+    } catch (error) {
+      console.error(error);
+      setStatus(`restore defaults failed: ${error.message}`, "error");
+      return;
+    }
     setStatus("既定値へ戻しました。", "info");
   });
 
@@ -5442,24 +5712,36 @@
     const modifier = event.ctrlKey || event.metaKey;
 
     if (modifier && key === "c") {
+      if (!hasAnySelectedItems()) {
+        return;
+      }
       event.preventDefault();
       copyCurrentSelection(false);
       return;
     }
 
     if (modifier && key === "x") {
+      if (!hasAnySelectedItems()) {
+        return;
+      }
       event.preventDefault();
       copyCurrentSelection(true);
       return;
     }
 
     if (modifier && key === "v") {
+      if (!hasClipboardItems()) {
+        return;
+      }
       event.preventDefault();
       pasteClipboardIntoNode();
       return;
     }
 
     if (key === "delete" || key === "backspace") {
+      if (!hasAnySelectedItems()) {
+        return;
+      }
       if (deleteCurrentSelection()) {
         event.preventDefault();
       }

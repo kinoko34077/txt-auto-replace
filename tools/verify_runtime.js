@@ -340,6 +340,27 @@ const FIXTURES = [
     note: "stage4 drops both renyou parts in compound nominalization"
   },
   {
+    id: "stage4-tachidomari",
+    input: "\u7acb\u3061\u6b62\u307e\u308a",
+    expected: "\u7acb\u6b62\u308a",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 compresses compound renyou nominalization by segment"
+  },
+  {
+    id: "stage4-otoiawase",
+    input: "\u304a\u554f\u3044\u5408\u308f\u305b",
+    expected: "\u304a\u554f\u5408\u305b",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 compresses compound noun after prefix token"
+  },
+  {
+    id: "stage4-moushikomi",
+    input: "\u7533\u3057\u8fbc\u307f",
+    expected: "\u7533\u8fbc",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 drops one-kana final segment in compound noun"
+  },
+  {
     id: "stage4-kakunin-suru",
     input: "\u78ba\u8a8d\u3059\u308b",
     expected: "\u78ba\u8a8d\u3059",
@@ -457,6 +478,41 @@ const FIXTURES = [
     expected: "集った",
     activeBundles: ["okurigana-abbreviation-stage4"],
     note: "stage4 removes removable ma before ta-form suffix"
+  },
+  {
+    id: "stage4-surechigau",
+    input: "\u3059\u308c\u9055\u3046",
+    expected: "\u3059\u308c\u9055\u3046",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 preserves kana prefix before kanji segment"
+  },
+  {
+    id: "stage4-yokotawaru",
+    input: "\u6a2a\u305f\u308f\u308b",
+    expected: "\u6a2a\u305f\u308f\u308b",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 does not remove non-removable stem kana"
+  },
+  {
+    id: "stage4-kudasai",
+    input: "\u4e0b\u3055\u3044",
+    expected: "\u4e0b\u3055\u3044",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 keeps non-independent auxiliary verb"
+  },
+  {
+    id: "stage4-sunawachi",
+    input: "\u5373\u3061",
+    expected: "\u5373\u3061",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 does not shorten non-verb conjunction"
+  },
+  {
+    id: "stage4-nochi",
+    input: "\u4e43\u3061",
+    expected: "\u4e43\u3061",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 does not shorten single-segment noun"
   }
 ];
 

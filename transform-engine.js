@@ -1574,6 +1574,10 @@
     return token.surface_form === "ます" || token.basic_form === "ます";
   };
 
+  const isIndependentVerbToken = (token) => {
+    return isVerbToken(token) && token.pos_detail_1 === "自立";
+  };
+
   const hasNonVerbKanjiPrefix = (tokens, index) => {
     const previousToken = tokens[index - 1];
     if (!previousToken || isVerbToken(previousToken)) {
@@ -1588,7 +1592,7 @@
       return false;
     }
 
-    if (token.pos_detail_1 && token.pos_detail_1 !== "一般") {
+    if (token.pos_detail_1 && !["一般", "サ変接続"].includes(token.pos_detail_1)) {
       return false;
     }
 
@@ -1600,22 +1604,107 @@
     return `${splitSegment.stem}${suffix ?? ""}`;
   };
 
-  const removeStage4RemovableMa = (token) => {
+  const startsWithStage4RemovableStemKana = (okurigana) => {
+    const firstKana = Array.from(`${okurigana ?? ""}`)[0] ?? "";
+    return firstKana === "ま" || firstKana === "わ" || firstKana === "が" || firstKana === "な";
+  };
+
+  const dropStage4LeadingRemovableStemKana = (okurigana) => {
+    const chars = Array.from(`${okurigana ?? ""}`);
+    if (chars.length <= 1 || !startsWithStage4RemovableStemKana(okurigana)) {
+      return null;
+    }
+    return chars.slice(1).join("");
+  };
+
+  const replaceStage4GodanTrailingKana = (segment, suffix) => {
+    const splitSegment = splitTrailingKana(segment);
+    if (!splitSegment.stem || !splitSegment.okurigana) {
+      return null;
+    }
+
+    if (!startsWithStage4RemovableStemKana(splitSegment.okurigana)) {
+      return null;
+    }
+
+    return `${splitSegment.stem}${suffix ?? ""}`;
+  };
+
+  const replaceStage4RemovableStemKana = (segment) => {
+    const splitSegment = splitTrailingKana(segment);
+    if (!splitSegment.stem || !containsKanji(splitSegment.stem) || !splitSegment.okurigana) {
+      return null;
+    }
+
+    const remainingOkurigana = dropStage4LeadingRemovableStemKana(splitSegment.okurigana);
+    if (remainingOkurigana === null) {
+      return null;
+    }
+
+    return `${splitSegment.stem}${remainingOkurigana}`;
+  };
+
+  const compressStage4FinalRenyouSegment = (segment) => {
+    const stemKanaRemoved = replaceStage4RemovableStemKana(segment);
+    if (stemKanaRemoved !== null) {
+      return stemKanaRemoved;
+    }
+
+    const splitSegment = splitTrailingKana(segment);
+    if (!splitSegment.stem || !containsKanji(splitSegment.stem) || !splitSegment.okurigana) {
+      return null;
+    }
+
+    return Array.from(splitSegment.okurigana).length === 1
+      ? splitSegment.stem
+      : null;
+  };
+
+  const compressStage4SingleRenyouNominal = (token) => {
+    if (!token?.surface_form || !token?.basic_form) {
+      return null;
+    }
+
+    const removableStemKanaReplacement = removeStage4RemovableStemKana(token);
+    if (removableStemKanaReplacement !== null) {
+      return removableStemKanaReplacement;
+    }
+
+    const splitSurface = splitTrailingKana(token.surface_form);
+    if (!splitSurface.stem || !containsKanji(splitSurface.stem) || !splitSurface.okurigana) {
+      return null;
+    }
+
+    return Array.from(splitSurface.okurigana).length === 1 && splitSurface.okurigana === "り"
+      ? splitSurface.stem
+      : null;
+  };
+
+  const compressStage4PrefixSegment = (segment) => {
+    const splitSegment = splitTrailingKana(segment);
+    if (!splitSegment.stem || !containsKanji(splitSegment.stem)) {
+      return segment;
+    }
+    return splitSegment.stem;
+  };
+
+  const removeStage4RemovableStemKana = (token) => {
     if (!token?.surface_form || !token?.basic_form) {
       return null;
     }
 
     const surfaceSplit = splitTrailingKana(token.surface_form);
     const basicSplit = splitTrailingKana(token.basic_form);
-    if (!surfaceSplit.stem || surfaceSplit.stem !== basicSplit.stem) {
+    if (!surfaceSplit.stem || surfaceSplit.stem !== basicSplit.stem || !surfaceSplit.okurigana || !basicSplit.okurigana) {
       return null;
     }
 
-    if (!surfaceSplit.okurigana.startsWith("ま") || !basicSplit.okurigana.startsWith("ま")) {
+    if (!startsWithStage4RemovableStemKana(surfaceSplit.okurigana) ||
+        !startsWithStage4RemovableStemKana(basicSplit.okurigana)) {
       return null;
     }
 
-    const nextOkurigana = surfaceSplit.okurigana.slice(1);
+    const nextOkurigana = Array.from(surfaceSplit.okurigana).slice(1).join("");
     if (!nextOkurigana) {
       return null;
     }
@@ -1637,17 +1726,19 @@
 
     const prefix = segments
       .slice(0, -1)
-      .map((segment) => replaceTrailingKanaWithSuffix(segment, ""))
+      .map((segment) => compressStage4PrefixSegment(segment))
       .join("");
     const finalSegment = segments[segments.length - 1];
     const nextIsMasu = isMasuAuxiliaryToken(nextToken);
 
     if (token.pos === "名詞") {
-      return `${prefix}${replaceTrailingKanaWithSuffix(finalSegment, "")}`;
+      const compressedFinal = compressStage4FinalRenyouSegment(finalSegment);
+      return compressedFinal ? `${prefix}${compressedFinal}` : null;
     }
 
     if (isRenyouGeneralVerbToken(token) && !nextIsMasu) {
-      return `${prefix}${replaceTrailingKanaWithSuffix(finalSegment, "")}`;
+      const compressedFinal = compressStage4FinalRenyouSegment(finalSegment);
+      return compressedFinal ? `${prefix}${compressedFinal}` : null;
     }
 
     if (isIchidanVerbToken(token)) {
@@ -1660,7 +1751,8 @@
         return null;
       }
 
-      return `${prefix}${replaceTrailingKanaWithSuffix(finalSegment, suffix)}`;
+      const compressedFinal = replaceStage4GodanTrailingKana(finalSegment, suffix);
+      return compressedFinal ? `${prefix}${compressedFinal}` : null;
     }
 
     return null;
@@ -1673,26 +1765,33 @@
     }
 
     const nextToken = tokens[index + 1];
-    const compoundReplacement = compressCompoundTokenSurface(token, nextToken);
-    if (compoundReplacement && compoundReplacement !== token.surface_form) {
-      return compoundReplacement;
-    }
-
     if (isStage4JiteException(token, nextToken)) {
       return null;
     }
 
-    const nominalRemovableMaReplacement = removeStage4RemovableMa(token);
-    if (nominalRemovableMaReplacement && nominalRemovableMaReplacement !== token.surface_form) {
-      return nominalRemovableMaReplacement;
-    }
-
     if (isStage4NominalToken(token)) {
-      return replaceTrailingKanaWithSuffix(token.surface_form, "");
+      const nominalCompoundReplacement = compressCompoundTokenSurface(token, nextToken);
+      if (nominalCompoundReplacement && nominalCompoundReplacement !== token.surface_form) {
+        return nominalCompoundReplacement;
+      }
+      const nominalRenyouReplacement = compressStage4SingleRenyouNominal(token);
+      if (nominalRenyouReplacement && nominalRenyouReplacement !== token.surface_form) {
+        return nominalRenyouReplacement;
+      }
+      return null;
     }
 
     if (!isVerbToken(token)) {
       return null;
+    }
+
+    if (!isIndependentVerbToken(token)) {
+      return null;
+    }
+
+    const compoundReplacement = compressCompoundTokenSurface(token, nextToken);
+    if (compoundReplacement && compoundReplacement !== token.surface_form) {
+      return compoundReplacement;
     }
 
     const hasNextVerb = isVerbToken(nextToken);
@@ -1720,9 +1819,9 @@
       return null;
     }
 
-    const removableMaReplacement = removeStage4RemovableMa(token);
-    if (removableMaReplacement && removableMaReplacement !== token.surface_form) {
-      return removableMaReplacement;
+    const removableStemKanaReplacement = removeStage4RemovableStemKana(token);
+    if (removableStemKanaReplacement && removableStemKanaReplacement !== token.surface_form) {
+      return removableStemKanaReplacement;
     }
 
     if (isRenyouTaTeVerbToken(token)) {
@@ -1751,7 +1850,7 @@
         return null;
       }
 
-      return replaceTrailingKanaWithSuffix(token.surface_form, suffix);
+      return replaceStage4GodanTrailingKana(token.surface_form, suffix);
     }
 
     return null;

@@ -37,7 +37,10 @@
     {
       "resources": [
         "transform-bundles.json5",
+        "transform-worker.js",
         "transform-shared.js",
+        "transform-engine.js",
+        "lib/kuromoji.js",
         "transforms/**",
         "dict/**"
       ],

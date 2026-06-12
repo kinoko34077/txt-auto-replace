@@ -324,9 +324,7 @@
       return entry.match_target;
     }
 
-    return inferredType === "verb" || inferredType === "adjective"
-      ? "basic_form"
-      : null;
+    return null;
   };
 
   const normalizeRuntimeSettings = (value) => {
@@ -1945,8 +1943,8 @@
       serialized.from_options = cloneValue(fromOptions);
     }
 
-    if (inferredType) {
-      serialized.type = inferredType;
+    if (typeof entry?.type === "string" && entry.type.trim()) {
+      serialized.type = entry.type.trim();
     }
 
     const effectiveMatchTarget = getEffectiveEntryMatchTarget(entry, inferredType);

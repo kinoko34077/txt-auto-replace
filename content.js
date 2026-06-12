@@ -7,6 +7,7 @@
 
   const DEBUG = false;
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
+  const TRANSFORM_WORKER_PATH = "transform-worker.js";
   const BUNDLE_OVERRIDE_STORAGE_KEY = "bundleOverrideSettingsV1";
   const DICT_PATH = "dict/";
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
@@ -17,6 +18,8 @@
   const VISIBLE_ROOT_MARGIN_PX = 320;
   const VISIBLE_FLUSH_BUDGET_MS = 8;
   const BACKGROUND_FLUSH_BUDGET_MS = 16;
+  const WORKER_BATCH_SIZE = 32;
+  const MAX_TEXT_NODES_PER_ROOT_BATCH = 48;
   const DEBUG_HISTORY_LIMIT = 20;
   const MESSAGE_TYPES = {
     APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
@@ -94,6 +97,8 @@
   const originalTextByRunAnchor = new WeakMap();
   const processedTextByRunAnchor = new WeakMap();
   const processedRevisionByRunAnchor = new WeakMap();
+  const runIdByRunAnchor = new WeakMap();
+  const pendingWorkerRuns = new Map();
   const pendingRootQueue = new Map();
   const composingEditableHosts = new WeakSet();
   const json5ResourcePromiseCache = new Map();
@@ -119,6 +124,22 @@
   let tokenizerPromise = null;
   let tokenizerWarmupRevision = 0;
   let runtimeRevision = 0;
+  let transformWorker = null;
+  let transformWorkerReady = false;
+  let transformWorkerFailed = false;
+  let transformWorkerConfigurePromise = null;
+  let transformWorkerConfigureResolve = null;
+  let nextWorkerJobId = 1;
+  let nextWorkerRunId = 1;
+  let workerBatchQueue = [];
+  let workerBatchFlushHandle = null;
+  let workerStats = {
+    enabled: false,
+    pendingRuns: 0,
+    completedRuns: 0,
+    failedBatches: 0,
+    lastError: null
+  };
 
   if (!TransformEngine) {
     throw new Error("TransformEngine が未読込です。manifest.json の content_scripts の順序を確認してください。");
@@ -275,6 +296,7 @@
         order: stage.order ?? 0,
         ruleCount: Array.isArray(stage.rules) ? stage.rules.length : 0
       })),
+      worker: cloneDebugValue(workerStats),
       matchingRules: collectMatchingRuntimeRules(targets),
       lastTransformDebug: cloneDebugValue(lastTransformDebug)
     };
@@ -1199,12 +1221,11 @@
     }
 
     const roots = new Map();
-    let hasDirectText = false;
 
     for (const child of body.childNodes) {
       if (child.nodeType === Node.TEXT_NODE) {
         if (!isSkippableTextNode(child)) {
-          hasDirectText = true;
+          roots.set(body, body);
         }
         continue;
       }
@@ -1221,13 +1242,8 @@
       if (shouldSkipEditableHost(editableHost)) {
         continue;
       }
-    }
 
-    for (const root of collectProcessableRoots(body)) {
-      roots.set(root, root);
-    }
-    if (hasDirectText) {
-      roots.set(body, body);
+      roots.set(child, child);
     }
 
     return roots.size > 0 ? [...roots.values()] : [body];
@@ -1416,6 +1432,255 @@
     };
   };
 
+  const canUseWorkerForTransform = () => {
+    return !DEBUG &&
+      !hasDebugTargets() &&
+      transformWorker &&
+      transformWorkerReady &&
+      !transformWorkerFailed;
+  };
+
+  const resolveTransformWorkerConfigure = (value) => {
+    if (typeof transformWorkerConfigureResolve === "function") {
+      transformWorkerConfigureResolve(value);
+    }
+    transformWorkerConfigureResolve = null;
+    transformWorkerConfigurePromise = null;
+  };
+
+  const markTransformWorkerFailed = (error) => {
+    const message = error?.message ?? `${error ?? "unknown worker error"}`;
+    transformWorkerFailed = true;
+    transformWorkerReady = false;
+    workerStats.enabled = false;
+    workerStats.lastError = message;
+    workerStats.failedBatches += 1;
+
+    if (transformWorker) {
+      try {
+        transformWorker.terminate();
+      } catch (terminateError) {
+        // Ignore terminate errors; the fallback path below is authoritative.
+      }
+    }
+    transformWorker = null;
+    workerBatchQueue = [];
+    if (workerBatchFlushHandle !== null) {
+      window.clearTimeout(workerBatchFlushHandle);
+      workerBatchFlushHandle = null;
+    }
+    pendingWorkerRuns.clear();
+    resolveTransformWorkerConfigure(false);
+    console.warn("省略変換器: Worker 変換を無効化し main thread fallback に切替", message);
+    if (isRuntimeEnabled()) {
+      pendingRootQueue.clear();
+      cancelRootFlushes();
+      queueProcessableRoots(collectDocumentProcessingRoots(), { priority: "visible", restoreFirst: true });
+    }
+  };
+
+  const getOrCreateRunId = (runAnchor) => {
+    const existing = runIdByRunAnchor.get(runAnchor);
+    if (existing) {
+      return existing;
+    }
+    const runId = nextWorkerRunId++;
+    runIdByRunAnchor.set(runAnchor, runId);
+    return runId;
+  };
+
+  const applyWorkerTransformResult = (result, revision) => {
+    const state = pendingWorkerRuns.get(result?.runId);
+    if (!state) {
+      return false;
+    }
+    pendingWorkerRuns.delete(result.runId);
+    workerStats.pendingRuns = Math.max(workerStats.pendingRuns - 1, 0);
+
+    if (state.revision !== revision || revision !== runtimeRevision) {
+      return false;
+    }
+
+    const textNodes = state.textNodes.filter((node) => node?.isConnected && !isSkippableTextNode(node));
+    if (textNodes.length === 0) {
+      return false;
+    }
+
+    const runAnchor = textNodes[0];
+    const currentParts = textNodes.map((node) => readNodeValueSafely(node));
+    const current = currentParts.join("");
+    if (current !== state.sourceText) {
+      return false;
+    }
+
+    const transformed = `${result.transformedText ?? ""}`;
+    originalTextByRunAnchor.set(runAnchor, state.sourceText);
+    processedTextByRunAnchor.set(runAnchor, transformed);
+    processedRevisionByRunAnchor.set(runAnchor, revision);
+    workerStats.completedRuns += 1;
+
+    if (transformed === current) {
+      return false;
+    }
+
+    redistributeTransformedText(textNodes, currentParts, transformed);
+    return true;
+  };
+
+  const handleTransformWorkerMessage = (event) => {
+    const message = event.data;
+    if (!message || typeof message !== "object") {
+      return;
+    }
+
+    if (message.type === "CONFIGURED") {
+      if (Number(message.revision) === runtimeRevision) {
+        transformWorkerReady = true;
+        workerStats.enabled = true;
+        workerStats.lastError = null;
+        resolveTransformWorkerConfigure(true);
+      }
+      return;
+    }
+
+    if (message.type === "RESULTS") {
+      if (message.stale === true || Number(message.revision) !== runtimeRevision) {
+        return;
+      }
+
+      let changedCount = 0;
+      for (const result of Array.isArray(message.results) ? message.results : []) {
+        if (applyWorkerTransformResult(result, Number(message.revision))) {
+          changedCount += 1;
+        }
+      }
+      if (changedCount > 0) {
+        log("Worker 更新 textRun 数", changedCount);
+      }
+      return;
+    }
+
+    if (message.type === "INIT_ERROR" || message.type === "TOKENIZER_ERROR" || message.type === "BATCH_ERROR") {
+      markTransformWorkerFailed(new Error(message.message ?? message.type));
+    }
+  };
+
+  const ensureTransformWorker = () => {
+    if (transformWorkerFailed) {
+      return false;
+    }
+
+    if (transformWorker) {
+      return true;
+    }
+
+    if (typeof Worker !== "function" || !chrome?.runtime?.getURL) {
+      transformWorkerFailed = true;
+      workerStats.lastError = "Worker is not available.";
+      return false;
+    }
+
+    try {
+      transformWorker = new Worker(chrome.runtime.getURL(TRANSFORM_WORKER_PATH));
+      transformWorker.onmessage = handleTransformWorkerMessage;
+      transformWorker.onerror = (event) => {
+        markTransformWorkerFailed(new Error(event?.message ?? "transform worker error"));
+      };
+      transformWorker.onmessageerror = () => {
+        markTransformWorkerFailed(new Error("transform worker message error"));
+      };
+      return true;
+    } catch (error) {
+      markTransformWorkerFailed(error);
+      return false;
+    }
+  };
+
+  const configureTransformWorker = async () => {
+    if (!ensureTransformWorker()) {
+      return false;
+    }
+
+    transformWorkerReady = false;
+    workerStats.enabled = false;
+    workerStats.pendingRuns = 0;
+    pendingWorkerRuns.clear();
+    workerBatchQueue = [];
+
+    transformWorkerConfigurePromise = new Promise((resolve) => {
+      transformWorkerConfigureResolve = resolve;
+    });
+
+    try {
+      transformWorker.postMessage({
+        type: "CONFIGURE",
+        revision: runtimeRevision,
+        stages: activeTransformStages,
+        dictPath: chrome.runtime.getURL(DICT_PATH)
+      });
+    } catch (error) {
+      markTransformWorkerFailed(error);
+      return false;
+    }
+
+    return transformWorkerConfigurePromise;
+  };
+
+  const flushWorkerBatchQueue = () => {
+    workerBatchFlushHandle = null;
+    if (!canUseWorkerForTransform() || workerBatchQueue.length === 0) {
+      return;
+    }
+
+    while (workerBatchQueue.length > 0) {
+      const runs = workerBatchQueue.splice(0, WORKER_BATCH_SIZE);
+      const jobId = nextWorkerJobId++;
+      try {
+        transformWorker.postMessage({
+          type: "TRANSFORM_BATCH",
+          jobId,
+          revision: runtimeRevision,
+          runs
+        });
+      } catch (error) {
+        markTransformWorkerFailed(error);
+        return;
+      }
+    }
+  };
+
+  const scheduleWorkerBatchFlush = () => {
+    if (workerBatchFlushHandle !== null) {
+      return;
+    }
+    workerBatchFlushHandle = window.setTimeout(flushWorkerBatchQueue, 0);
+  };
+
+  const enqueueWorkerTransformRun = (textNodes, currentParts, sourceText, runAnchor) => {
+    if (!canUseWorkerForTransform()) {
+      return false;
+    }
+
+    const runId = getOrCreateRunId(runAnchor);
+    const pending = pendingWorkerRuns.get(runId);
+    if (pending && pending.revision === runtimeRevision && pending.sourceText === sourceText) {
+      return true;
+    }
+
+    pendingWorkerRuns.set(runId, {
+      revision: runtimeRevision,
+      sourceText,
+      textNodes: [...textNodes]
+    });
+    workerStats.pendingRuns = pendingWorkerRuns.size;
+    workerBatchQueue.push({
+      runId,
+      text: sourceText
+    });
+    scheduleWorkerBatchFlush();
+    return true;
+  };
+
   const transformTextWithStages = (text) => {
     const effectiveStages = getEffectiveTransformStages();
     if (!DEBUG && !hasDebugTargets()) {
@@ -1521,6 +1786,10 @@
       ? storedOriginal
       : current;
     originalTextByRunAnchor.set(runAnchor, sourceText);
+
+    if (enqueueWorkerTransformRun(textNodes, currentParts, sourceText, runAnchor)) {
+      return true;
+    }
 
     const transformed = transformTextWithStages(sourceText);
     processedTextByRunAnchor.set(runAnchor, transformed);
@@ -1637,15 +1906,64 @@
     return false;
   };
 
+  const createTextNodeWalker = (root) => {
+    if (!root) {
+      return null;
+    }
+
+    if (root.nodeType === Node.TEXT_NODE) {
+      return {
+        done: false,
+        nextNode() {
+          if (this.done) {
+            return null;
+          }
+          this.done = true;
+          return root;
+        }
+      };
+    }
+
+    if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_FRAGMENT_NODE && root.nodeType !== Node.DOCUMENT_NODE) {
+      return null;
+    }
+
+    return document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          return isSkippableTextNode(node)
+            ? NodeFilter.FILTER_REJECT
+            : NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+  };
+
   const processTextRoot = (root, options = {}) => {
-    const restoreFirst = options.restoreFirst === true;
+    const entry = options.entry ?? {};
+    const restoreFirst = entry.restoreFirst === true || options.restoreFirst === true;
+    const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
+    const maxTextNodes = Number.isFinite(options.maxTextNodes)
+      ? options.maxTextNodes
+      : MAX_TEXT_NODES_PER_ROOT_BATCH;
+    const walker = entry.walker ?? createTextNodeWalker(root);
+    entry.walker = walker;
     let changedCount = 0;
     const processedNodes = new Set();
+    let processedCount = 0;
 
-    for (const queuedRun of collectProcessableTextRuns(root)) {
-      const textRun = queuedRun.filter((node) => {
-        return node?.isConnected && !isSkippableTextNode(node);
-      });
+    while (walker && processedCount < maxTextNodes && performance.now() < deadline) {
+      const node = walker.nextNode();
+      if (!node) {
+        entry.done = true;
+        break;
+      }
+
+      const textRun = node?.isConnected && !isSkippableTextNode(node)
+        ? [node]
+        : [];
       if (textRun.length === 0) {
         continue;
       }
@@ -1665,9 +1983,13 @@
       for (const node of textRun) {
         processedNodes.add(node);
       }
+      processedCount += 1;
     }
 
-    return changedCount;
+    return {
+      changedCount,
+      done: entry.done === true || !walker
+    };
   };
 
   const processQueuedRootBatch = ({ includeBackground = false, budgetMs = VISIBLE_FLUSH_BUDGET_MS } = {}) => {
@@ -1693,18 +2015,15 @@
       }
 
       pendingRootQueue.delete(root);
-      const subRoots = root?.nodeType === Node.ELEMENT_NODE && !hasDirectProcessableText(root)
-        ? collectProcessableRoots(root)
-        : [];
-      if (subRoots.length > 1) {
-        queueProcessableRoots(subRoots, {
-          priority: entry.priority > 0 ? "background" : "visible",
-          restoreFirst: entry.restoreFirst === true
-        });
-        continue;
+      const result = processTextRoot(root, {
+        entry,
+        deadline,
+        maxTextNodes: MAX_TEXT_NODES_PER_ROOT_BATCH
+      });
+      changedCount += result.changedCount;
+      if (!result.done && root.isConnected) {
+        pendingRootQueue.set(root, entry);
       }
-
-      changedCount += processTextRoot(root, { restoreFirst: entry.restoreFirst === true });
 
       if (performance.now() >= deadline) {
         break;
@@ -1784,8 +2103,14 @@
             ? 0
             : 1;
       const existing = pendingRootQueue.get(root);
-      if (!existing || nextPriority < existing.priority) {
-        pendingRootQueue.set(root, { priority: nextPriority, restoreFirst: restoreFirst === true });
+      if (!existing || existing.revision !== runtimeRevision || nextPriority < existing.priority) {
+        pendingRootQueue.set(root, {
+          priority: nextPriority,
+          restoreFirst: restoreFirst === true,
+          revision: runtimeRevision,
+          walker: null,
+          done: false
+        });
       } else if (restoreFirst === true) {
         existing.restoreFirst = true;
       }
@@ -1808,10 +2133,8 @@
     if (!host || !host.isConnected || activeRuntimeSettings.skipEditableInputs || !isRuntimeEnabled()) {
       return;
     }
-
-    const roots = collectProcessableRoots(host);
-    if (roots.length > 0) {
-      queueProcessableRoots(roots, { ...options, priority: "visible" });
+    if (host.isConnected) {
+      queueProcessableRoots([host], { ...options, priority: "visible" });
     }
   };
 
@@ -1863,12 +2186,12 @@
 
       for (const mutation of mutations) {
         if (mutation.type === "characterData") {
-          queuedRoots.push(...collectProcessableRoots(mutation.target));
+          queuedRoots.push(mutation.target);
           continue;
         }
 
         for (const addedNode of mutation.addedNodes) {
-          queuedRoots.push(...collectProcessableRoots(addedNode));
+          queuedRoots.push(addedNode);
         }
       }
 
@@ -1966,9 +2289,11 @@
       .filter((stage) => stage.kind === "token-rules")
       .flatMap((stage) => stage.rules);
     activeTabDisabled = tabState.tabDisabled === true;
+    runtimeRevision += 1;
+    const workerConfigured = await configureTransformWorker();
     const tokenizerRevision = ++tokenizerWarmupRevision;
     activeTokenizer = null;
-    if (activeTokenRules.length > 0) {
+    if (!workerConfigured && runtimeRequiresTokenizer()) {
       getTokenizer().then((tokenizer) => {
         if (tokenizerRevision !== tokenizerWarmupRevision) {
           return;
@@ -2005,7 +2330,6 @@
 
     pendingRootQueue.clear();
     cancelRootFlushes();
-    runtimeRevision += 1;
     queueProcessableRoots(collectDocumentProcessingRoots(), { restoreFirst: true });
   };
 
@@ -2080,7 +2404,6 @@
     observeDebugTargetChanges();
     const initialRoots = collectDocumentProcessingRoots();
     log("対象 root 数", initialRoots.length);
-    runtimeRevision += 1;
     queueProcessableRoots(initialRoots);
     observeDynamicContent();
   };

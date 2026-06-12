@@ -1,0 +1,157 @@
+/* global importScripts, kuromoji, TransformEngine */
+(() => {
+  "use strict";
+
+  try {
+    importScripts(
+      "lib/kuromoji.js",
+      "transform-shared.js",
+      "transform-engine.js"
+    );
+  } catch (error) {
+    self.postMessage({
+      type: "INIT_ERROR",
+      message: error?.message ?? `${error}`
+    });
+    return;
+  }
+
+  let activeStages = [];
+  let activeRevision = 0;
+  let dictPath = "";
+  let tokenizerPromise = null;
+  let tokenizer = null;
+
+  const stageRequiresTokenizer = (stage) => {
+    return stage?.kind === "token-rules" &&
+      stage.runtime_mode !== "katakana-long-vowel-abbreviation" &&
+      (
+        (Array.isArray(stage.rules) && stage.rules.length > 0) ||
+        (typeof stage.runtime_mode === "string" && stage.runtime_mode.trim() !== "")
+      );
+  };
+
+  const runtimeRequiresTokenizer = () => {
+    return activeStages.some(stageRequiresTokenizer);
+  };
+
+  const buildTokenizer = () => {
+    return new Promise((resolve, reject) => {
+      if (typeof kuromoji === "undefined") {
+        reject(new Error("kuromoji is not loaded in transform worker."));
+        return;
+      }
+
+      kuromoji.builder({ dicPath: dictPath }).build((error, builtTokenizer) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(builtTokenizer);
+      });
+    });
+  };
+
+  const getTokenizer = async () => {
+    if (!runtimeRequiresTokenizer()) {
+      return null;
+    }
+
+    if (tokenizer) {
+      return tokenizer;
+    }
+
+    if (!tokenizerPromise) {
+      tokenizerPromise = buildTokenizer()
+        .then((builtTokenizer) => {
+          tokenizer = builtTokenizer;
+          return builtTokenizer;
+        })
+        .catch((error) => {
+          tokenizerPromise = null;
+          throw error;
+        });
+    }
+
+    return tokenizerPromise;
+  };
+
+  const configure = (message) => {
+    activeStages = Array.isArray(message.stages) ? message.stages : [];
+    activeRevision = Number(message.revision) || 0;
+    dictPath = `${message.dictPath ?? ""}`;
+    tokenizer = null;
+    tokenizerPromise = null;
+
+    if (runtimeRequiresTokenizer()) {
+      getTokenizer().catch((error) => {
+        self.postMessage({
+          type: "TOKENIZER_ERROR",
+          revision: activeRevision,
+          message: error?.message ?? `${error}`
+        });
+      });
+    }
+
+    self.postMessage({
+      type: "CONFIGURED",
+      revision: activeRevision,
+      requiresTokenizer: runtimeRequiresTokenizer()
+    });
+  };
+
+  const transformBatch = async (message) => {
+    const revision = Number(message.revision) || 0;
+    if (revision !== activeRevision) {
+      self.postMessage({
+        type: "RESULTS",
+        jobId: message.jobId,
+        revision,
+        stale: true,
+        results: []
+      });
+      return;
+    }
+
+    const tokenizerForRun = await getTokenizer();
+    const results = [];
+
+    for (const run of Array.isArray(message.runs) ? message.runs : []) {
+      const text = `${run.text ?? ""}`;
+      results.push({
+        runId: run.runId,
+        transformedText: TransformEngine.transformTextWithStages(text, activeStages, tokenizerForRun)
+      });
+    }
+
+    self.postMessage({
+      type: "RESULTS",
+      jobId: message.jobId,
+      revision,
+      results
+    });
+  };
+
+  self.onmessage = (event) => {
+    const message = event.data;
+    if (!message || typeof message !== "object") {
+      return;
+    }
+
+    if (message.type === "CONFIGURE") {
+      configure(message);
+      return;
+    }
+
+    if (message.type === "TRANSFORM_BATCH") {
+      transformBatch(message).catch((error) => {
+        self.postMessage({
+          type: "BATCH_ERROR",
+          jobId: message.jobId,
+          revision: message.revision,
+          message: error?.message ?? `${error}`
+        });
+      });
+    }
+  };
+})();

@@ -26,6 +26,7 @@
       "js": [
         "lib/json5.min.js",
         "lib/kuromoji.js",
+        "transform-shared.js",
         "transform-engine.js",
         "content.js"
       ],
@@ -36,6 +37,7 @@
     {
       "resources": [
         "transform-bundles.json5",
+        "transform-shared.js",
         "transforms/**",
         "dict/**"
       ],

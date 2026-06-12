@@ -198,6 +198,189 @@ const FIXTURES = [
     activeBundles: ["surface-normalization", "official-homophone-restoration"],
     note: "告示・同音書換復元 + 記号"
   }
+  ,
+  {
+    id: "stage4-kawaru-basic",
+    input: "\u5909\u308f\u308b",
+    expected: "\u5909\u308b",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 stem compression"
+  },
+  {
+    id: "stage4-okonau-basic",
+    input: "\u884c\u306a\u3046",
+    expected: "\u884c\u3046",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 removable kana in stem"
+  },
+  {
+    id: "stage4-agaru-basic",
+    input: "\u4e0a\u304c\u308b",
+    expected: "\u4e0a\u308b",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 godan final compression"
+  },
+  {
+    id: "stage4-owareba",
+    input: "\u7d42\u308f\u308c\u3070",
+    expected: "\u7d42\u308c\u3070",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 katei form compression"
+  },
+  {
+    id: "stage4-hashiri",
+    input: "\u8d70\u308a",
+    expected: "\u8d70",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 renyou abbreviation"
+  },
+  {
+    id: "stage4-yomi-nagara",
+    input: "\u8aad\u307f\u4e4d\u3089",
+    expected: "\u8aad\u4e4d\u3089",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 renyou before non-masu suffix"
+  },
+  {
+    id: "stage4-hashiri-tai",
+    input: "\u8d70\u308a\u5ea6\u3044",
+    expected: "\u8d70\u5ea6\u3044",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 renyou before adjective-like suffix"
+  },
+  {
+    id: "stage4-kaki-hajimeru",
+    input: "\u66f8\u304d\u59cb\u3081\u308b",
+    expected: "\u66f8\u59cb\u3081\u308b",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 compound verb prefix"
+  },
+  {
+    id: "stage4-kakimasu",
+    input: "\u66f8\u304d\u307e\u3059",
+    expected: "\u66f8\u304d\u307e\u3059",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 keeps renyou before masu"
+  },
+  {
+    id: "stage4-mochi-agaru",
+    input: "\u6301\u3061\u4e0a\u304c\u308b",
+    expected: "\u6301\u4e0a\u308b",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 final godan inside compound"
+  },
+  {
+    id: "stage4-utsuri-kawaru",
+    input: "\u79fb\u308a\u5909\u308f\u308b",
+    expected: "\u79fb\u5909\u308b",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 chained compound verbs"
+  },
+  {
+    id: "stage4-tsumi-ageru",
+    input: "\u7a4d\u307f\u4e0a\u3052\u308b",
+    expected: "\u7a4d\u4e0a\u3052\u308b",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 keeps final ichidan predicate"
+  },
+  {
+    id: "stage4-hashiri-nukeru",
+    input: "\u8d70\u308a\u629c\u3051\u308b",
+    expected: "\u8d70\u629c\u3051\u308b",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 keeps final ichidan predicate in compound"
+  },
+  {
+    id: "stage4-tsumi-age",
+    input: "\u7a4d\u307f\u4e0a\u3052",
+    expected: "\u7a4d\u4e0a",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 drops final ichidan renyou nominalization"
+  },
+  {
+    id: "stage4-kake-nuke",
+    input: "\u99c6\u3051\u629c\u3051",
+    expected: "\u99c6\u629c",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 drops both renyou parts in compound nominalization"
+  },
+  {
+    id: "stage4-kakunin-suru",
+    input: "\u78ba\u8a8d\u3059\u308b",
+    expected: "\u78ba\u8a8d\u3059",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 sahen terminal"
+  },
+  {
+    id: "stage4-kakunin-suru-baai",
+    input: "\u78ba\u8a8d\u3059\u308b\u5834\u5408",
+    expected: "\u78ba\u8a8d\u3059\u5834\u5408",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 sahen attributive before noun"
+  },
+  {
+    id: "stage4-kakunin-sureba",
+    input: "\u78ba\u8a8d\u3059\u308c\u3070",
+    expected: "\u78ba\u8a8d\u305b\u3070",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 sahen katei"
+  },
+  {
+    id: "stage4-kakunin-shita",
+    input: "\u78ba\u8a8d\u3057\u305f",
+    expected: "\u78ba\u8a8d\u3057\u305f",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 keeps sahen past"
+  },
+  {
+    id: "stage4-kakunin-shite",
+    input: "\u78ba\u8a8d\u3057\u3066",
+    expected: "\u78ba\u8a8d\u3057\u3066",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 keeps sahen te-form"
+  },
+  {
+    id: "stage4-kakunin-shimasu",
+    input: "\u78ba\u8a8d\u3057\u307e\u3059",
+    expected: "\u78ba\u8a8d\u3057\u307e\u3059",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 keeps sahen masu"
+  },
+  {
+    id: "stage4-kakunin-shiyou",
+    input: "\u78ba\u8a8d\u3057\u3088\u3046",
+    expected: "\u78ba\u8a8d\u3057\u3088\u3046",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 keeps sahen volitional"
+  },
+  {
+    id: "stage4-motte",
+    input: "\u6301\u3063\u3066",
+    expected: "\u6301\u3063\u3066",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 skips te-form phonological kana"
+  },
+  {
+    id: "stage4-matta",
+    input: "\u5f85\u3063\u305f",
+    expected: "\u5f85\u3063\u305f",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 skips ta-form phonological kana"
+  },
+  {
+    id: "stage4-yonda",
+    input: "\u8aad\u3093\u3060",
+    expected: "\u8aad\u3093\u3060",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 skips onbin past"
+  },
+  {
+    id: "stage4-kaita",
+    input: "\u66f8\u3044\u305f",
+    expected: "\u66f8\u3044\u305f",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 skips i-onbin past"
+  }
 ];
 
 const OVERRIDE_PAYLOAD = {
@@ -636,6 +819,7 @@ const verifyStageOrder = (stages) => {
     "surface-normalization",
     "lexical-replacements",
     "okurigana-abbreviation",
+    "okurigana-abbreviation-stage4",
     "legacy-kanji",
     "official-homophone-restoration",
     "homophone-kanji",

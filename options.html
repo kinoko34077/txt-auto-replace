@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>日本語表記変換拡張 設定</title>
+  <title>日本語置換拡張 設定</title>
   <style>
     :root {
       --bg: #f5f1e8;
@@ -173,81 +173,27 @@
     .title-editor { min-width: 8ch; max-width: 28ch; }
     input[type="checkbox"] { inline-size: 15px; block-size: 15px; }
 
-    .diag-list { display: grid; gap: 8px; }
+    .diag-list {
+      display: grid;
+      gap: 8px;
+    }
+
     .diag-item {
       border: 1px solid rgba(161, 98, 7, 0.2);
       background: rgba(255, 251, 235, 0.9);
       border-radius: 12px;
       padding: 8px;
     }
-    .diag-occurrence, code { font-family: var(--mono); font-size: 13px; line-height: 1.6; }
+
+    .diag-occurrence, code {
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.6;
+    }
 
     .simple-list {
       display: grid;
       gap: 8px;
-    }
-
-    .payload-grid {
-      display: grid;
-      gap: 8px;
-    }
-
-    .payload-card {
-      display: grid;
-      gap: 8px;
-    }
-
-    .payload-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-    }
-
-    .payload-list {
-      display: grid;
-      gap: 8px;
-    }
-
-    .payload-item {
-      border: 1px solid rgba(124, 45, 18, 0.12);
-      border-radius: 12px;
-      background: rgba(255, 248, 236, 0.9);
-      padding: 8px;
-    }
-
-    .payload-item h3,
-    .payload-item h4 {
-      margin: 0 0 4px;
-    }
-
-    .payload-item p,
-    .payload-item pre,
-    .payload-item code {
-      margin: 0;
-    }
-
-    .payload-item pre,
-    .json-block {
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-family: var(--mono);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
-    .payload-query {
-      width: min(100%, 520px);
-    }
-
-    details.payload-details {
-      border-top: 1px solid rgba(216, 199, 170, 0.7);
-      padding-top: 8px;
-    }
-
-    details.payload-details summary {
-      cursor: pointer;
-      color: var(--muted);
     }
 
     .simple-row {
@@ -359,108 +305,6 @@
       background: rgba(255,255,255,0.9);
     }
 
-    .column-picker {
-      position: relative;
-    }
-
-    .column-picker-menu,
-    .row-menu-panel {
-      display: grid;
-      gap: 6px;
-      position: absolute;
-      z-index: 5;
-      min-width: 180px;
-      padding: 8px;
-      margin-top: 6px;
-      border: 1px solid rgba(124, 45, 18, 0.12);
-      border-radius: 12px;
-      background: #fffaf1;
-      box-shadow: var(--shadow);
-    }
-
-    .row-menu {
-      position: relative;
-    }
-
-    .row-menu summary,
-    .column-picker summary {
-      list-style: none;
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .row-menu summary::-webkit-details-marker,
-    .column-picker summary::-webkit-details-marker {
-      display: none;
-    }
-
-    .grid-scroll {
-      overflow: auto;
-      border: 1px solid rgba(216, 199, 170, 0.7);
-      border-radius: 12px;
-      background: rgba(255,255,255,0.74);
-    }
-
-    .notion-grid {
-      min-width: 1440px;
-    }
-
-    .notion-grid th {
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      background: #f9f1e5;
-    }
-
-    .grid-row[data-selected="true"] {
-      background: rgba(124, 45, 18, 0.08);
-    }
-
-    .selection-col {
-      width: 52px;
-      min-width: 52px;
-      text-align: center;
-    }
-
-    .row-index {
-      display: inline-flex;
-      min-width: 24px;
-      justify-content: center;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .grid-cell-input {
-      width: 100%;
-      min-width: 8ch;
-      max-width: none;
-    }
-
-    .grid-sequence-input {
-      width: 100%;
-      min-width: 18ch;
-      max-width: none;
-      font-family: var(--mono);
-      font-size: 12px;
-    }
-
-    .grid-detail-row td {
-      background: rgba(124, 45, 18, 0.04);
-      white-space: normal;
-    }
-
-    .grid-detail-panel {
-      display: grid;
-      gap: 8px;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    }
-
-    .grid-shortcuts {
-      margin-top: 8px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
     @media (max-width: 780px) {
       .shell { width: min(100% - 8px, 100%); }
       .hero, .toolbar, .tabbar, .bundle-card, .diagnostics-card, .group-card, .panel-block { padding-inline: 8px; }
@@ -471,11 +315,11 @@
 <body>
   <div class="shell">
     <section class="hero">
-      <h1>日本語表記変換拡張 設定</h1>
-      <p>Bundle と Group を入れ子で管理し、置換規則をその場で編集します。popup 用の簡易登録語彙も同じ設定の中で管理します。</p>
+      <h1>日本語置換拡張 設定</h1>
+      <p>Bundle と Group を箱のまま編集できます。保存すると現在のタブへ即時反映され、Popup 用の簡易置換対象も同じ設定内で管理できます。</p>
       <ul>
-        <li>編集後は保存して、対象タブをその場で更新できます。</li>
-        <li>ホットキーは Chrome 標準のショートカット設定で変更します。</li>
+        <li>編集後に保存すると、表示中タブへその場で反映されます。</li>
+        <li>Hotkey は Chrome のショートカット設定画面で変更できます。</li>
         <li>形態素解析タブでは token を確認できます。</li>
       </ul>
     </section>
@@ -484,7 +328,7 @@
       <div class="toolbar-actions">
         <button id="save-all" class="primary" type="button">全体を保存</button>
         <button id="add-bundle" class="secondary" type="button">Bundle追加</button>
-        <button id="reload-defaults" class="secondary" type="button">既定を再読込</button>
+        <button id="reload-defaults" class="secondary" type="button">既定値へ戻す</button>
         <button id="import-settings" class="secondary" type="button">JSON/YAML読込</button>
         <button id="export-json" class="ghost" type="button">JSON書出</button>
         <button id="export-yaml" class="ghost" type="button">YAML書出</button>
@@ -503,7 +347,7 @@
         </label>
         <label class="toggle">
           <input id="runtime-skip-editable" type="checkbox">
-          <span>入力ボックス中は置換しない</span>
+          <span>入力中のテキストでは置換しない</span>
         </label>
       </div>
     </section>
@@ -511,7 +355,6 @@
     <nav class="tabbar" aria-label="設定タブ">
       <button id="tab-bundles" class="tab-button secondary" type="button" aria-selected="true">Bundle編集</button>
       <button id="tab-diagnostics" class="tab-button ghost" type="button" aria-selected="false">診断</button>
-      <button id="tab-payload" class="tab-button ghost" type="button" aria-selected="false">Payload確認</button>
       <button id="tab-tokenizer" class="tab-button ghost" type="button" aria-selected="false">形態素解析</button>
       <button id="tab-hotkeys" class="tab-button ghost" type="button" aria-selected="false">Hotkey</button>
       <button id="tab-sites" class="tab-button ghost" type="button" aria-selected="false">無効サイト</button>
@@ -523,10 +366,6 @@
 
     <section id="panel-diagnostics" class="tab-panel" hidden>
       <div id="diagnostics-root" class="diagnostics-grid" aria-live="polite"></div>
-    </section>
-
-    <section id="panel-payload" class="tab-panel" hidden>
-      <div id="payload-root" class="payload-grid" aria-live="polite"></div>
     </section>
 
     <section id="panel-tokenizer" class="tab-panel" hidden>
@@ -550,7 +389,7 @@
                   <th>品詞1</th>
                   <th>活用形</th>
                   <th>活用型</th>
-                  <th>読</th>
+                  <th>読み</th>
                 </tr>
               </thead>
               <tbody id="tokenizer-result"></tbody>
@@ -589,7 +428,9 @@
 
   <script src="lib/json5.min.js"></script>
   <script src="lib/kuromoji.js"></script>
+  <script src="transform-shared.js"></script>
   <script src="transform-engine.js"></script>
+  <script src="ui-strings.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

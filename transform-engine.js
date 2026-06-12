@@ -1,155 +1,36 @@
 (function (root, factory) {
-  const api = factory();
+  const shared = typeof module === "object" && module.exports
+    ? require("./transform-shared.js")
+    : root.TransformShared;
+  const api = factory(shared);
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   }
   root.TransformEngine = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (TransformShared) {
   "use strict";
 
-  const ESCAPE_SENTINEL = "\u0000";
-
-  const unescapeCandidateText = (value) => {
-    if (typeof value !== "string") {
-      return `${value ?? ""}`;
-    }
-
-    return value
-      .replaceAll(`${ESCAPE_SENTINEL}[`, "[")
-      .replaceAll(`${ESCAPE_SENTINEL}]`, "]")
-      .replaceAll(`${ESCAPE_SENTINEL},`, ",")
-      .replaceAll(`${ESCAPE_SENTINEL}\\`, "\\");
-  };
-
-  const tokenizeEscapes = (value) => {
-    if (typeof value !== "string") {
-      return `${value ?? ""}`;
-    }
-
-    let output = "";
-    for (let index = 0; index < value.length; index += 1) {
-      const char = value[index];
-      if (char === "\\" && index + 1 < value.length) {
-        const next = value[index + 1];
-        if (next === "[" || next === "]" || next === "," || next === "\\") {
-          output += `${ESCAPE_SENTINEL}${next}`;
-          index += 1;
-          continue;
-        }
-      }
-      output += char;
-    }
-    return output;
-  };
-
-  const splitTopLevelCommaCandidates = (value) => {
-    const text = tokenizeEscapes(`${value ?? ""}`);
-    const parts = [];
-    let current = "";
-    let bracketDepth = 0;
-
-    for (const char of text) {
-      if (char === "[" && !current.endsWith(ESCAPE_SENTINEL)) {
-        bracketDepth += 1;
-        current += char;
-        continue;
-      }
-      if (char === "]" && !current.endsWith(ESCAPE_SENTINEL)) {
-        bracketDepth = Math.max(0, bracketDepth - 1);
-        current += char;
-        continue;
-      }
-      if (char === "," && bracketDepth === 0 && current[current.length - 1] !== ESCAPE_SENTINEL) {
-        parts.push(current.trim());
-        current = "";
-        continue;
-      }
-      current += char;
-    }
-
-    if (current || text.endsWith(",")) {
-      parts.push(current.trim());
-    }
-
-    return parts
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-  };
-
-  const expandBracketAlternatives = (value) => {
-    const text = tokenizeEscapes(`${value ?? ""}`.trim());
-    if (!text) {
-      return [""];
-    }
-
-    let openIndex = -1;
-    for (let index = 0; index < text.length; index += 1) {
-      if (text[index] === "[" && text[index - 1] !== ESCAPE_SENTINEL) {
-        openIndex = index;
-        break;
-      }
-    }
-    if (openIndex < 0) {
-      return [text];
-    }
-
-    let depth = 0;
-    let closeIndex = -1;
-    for (let index = openIndex; index < text.length; index += 1) {
-      const char = text[index];
-      if (char === "[" && text[index - 1] !== ESCAPE_SENTINEL) {
-        depth += 1;
-      } else if (char === "]" && text[index - 1] !== ESCAPE_SENTINEL) {
-        depth -= 1;
-        if (depth === 0) {
-          closeIndex = index;
-          break;
-        }
-      }
-    }
-
-    if (closeIndex < 0) {
-      return [text];
-    }
-
-    const prefix = text.slice(0, openIndex);
-    const inner = text.slice(openIndex + 1, closeIndex);
-    const suffix = text.slice(closeIndex + 1);
-    const branches = splitTopLevelCommaCandidates(inner);
-    if (branches.length === 0) {
-      return [text];
-    }
-
-    const variants = [];
-    for (const branch of branches) {
-      const nested = expandBracketAlternatives(`${prefix}${branch}${suffix}`);
-      for (const candidate of nested) {
-        variants.push(candidate);
-      }
-    }
-
-    return variants;
-  };
-
-  const splitCommaSeparatedValues = (value) => {
-    if (Array.isArray(value)) {
-      return value
-        .flatMap((entry) => splitCommaSeparatedValues(entry))
-        .filter(Boolean);
-    }
-
-    if (typeof value !== "string") {
-      return [];
-    }
-
-    return splitTopLevelCommaCandidates(value)
-      .flatMap((entry) => expandBracketAlternatives(entry))
-      .map((entry) => unescapeCandidateText(`${entry ?? ""}`.trim()))
-      .filter(Boolean);
-  };
-
-  const splitReplacementCandidates = (value) => splitCommaSeparatedValues(value);
-  const splitMatchCandidates = (value) => splitCommaSeparatedValues(value);
+  if (!TransformShared) {
+    throw new Error("TransformShared is not loaded.");
+  }
+  const splitCommaSeparatedValues = TransformShared.splitCommaSeparatedValues;
+  const splitReplacementCandidates = TransformShared.splitReplacementCandidates;
+  const splitMatchCandidates = TransformShared.splitMatchCandidates;
+  const normalizePhraseRuleRecord = TransformShared.normalizePhraseRuleRecord;
+  const normalizePhraseRulesInput = TransformShared.normalizePhraseRulesInput;
+  const splitNodeEntries = TransformShared.splitNodeEntries;
+  const normalizeDictionaryNode = TransformShared.normalizeDictionaryNode;
+  const containsKanji = TransformShared.containsKanji;
+  const splitTrailingKana = TransformShared.splitTrailingKana;
+  const hasKanjiWithTrailingKana = TransformShared.hasKanjiWithTrailingKana;
+  const splitKanjiKanaSegments = TransformShared.splitKanjiKanaSegments;
+  const isVerbToken = TransformShared.isVerbToken;
+  const isSahenVerbToken = TransformShared.isSahenVerbToken;
+  const isIchidanVerbToken = TransformShared.isIchidanVerbToken;
+  const isGodanVerbToken = TransformShared.isGodanVerbToken;
+  const isRenyouGeneralVerbToken = TransformShared.isRenyouGeneralVerbToken;
+  const isRenyouTaTeVerbToken = TransformShared.isRenyouTaTeVerbToken;
+  const getStage4MinimalVerbSuffix = TransformShared.getStage4MinimalVerbSuffix;
 
   const emitDebugEvent = (debugCollector, event) => {
     if (typeof debugCollector === "function" && event && typeof event === "object") {
@@ -324,170 +205,6 @@
     }
 
     variants.push({ from: normalizedFrom, to: normalizedTo, kind });
-  };
-
-  const normalizePhraseRuleRecord = (from, rawRule) => {
-    const fromCandidates = splitMatchCandidates(from);
-
-    if (typeof rawRule === "string") {
-      const candidates = splitReplacementCandidates(rawRule);
-      return {
-        from: fromCandidates[0] ?? from,
-        from_options: fromCandidates,
-        to: candidates[0] ?? "",
-        candidates,
-        priority: 0,
-        enabled: true,
-        regex: false
-      };
-    }
-
-    if (Array.isArray(rawRule)) {
-      const candidates = splitReplacementCandidates(rawRule[0]);
-      return {
-        from: fromCandidates[0] ?? from,
-        from_options: fromCandidates,
-        to: candidates[0] ?? "",
-        candidates,
-        priority: Number.isFinite(rawRule[1]) ? rawRule[1] : Number(rawRule[1]) || 0,
-        enabled: rawRule[2] !== false,
-        regex: rawRule[3] === true
-      };
-    }
-
-    if (rawRule && typeof rawRule === "object") {
-      const candidates = splitReplacementCandidates(rawRule.candidates ?? rawRule.to);
-      const ruleFromCandidates = splitMatchCandidates(rawRule.from ?? from ?? "");
-      return {
-        ...rawRule,
-        from: ruleFromCandidates[0] ?? `${rawRule.from ?? from ?? ""}`,
-        from_options: ruleFromCandidates,
-        to: candidates[0] ?? `${rawRule.to ?? ""}`,
-        candidates,
-        priority: Number.isFinite(rawRule.priority) ? rawRule.priority : Number(rawRule.priority) || 0,
-        enabled: rawRule.enabled !== false,
-        regex: rawRule.regex === true || rawRule.is_regex === true
-      };
-    }
-
-    return null;
-  };
-
-  const normalizePhraseRulesInput = (rules) => {
-    if (Array.isArray(rules)) {
-      return rules
-        .map((rule) => {
-          if (Array.isArray(rule)) {
-            return normalizePhraseRuleRecord(rule[0], [rule[1], rule[2], rule[3]]);
-          }
-
-          return normalizePhraseRuleRecord(rule?.from ?? "", rule);
-        })
-        .filter((rule) => rule && rule.from && rule.to);
-    }
-
-    if (rules && typeof rules === "object") {
-      return Object.entries(rules)
-        .map(([from, rawRule]) => normalizePhraseRuleRecord(from, rawRule))
-        .filter((rule) => rule && rule.from && rule.to);
-    }
-
-    return [];
-  };
-
-  const splitNodeEntries = (entries, fallbackPriority = 10) => {
-    const replaceRules = [];
-
-    for (const entry of Array.isArray(entries) ? entries : []) {
-      if (!entry || typeof entry !== "object") {
-        continue;
-      }
-
-      const sequenceLabel = Array.isArray(entry.sequence)
-        ? entry.sequence
-            .map((token) => `${token?.surface ?? token?.basic ?? "*"}`.trim())
-            .filter(Boolean)
-            .join(" ")
-        : "";
-      const from = `${entry.from ?? sequenceLabel ?? ""}`.trim();
-      const to = `${entry.to ?? ""}`.trim();
-      if (!from || !to || entry.enabled === false) {
-        continue;
-      }
-
-      const fromOptions = splitMatchCandidates(entry.from ?? from);
-
-      replaceRules.push({
-        id: `${entry.id ?? ""}`.trim() || undefined,
-        type: `${entry.type ?? "replace-rule"}`,
-        from: fromOptions[0] ?? from,
-        from_options: fromOptions,
-        to,
-        raw: { ...entry },
-        candidates: splitReplacementCandidates(entry.candidates ?? to),
-        regex: entry.regex === true || entry.is_regex === true,
-        priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
-        enabled: entry.enabled !== false,
-        match_target: entry.match_target ?? entry.matchTarget ?? null,
-        conditions: entry.conditions ?? null,
-        sequence: entry.sequence ?? null,
-        character_map: entry.character_map ?? null
-      });
-    }
-
-    return replaceRules;
-  };
-
-  const normalizeDictionaryNode = (node, fallbackId = "group", fallbackLabel = "Group") => {
-    const fallbackPriority = Number.isFinite(node?.character_map_priority)
-      ? node.character_map_priority
-      : Number(node?.character_map_priority) || 10;
-    const directEntries = splitNodeEntries(node?.entries, fallbackPriority);
-    const directRules = splitNodeEntries(node?.rules, fallbackPriority);
-    const legacyEntries = [
-      ...normalizePhraseRulesInput(node?.phrase_rules).map((rule) => ({
-        ...rule,
-        type: "replace-rule",
-        regex: rule.regex === true
-      })),
-      ...normalizePhraseRulesInput(node?.replace_rules).map((rule) => ({
-        ...rule,
-        type: "replace-rule",
-        regex: rule.regex === true
-      })),
-      ...(
-        node?.character_map &&
-        typeof node.character_map === "object" &&
-        !Array.isArray(node.character_map)
-      ? Object.entries(node.character_map)
-        .filter(([from, to]) => Boolean(from) && Boolean(to) && from !== to)
-        .map(([from, to]) => ({
-          type: "replace-rule",
-          from,
-          to,
-          candidates: [to],
-          regex: false,
-          priority: fallbackPriority,
-          enabled: true
-        }))
-      : [])
-    ];
-
-    const childSource = Array.isArray(node?.children) && node.children.length > 0
-      ? node.children
-      : Array.isArray(node?.groups) && node.groups.length > 0
-        ? node.groups
-        : [];
-
-    return {
-      id: `${node?.id ?? fallbackId}`.trim() || fallbackId,
-      label: `${node?.label ?? fallbackLabel}`.trim() || fallbackLabel,
-      enabled: node?.enabled !== false,
-      entries: directEntries.length > 0 ? directEntries : (directRules.length > 0 ? directRules : legacyEntries),
-      children: childSource.map((child, index) => {
-        return normalizeDictionaryNode(child, `${fallbackId}-${index + 1}`, `${fallbackLabel} ${index + 1}`);
-      })
-    };
   };
 
   const normalizeRule = (rule) => {
@@ -1396,7 +1113,7 @@
     return outputTokens;
   };
 
-    const tokenizeAndApplyTokenRules = (text, tokenRules, tokenizer, debugCollector, stageId) => {
+  const tokenizeAndApplyTokenRules = (text, tokenRules, tokenizer, debugCollector, stageId) => {
     if (!text || !text.trim()) {
       return text;
     }
@@ -1433,6 +1150,189 @@
     );
   };
 
+  const isMasuAuxiliaryToken = (token) => {
+    if (!token || typeof token !== "object") {
+      return false;
+    }
+
+    return token.surface_form === "ます" || token.basic_form === "ます";
+  };
+
+  const hasNonVerbKanjiPrefix = (tokens, index) => {
+    const previousToken = tokens[index - 1];
+    if (!previousToken || isVerbToken(previousToken)) {
+      return false;
+    }
+
+    return containsKanji(previousToken.surface_form ?? "");
+  };
+
+  const isStage4NominalToken = (token) => {
+    if (!token || token.pos !== "名詞") {
+      return false;
+    }
+
+    if (token.pos_detail_1 && token.pos_detail_1 !== "一般") {
+      return false;
+    }
+
+    return hasKanjiWithTrailingKana(token.surface_form ?? "");
+  };
+
+  const replaceTrailingKanaWithSuffix = (segment, suffix) => {
+    const splitSegment = splitTrailingKana(segment);
+    return `${splitSegment.stem}${suffix ?? ""}`;
+  };
+
+  const compressCompoundTokenSurface = (token, nextToken) => {
+    const segments = splitKanjiKanaSegments(token.surface_form ?? "");
+    if (segments.length <= 1) {
+      return null;
+    }
+
+    const prefix = segments
+      .slice(0, -1)
+      .map((segment) => replaceTrailingKanaWithSuffix(segment, ""))
+      .join("");
+    const finalSegment = segments[segments.length - 1];
+    const nextIsMasu = isMasuAuxiliaryToken(nextToken);
+
+    if (token.pos === "名詞") {
+      return `${prefix}${replaceTrailingKanaWithSuffix(finalSegment, "")}`;
+    }
+
+    if (isRenyouGeneralVerbToken(token) && !nextIsMasu) {
+      return `${prefix}${replaceTrailingKanaWithSuffix(finalSegment, "")}`;
+    }
+
+    if (isIchidanVerbToken(token)) {
+      return `${prefix}${finalSegment}`;
+    }
+
+    if (isGodanVerbToken(token)) {
+      const suffix = getStage4MinimalVerbSuffix(token, { compressRenyou: false });
+      if (suffix === null || suffix === undefined) {
+        return null;
+      }
+
+      return `${prefix}${replaceTrailingKanaWithSuffix(finalSegment, suffix)}`;
+    }
+
+    return null;
+  };
+
+  const buildStage4Replacement = (tokens, index) => {
+    const token = tokens[index];
+    if (!token?.surface_form) {
+      return null;
+    }
+
+    const nextToken = tokens[index + 1];
+    const compoundReplacement = compressCompoundTokenSurface(token, nextToken);
+    if (compoundReplacement && compoundReplacement !== token.surface_form) {
+      return compoundReplacement;
+    }
+
+    if (isStage4NominalToken(token)) {
+      return replaceTrailingKanaWithSuffix(token.surface_form, "");
+    }
+
+    if (!isVerbToken(token)) {
+      return null;
+    }
+
+    const hasNextVerb = isVerbToken(nextToken);
+    const isStandaloneRenyou = isRenyouGeneralVerbToken(token) && !hasNextVerb && !isMasuAuxiliaryToken(nextToken);
+
+    if (isSahenVerbToken(token)) {
+      if (!hasNonVerbKanjiPrefix(tokens, index)) {
+        return null;
+      }
+
+      const sahenSuffix = getStage4MinimalVerbSuffix(token);
+      if (!sahenSuffix) {
+        return null;
+      }
+
+      return replaceTrailingKanaWithSuffix(token.surface_form, sahenSuffix);
+    }
+
+    if (!hasKanjiWithTrailingKana(token.surface_form) || isRenyouTaTeVerbToken(token)) {
+      return null;
+    }
+
+    const splitSurface = splitTrailingKana(token.surface_form);
+    if (!splitSurface.okurigana) {
+      return null;
+    }
+
+    if (hasNextVerb) {
+      if (!isRenyouGeneralVerbToken(token)) {
+        return null;
+      }
+
+      return replaceTrailingKanaWithSuffix(token.surface_form, "");
+    }
+
+    if (isStandaloneRenyou) {
+      return replaceTrailingKanaWithSuffix(token.surface_form, "");
+    }
+
+    if (isIchidanVerbToken(token)) {
+      return null;
+    }
+
+    if (isGodanVerbToken(token)) {
+      const suffix = getStage4MinimalVerbSuffix(token, { compressRenyou: false });
+      if (suffix === null || suffix === undefined) {
+        return null;
+      }
+
+      return replaceTrailingKanaWithSuffix(token.surface_form, suffix);
+    }
+
+    return null;
+  };
+
+  const applyVerbOkuriganaStage4 = (text, tokenizer, debugCollector, stageId) => {
+    if (!text || !text.trim() || !tokenizer) {
+      return text;
+    }
+
+    const outputTokens = tokenizer.tokenize(text).map((token) => ({ ...token }));
+    emitDebugEvent(debugCollector, {
+      phase: "tokenize",
+      stageId,
+      text,
+      tokens: outputTokens.map(snapshotToken)
+    });
+
+    for (let index = 0; index < outputTokens.length; index += 1) {
+      const token = outputTokens[index];
+      if (!token?.surface_form) {
+        continue;
+      }
+
+      const replacement = buildStage4Replacement(outputTokens, index);
+      if (!replacement || replacement === token.surface_form) {
+        continue;
+      }
+
+      emitDebugEvent(debugCollector, {
+        phase: "stage4-verb",
+        stageId,
+        matchedText: token.surface_form,
+        replacement,
+        tokens: [snapshotToken(token)],
+        prev: snapshotToken(outputTokens[index - 1]),
+        next: snapshotToken(outputTokens[index + 1])
+      });
+      token.surface_form = replacement;
+    }
+
+    return joinTokenSurfaces(outputTokens);
+  };
+
   const transformTextWithStages = (text, stages, tokenizer, options = {}) => {
     if (!text || !text.trim()) {
       return text;
@@ -1444,7 +1344,13 @@
     let transformedText = text;
 
     for (const stage of Array.isArray(stages) ? stages : []) {
-      if (!stage || !Array.isArray(stage.rules) || stage.rules.length === 0) {
+      if (!stage) {
+        continue;
+      }
+
+      const hasTokenRules = Array.isArray(stage.rules) && stage.rules.length > 0;
+      const hasRuntimeMode = typeof stage.runtime_mode === "string" && stage.runtime_mode.trim() !== "";
+      if (!hasTokenRules && !hasRuntimeMode) {
         continue;
       }
 
@@ -1465,7 +1371,17 @@
       }
 
       if (stage.kind === "token-rules") {
-        transformedText = tokenizeAndApplyTokenRules(transformedText, stage.rules, tokenizer, debugCollector, stage.id);
+        if (stage.runtime_mode === "verb-okurigana-stage4") {
+          transformedText = applyVerbOkuriganaStage4(transformedText, tokenizer, debugCollector, stage.id);
+        } else {
+          transformedText = tokenizeAndApplyTokenRules(
+            transformedText,
+            stage.rules,
+            tokenizer,
+            debugCollector,
+            stage.id
+          );
+        }
         if (beforeStage !== transformedText) {
           emitDebugEvent(debugCollector, {
             phase: "stage-result",
@@ -1487,6 +1403,7 @@
       label: bundle.label ?? bundle.id,
       kind: bundle.kind ?? null,
       path: bundle.path ?? null,
+      runtime_mode: bundle.runtime_mode ?? null,
       order: bundle.order ?? 0,
       enabled: bundle.enabled !== false
     };
@@ -1497,6 +1414,7 @@
       id: bundle.id,
       label: bundle.label,
       kind: bundle.kind ?? "dictionary-rules",
+      runtime_mode: bundle.runtime_mode ?? null,
       enabled: bundle.enabled !== false,
       entries: Array.isArray(bundle.entries) ? bundle.entries : [],
       children: Array.isArray(bundle.children) ? bundle.children : []
@@ -1596,6 +1514,7 @@
       ...bundle,
       label: override.label ?? bundle.label,
       kind: override.kind ?? bundle.kind,
+      runtime_mode: override.runtime_mode ?? bundle.runtime_mode,
       order: override.order ?? bundle.order,
       enabled: override.enabled ?? bundle.enabled
     };
@@ -1635,7 +1554,8 @@
         ...definition,
         label: override.label ?? definition.label,
         enabled: override.enabled ?? definition.enabled,
-        kind: override.kind ?? definition.kind
+        kind: override.kind ?? definition.kind,
+        runtime_mode: override.runtime_mode ?? definition.runtime_mode
       };
     }
 
@@ -1679,6 +1599,7 @@
       return {
         ...definition,
         kind: "token-rules",
+        runtime_mode: override.runtime_mode ?? definition.runtime_mode,
         label: override.label ?? definition.label,
         enabled: override.enabled ?? definition.enabled,
         rules: hasOverrideTree
@@ -1690,6 +1611,7 @@
     return {
       ...definition,
       kind: "dictionary-rules",
+      runtime_mode: override.runtime_mode ?? definition.runtime_mode,
       label: override.label ?? definition.label,
       enabled: override.enabled ?? definition.enabled,
       entries: Array.isArray(override.entries) ? override.entries : (definition.entries ?? []),
@@ -1791,6 +1713,9 @@
         kind: resolveBundleKind(bundle, mergedDefinition)
       };
       const bundleRules = extractBundleRules(bundle, definition);
+      const runtimeMode = typeof definition.runtime_mode === "string" && definition.runtime_mode.trim()
+        ? definition.runtime_mode.trim()
+        : null;
       const dictionaryRules = definition.kind === "dictionary-rules"
         ? bundleRules.filter((rule) => !ruleRequiresTokenMatching(rule))
         : [];
@@ -1804,17 +1729,19 @@
           label: bundle.label,
           kind: "dictionary-rules",
           order: bundle.order ?? 0,
+          runtime_mode: runtimeMode,
           rules: dictionaryRules
         });
         stringRuleCount += dictionaryRules.length;
       }
 
-      if (tokenRules.length > 0) {
+      if (tokenRules.length > 0 || (definition.kind === "token-rules" && runtimeMode)) {
         stages.push({
           id: bundle.id,
           label: bundle.label,
           kind: "token-rules",
           order: bundle.order ?? 0,
+          runtime_mode: runtimeMode,
           rules: tokenRules
         });
         tokenRuleCount += tokenRules.length;

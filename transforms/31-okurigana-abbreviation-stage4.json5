@@ -1,0 +1,8 @@
+// transforms/31-okurigana-abbreviation-stage4.json5
+{
+  id: "okurigana-abbreviation-stage4",
+  label: "送り仮名省略 Stage4",
+  kind: "token-rules",
+  runtime_mode: "verb-okurigana-stage4",
+  rules: [],
+}

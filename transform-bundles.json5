@@ -25,6 +25,13 @@
       order: 30,
     },
     {
+      id: "okurigana-abbreviation-stage4",
+      label: "送り仮名省略 Stage4",
+      path: "transforms/31-okurigana-abbreviation-stage4.json5",
+      enabled: true,
+      order: 31,
+    },
+    {
       id: "legacy-kanji",
       label: "旧字変換",
       path: "transforms/40-legacy-kanji.json5",

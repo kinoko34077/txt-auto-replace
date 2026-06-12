@@ -18,6 +18,13 @@
       order: 20,
     },
     {
+      id: "katakana-long-vowel-abbreviation",
+      label: "カタカナ長音省略",
+      path: "transforms/15-katakana-long-vowel-abbreviation.json5",
+      enabled: true,
+      order: 15,
+    },
+    {
       id: "okurigana-abbreviation",
       label: "送り仮名省略",
       path: "transforms/30-okurigana-abbreviation.json5",

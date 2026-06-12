@@ -24,6 +24,8 @@
   const matchWildcardPattern = TransformShared.matchWildcardPattern;
   const applyWildcardReplacement = TransformShared.applyWildcardReplacement;
   const replaceWildcardPattern = TransformShared.replaceWildcardPattern;
+  const normalizeKanaForMatch = TransformShared.normalizeKanaForMatch;
+  const hasTrailingKatakanaLongVowel = TransformShared.hasTrailingKatakanaLongVowel;
   const containsKanji = TransformShared.containsKanji;
   const splitTrailingKana = TransformShared.splitTrailingKana;
   const hasKanjiWithTrailingKana = TransformShared.hasKanjiWithTrailingKana;
@@ -35,6 +37,10 @@
   const isRenyouGeneralVerbToken = TransformShared.isRenyouGeneralVerbToken;
   const isRenyouTaTeVerbToken = TransformShared.isRenyouTaTeVerbToken;
   const getStage4MinimalVerbSuffix = TransformShared.getStage4MinimalVerbSuffix;
+
+  const KATAKANA_LONG_VOWEL_BUNDLE_ID = "katakana-long-vowel-abbreviation";
+  const dictionaryStageCompileCache = new WeakMap();
+  const tokenStageCompileCache = new WeakMap();
 
   const emitDebugEvent = (debugCollector, event) => {
     if (typeof debugCollector === "function" && event && typeof event === "object") {
@@ -222,6 +228,9 @@
       from_options: fromOptions,
       to: candidates[0] ?? rule.to,
       candidates,
+      match_options: rule.match_options && typeof rule.match_options === "object"
+        ? { ...rule.match_options }
+        : null,
       match_target: rule.match_target ?? rule.matchTarget ?? null,
       character_map: rule.character_map && typeof rule.character_map === "object"
         ? { ...rule.character_map }
@@ -350,26 +359,36 @@
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   };
 
-  const valueMatches = (actual, expected) => {
+  const valueMatches = (actual, expected, options = {}) => {
     if (expected === undefined || expected === null) {
       return true;
     }
 
     if (Array.isArray(expected)) {
-      return expected.some((entry) => valueMatches(actual, entry));
+      return expected.some((entry) => valueMatches(actual, entry, options));
     }
 
     if (typeof actual === "string" && typeof expected === "string") {
+      const kanaInsensitive = options.kanaInsensitive === true;
       if (hasWildcard(expected)) {
-        return Boolean(matchWildcardPattern(actual, expected));
+        return Boolean(matchWildcardPattern(actual, expected, {
+          kanaInsensitive,
+          preserveCaptures: true
+        }));
       }
-      return actual === expected;
+      return kanaInsensitive
+        ? normalizeKanaForMatch(actual) === normalizeKanaForMatch(expected)
+        : actual === expected;
     }
 
     return actual === expected;
   };
 
-  const matchAnyCandidate = (actual, candidates) => {
+  const ruleUsesKanaInsensitiveMatch = (rule) => {
+    return rule?.regex !== true && rule?.match_options?.kana_insensitive === true;
+  };
+
+  const matchAnyCandidate = (actual, candidates, options = {}) => {
     for (const candidate of Array.isArray(candidates) ? candidates : []) {
       if (typeof actual !== "string" || typeof candidate !== "string") {
         if (actual === candidate) {
@@ -383,7 +402,10 @@
       }
 
       if (hasWildcard(candidate)) {
-        const wildcardMatch = matchWildcardPattern(actual, candidate);
+        const wildcardMatch = matchWildcardPattern(actual, candidate, {
+          kanaInsensitive: options.kanaInsensitive === true,
+          preserveCaptures: true
+        });
         if (wildcardMatch) {
           return {
             matched: true,
@@ -394,7 +416,10 @@
         continue;
       }
 
-      if (actual === candidate) {
+      const matched = options.kanaInsensitive === true
+        ? normalizeKanaForMatch(actual) === normalizeKanaForMatch(candidate)
+        : actual === candidate;
+      if (matched) {
         return {
           matched: true,
           matchedFrom: candidate,
@@ -409,6 +434,11 @@
   const getRuleFromCandidates = (rule) => {
     const candidates = splitMatchCandidates(rule?.from_options ?? rule?.from);
     return candidates.length > 0 ? candidates : [`${rule?.from ?? ""}`.trim()].filter(Boolean);
+  };
+
+  const compareRuleOrder = (left, right) => {
+    return (Number(right?.priority) || 0) - (Number(left?.priority) || 0) ||
+      (Number(left?.__compiledOrder) || 0) - (Number(right?.__compiledOrder) || 0);
   };
 
   const tokenMatchesCondition = (token, condition) => {
@@ -630,10 +660,14 @@
     }
 
     if (ruleRequiresStrictBasicFormMatch(rule)) {
-      return matchAnyCandidate(token.basic_form, fromCandidates);
+      return matchAnyCandidate(token.basic_form, fromCandidates, {
+        kanaInsensitive: ruleUsesKanaInsensitiveMatch(rule)
+      });
     }
 
-    const surfaceMatch = matchAnyCandidate(token.surface_form, fromCandidates);
+    const surfaceMatch = matchAnyCandidate(token.surface_form, fromCandidates, {
+      kanaInsensitive: ruleUsesKanaInsensitiveMatch(rule)
+    });
     if (surfaceMatch) {
       return {
         ...surfaceMatch,
@@ -642,7 +676,9 @@
     }
 
     if (ruleUsesBasicFormMatch(rule)) {
-      const basicMatch = matchAnyCandidate(token.basic_form, fromCandidates);
+      const basicMatch = matchAnyCandidate(token.basic_form, fromCandidates, {
+        kanaInsensitive: ruleUsesKanaInsensitiveMatch(rule)
+      });
       if (basicMatch) {
         return {
           ...basicMatch,
@@ -854,15 +890,182 @@
     };
   };
 
-  const applyDictionaryRules = (text, dictionaryRules, debugCollector, stageId) => {
-    let result = text;
+  const makeCandidateRule = (rule, candidate) => {
+    return {
+      ...rule,
+      from: candidate,
+      from_options: [candidate]
+    };
+  };
 
-    for (const rule of dictionaryRules) {
-      if (!rule || rule.enabled === false) {
+  const addCandidateRecord = (map, key, record) => {
+    if (!key) {
+      return;
+    }
+    const records = map.get(key);
+    if (records) {
+      records.push(record);
+      return;
+    }
+    map.set(key, [record]);
+  };
+
+  const compareDictionaryRecords = (left, right) => {
+    return right.priority - left.priority ||
+      right.length - left.length ||
+      left.order - right.order;
+  };
+
+  const compileDictionaryStage = (rules) => {
+    const safeRules = Array.isArray(rules) ? rules : [];
+    const cached = dictionaryStageCompileCache.get(safeRules);
+    if (cached) {
+      return cached;
+    }
+
+    const compiled = {
+      exactBuckets: new Map(),
+      kanaExactBuckets: new Map(),
+      slowRules: []
+    };
+    let order = 0;
+
+    for (const rule of safeRules) {
+      if (!rule || rule.enabled === false || ruleRequiresTokenMatching(rule)) {
+        order += 1;
         continue;
       }
 
-      if (ruleRequiresTokenMatching(rule)) {
+      if (rule.regex === true || !rule.from) {
+        compiled.slowRules.push({ rule, order });
+        order += 1;
+        continue;
+      }
+
+      const kanaInsensitive = ruleUsesKanaInsensitiveMatch(rule);
+      const fromCandidates = getRuleFromCandidates(rule);
+      let hasIndexedCandidate = false;
+
+      for (const fromCandidate of fromCandidates) {
+        if (!fromCandidate) {
+          continue;
+        }
+
+        if (fromCandidate.includes("\\") || hasWildcard(fromCandidate)) {
+          compiled.slowRules.push({
+            rule: makeCandidateRule(rule, fromCandidate),
+            order: order + compiled.slowRules.length / 1000000
+          });
+          continue;
+        }
+
+        const candidateRule = makeCandidateRule(rule, fromCandidate);
+        const key = kanaInsensitive
+          ? normalizeKanaForMatch(fromCandidate)
+          : fromCandidate;
+        const record = {
+          key,
+          length: fromCandidate.length,
+          priority: Number(rule.priority) || 0,
+          order,
+          rule: candidateRule,
+          kanaInsensitive
+        };
+        addCandidateRecord(
+          kanaInsensitive ? compiled.kanaExactBuckets : compiled.exactBuckets,
+          key[0],
+          record
+        );
+        hasIndexedCandidate = true;
+        order += 1;
+      }
+
+      if (!hasIndexedCandidate && fromCandidates.length === 0) {
+        compiled.slowRules.push({ rule, order });
+        order += 1;
+      }
+    }
+
+    for (const records of compiled.exactBuckets.values()) {
+      records.sort(compareDictionaryRecords);
+    }
+    for (const records of compiled.kanaExactBuckets.values()) {
+      records.sort(compareDictionaryRecords);
+    }
+    compiled.slowRules.sort((left, right) => {
+      return compareRuleOrder(
+        { ...left.rule, __compiledOrder: left.order },
+        { ...right.rule, __compiledOrder: right.order }
+      );
+    });
+
+    dictionaryStageCompileCache.set(safeRules, compiled);
+    return compiled;
+  };
+
+  const findBestDictionaryRecordAt = (text, normalizedText, index, compiled) => {
+    let best = null;
+    const rawRecords = compiled.exactBuckets.get(text[index]) ?? [];
+    for (const record of rawRecords) {
+      if (text.startsWith(record.key, index) && (!best || compareDictionaryRecords(record, best) < 0)) {
+        best = record;
+      }
+    }
+
+    const kanaRecords = compiled.kanaExactBuckets.get(normalizedText[index]) ?? [];
+    for (const record of kanaRecords) {
+      if (normalizedText.startsWith(record.key, index) && (!best || compareDictionaryRecords(record, best) < 0)) {
+        best = record;
+      }
+    }
+
+    return best;
+  };
+
+  const applyCompiledDictionaryExactRules = (text, compiled, debugCollector, stageId) => {
+    if (!compiled || (compiled.exactBuckets.size === 0 && compiled.kanaExactBuckets.size === 0)) {
+      return text;
+    }
+
+    const sourceText = `${text ?? ""}`;
+    const normalizedText = compiled.kanaExactBuckets.size > 0
+      ? normalizeKanaForMatch(sourceText)
+      : sourceText;
+    let output = "";
+    let cursor = 0;
+
+    while (cursor < sourceText.length) {
+      const record = findBestDictionaryRecordAt(sourceText, normalizedText, cursor, compiled);
+      if (!record) {
+        output += sourceText[cursor];
+        cursor += 1;
+        continue;
+      }
+
+      const matchedText = sourceText.slice(cursor, cursor + record.length);
+      const replacement = chooseReplacement(record.rule, matchedText);
+      emitDebugEvent(debugCollector, {
+        phase: "dictionary-match",
+        stageId,
+        ruleId: record.rule.id ?? null,
+        matchedText,
+        replacement,
+        regex: false,
+        from: record.rule.from
+      });
+      output += replacement;
+      cursor += record.length;
+    }
+
+    return output;
+  };
+
+  const applySlowDictionaryRules = (text, slowRules, debugCollector, stageId) => {
+    let result = text;
+
+    for (const item of Array.isArray(slowRules) ? slowRules : []) {
+      const rule = item?.rule ?? item;
+      if (!rule || rule.enabled === false || ruleRequiresTokenMatching(rule)) {
         continue;
       }
 
@@ -899,27 +1102,142 @@
         }
 
         const replacementTemplate = chooseReplacementTemplate(
-          { ...rule, from: fromCandidate, from_options: [fromCandidate] },
+          makeCandidateRule(rule, fromCandidate),
           fromCandidate
         );
-
-        if (hasWildcard(fromCandidate)) {
-          result = replaceWildcardPattern(result, fromCandidate, replacementTemplate);
-          continue;
-        }
-
-        result = replaceWildcardPattern(result, fromCandidate, replacementTemplate);
+        result = replaceWildcardPattern(result, fromCandidate, replacementTemplate, {
+          kanaInsensitive: ruleUsesKanaInsensitiveMatch(rule)
+        });
       }
     }
 
     return result;
   };
 
+  const applyDictionaryRules = (text, dictionaryRules, debugCollector, stageId) => {
+    const compiled = compileDictionaryStage(dictionaryRules);
+    const exactResult = applyCompiledDictionaryExactRules(text, compiled, debugCollector, stageId);
+    return applySlowDictionaryRules(exactResult, compiled.slowRules, debugCollector, stageId);
+  };
+
+  const addRuleToMap = (map, key, rule) => {
+    if (!key) {
+      return;
+    }
+    const rules = map.get(key);
+    if (rules) {
+      rules.push(rule);
+      return;
+    }
+    map.set(key, [rule]);
+  };
+
+  const hasRuleConditions = (rule) => {
+    const conditions = rule?.conditions ?? {};
+    return Boolean(conditions.current || conditions.prev || conditions.next);
+  };
+
+  const canIndexTokenRule = (rule) => {
+    if (!rule || rule.enabled === false || rule.regex === true || rule.character_map) {
+      return false;
+    }
+
+    if (Array.isArray(rule.sequence) && rule.sequence.length > 0) {
+      return false;
+    }
+
+    if (ruleUsesKanaInsensitiveMatch(rule) || hasRuleConditions(rule)) {
+      return false;
+    }
+
+    return getRuleFromCandidates(rule).some((candidate) => {
+      return candidate && !candidate.includes("\\") && !hasWildcard(candidate);
+    });
+  };
+
+  const compileTokenStage = (rules) => {
+    const safeRules = Array.isArray(rules) ? rules : [];
+    const cached = tokenStageCompileCache.get(safeRules);
+    if (cached) {
+      return cached;
+    }
+
+    const compiled = {
+      surfaceMap: new Map(),
+      basicMap: new Map(),
+      broadRules: []
+    };
+
+    safeRules.forEach((rule, index) => {
+      if (!rule || rule.enabled === false) {
+        return;
+      }
+
+      const compiledRule = {
+        ...rule,
+        __compiledOrder: index
+      };
+
+      if (!canIndexTokenRule(compiledRule)) {
+        compiled.broadRules.push(compiledRule);
+        return;
+      }
+
+      const fromCandidates = getRuleFromCandidates(compiledRule)
+        .filter((candidate) => candidate && !candidate.includes("\\") && !hasWildcard(candidate));
+      if (ruleRequiresStrictBasicFormMatch(compiledRule)) {
+        for (const candidate of fromCandidates) {
+          addRuleToMap(compiled.basicMap, candidate, compiledRule);
+        }
+        return;
+      }
+
+      for (const candidate of fromCandidates) {
+        addRuleToMap(compiled.surfaceMap, candidate, compiledRule);
+        if (ruleUsesBasicFormMatch(compiledRule)) {
+          addRuleToMap(compiled.basicMap, candidate, compiledRule);
+        }
+      }
+    });
+
+    const sortRules = (list) => list.sort(compareRuleOrder);
+    for (const rulesForKey of compiled.surfaceMap.values()) {
+      sortRules(rulesForKey);
+    }
+    for (const rulesForKey of compiled.basicMap.values()) {
+      sortRules(rulesForKey);
+    }
+    sortRules(compiled.broadRules);
+
+    tokenStageCompileCache.set(safeRules, compiled);
+    return compiled;
+  };
+
+  const getCandidateTokenRules = (compiled, token) => {
+    const seen = new Set();
+    const candidates = [];
+    const pushRules = (rules) => {
+      for (const rule of rules ?? []) {
+        if (!seen.has(rule)) {
+          seen.add(rule);
+          candidates.push(rule);
+        }
+      }
+    };
+
+    pushRules(compiled.surfaceMap.get(token?.surface_form));
+    pushRules(compiled.basicMap.get(token?.basic_form));
+    pushRules(compiled.broadRules);
+    return candidates.sort(compareRuleOrder);
+  };
+
   const applyTransformationsToTokens = (tokens, rules, debugCollector, stageId) => {
     const outputTokens = tokens.map((token) => ({ ...token }));
+    const compiled = compileTokenStage(rules);
 
     for (let index = 0; index < outputTokens.length; index++) {
-      for (const rule of rules) {
+      const candidateRules = getCandidateTokenRules(compiled, outputTokens[index]);
+      for (const rule of candidateRules) {
         const match = ruleMatches(outputTokens, index, rule);
         if (!match) {
           continue;
@@ -1282,6 +1600,35 @@
     return `${splitSegment.stem}${suffix ?? ""}`;
   };
 
+  const removeStage4RemovableMa = (token) => {
+    if (!token?.surface_form || !token?.basic_form) {
+      return null;
+    }
+
+    const surfaceSplit = splitTrailingKana(token.surface_form);
+    const basicSplit = splitTrailingKana(token.basic_form);
+    if (!surfaceSplit.stem || surfaceSplit.stem !== basicSplit.stem) {
+      return null;
+    }
+
+    if (!surfaceSplit.okurigana.startsWith("ま") || !basicSplit.okurigana.startsWith("ま")) {
+      return null;
+    }
+
+    const nextOkurigana = surfaceSplit.okurigana.slice(1);
+    if (!nextOkurigana) {
+      return null;
+    }
+
+    return `${surfaceSplit.stem}${nextOkurigana}`;
+  };
+
+  const isStage4JiteException = (token, nextToken = null) => {
+    const surface = `${token?.surface_form ?? ""}`;
+    return surface.endsWith("じて") ||
+      (surface.endsWith("じ") && `${nextToken?.surface_form ?? ""}` === "て");
+  };
+
   const compressCompoundTokenSurface = (token, nextToken) => {
     const segments = splitKanjiKanaSegments(token.surface_form ?? "");
     if (segments.length <= 1) {
@@ -1331,6 +1678,15 @@
       return compoundReplacement;
     }
 
+    if (isStage4JiteException(token, nextToken)) {
+      return null;
+    }
+
+    const nominalRemovableMaReplacement = removeStage4RemovableMa(token);
+    if (nominalRemovableMaReplacement && nominalRemovableMaReplacement !== token.surface_form) {
+      return nominalRemovableMaReplacement;
+    }
+
     if (isStage4NominalToken(token)) {
       return replaceTrailingKanaWithSuffix(token.surface_form, "");
     }
@@ -1355,12 +1711,21 @@
       return replaceTrailingKanaWithSuffix(token.surface_form, sahenSuffix);
     }
 
-    if (!hasKanjiWithTrailingKana(token.surface_form) || isRenyouTaTeVerbToken(token)) {
+    if (!hasKanjiWithTrailingKana(token.surface_form)) {
       return null;
     }
 
     const splitSurface = splitTrailingKana(token.surface_form);
     if (!splitSurface.okurigana) {
+      return null;
+    }
+
+    const removableMaReplacement = removeStage4RemovableMa(token);
+    if (removableMaReplacement && removableMaReplacement !== token.surface_form) {
+      return removableMaReplacement;
+    }
+
+    if (isRenyouTaTeVerbToken(token)) {
       return null;
     }
 
@@ -1431,6 +1796,35 @@
     return joinTokenSurfaces(outputTokens);
   };
 
+  const applyKatakanaLongVowelAbbreviation = (text, rules = [], debugCollector, stageId) => {
+    if (!text || !text.trim()) {
+      return text;
+    }
+
+    const exclusions = new Set();
+    for (const rule of Array.isArray(rules) ? rules : []) {
+      for (const candidate of getRuleFromCandidates(rule)) {
+        if (candidate) {
+          exclusions.add(candidate);
+        }
+      }
+    }
+
+    return `${text}`.replace(/[\u30a1-\u30fa\u30fc]+\u30fc(?=$|[^\u30a1-\u30fa\u30fc])/gu, (matchedText) => {
+      if (!hasTrailingKatakanaLongVowel(matchedText) || exclusions.has(matchedText)) {
+        return matchedText;
+      }
+      const replacement = matchedText.slice(0, -1);
+      emitDebugEvent(debugCollector, {
+        phase: "katakana-long-vowel",
+        stageId,
+        matchedText,
+        replacement
+      });
+      return replacement;
+    });
+  };
+
   const transformTextWithStages = (text, stages, tokenizer, options = {}) => {
     if (!text || !text.trim()) {
       return text;
@@ -1471,6 +1865,8 @@
       if (stage.kind === "token-rules") {
         if (stage.runtime_mode === "verb-okurigana-stage4") {
           transformedText = applyVerbOkuriganaStage4(transformedText, tokenizer, debugCollector, stage.id);
+        } else if (stage.runtime_mode === "katakana-long-vowel-abbreviation") {
+          transformedText = applyKatakanaLongVowelAbbreviation(transformedText, stage.rules, debugCollector, stage.id);
         } else {
           transformedText = tokenizeAndApplyTokenRules(
             transformedText,
@@ -1565,7 +1961,10 @@
       label: override.label ?? override.id ?? "Bundle"
     }, "bundle", "Bundle");
     normalizedRoot.entries = normalizedRoot.entries.filter((rule) => {
-      return Boolean(rule.from) && Boolean(rule.to) && rule.from !== rule.to;
+      if (!rule.from || !rule.to) {
+        return false;
+      }
+      return override.id === KATAKANA_LONG_VOWEL_BUNDLE_ID || rule.from !== rule.to;
     });
 
     return {
@@ -1651,6 +2050,7 @@
             enabled: entry.enabled !== false,
             regex: entry.regex === true,
             match_target: entry.match_target ?? baseRule.match_target ?? null,
+            match_options: entry.match_options ?? baseRule.match_options ?? null,
             conditions: entry.conditions ?? baseRule.conditions ?? null,
             sequence: entry.sequence ?? baseRule.sequence ?? null,
             type: entry.type ?? baseRule.type

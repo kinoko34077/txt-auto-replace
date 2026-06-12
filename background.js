@@ -133,11 +133,16 @@ const broadcastRuntimeUpdate = async (targetTabId = null) => {
     ? [{ id: targetTabId }]
     : await queryTabs({});
 
-  await Promise.all(
-    tabs
-      .filter((tab) => typeof tab?.id === "number")
-      .map((tab) => sendMessageToTab(tab.id, { type: MESSAGE_TYPES.APPLY_SETTINGS_UPDATE }))
+  const targets = tabs.filter((tab) => typeof tab?.id === "number");
+  const results = await Promise.all(
+    targets.map((tab) => sendMessageToTab(tab.id, { type: MESSAGE_TYPES.APPLY_SETTINGS_UPDATE }))
   );
+
+  return {
+    ok: true,
+    notified: results.filter(Boolean).length,
+    failed: results.filter((result) => !result).length
+  };
 };
 
 const toggleCurrentTabDisabled = async () => {
@@ -221,8 +226,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.type === MESSAGE_TYPES.APPLY_SETTINGS_UPDATE) {
-      await broadcastRuntimeUpdate(message.tabId ?? null);
-      sendResponse({ ok: true });
+      sendResponse(await broadcastRuntimeUpdate(message.tabId ?? null));
       return;
     }
 

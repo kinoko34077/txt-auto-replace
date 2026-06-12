@@ -197,6 +197,41 @@ const FIXTURES = [
     expected: "奇蹟が起きた｡",
     activeBundles: ["surface-normalization", "official-homophone-restoration"],
     note: "告示・同音書換復元 + 記号"
+  },
+  {
+    id: "katakana-long-vowel-computer",
+    input: "コンピューター",
+    expected: "コンピュータ",
+    activeBundles: ["katakana-long-vowel-abbreviation"],
+    note: "katakana trailing long vowel abbreviation"
+  },
+  {
+    id: "katakana-long-vowel-user",
+    input: "ユーザー",
+    expected: "ユーザ",
+    activeBundles: ["katakana-long-vowel-abbreviation"],
+    note: "katakana trailing long vowel abbreviation"
+  },
+  {
+    id: "katakana-long-vowel-excluded",
+    input: "バッター",
+    expected: "バッター",
+    activeBundles: ["katakana-long-vowel-abbreviation"],
+    note: "katakana long vowel exclusion entry"
+  },
+  {
+    id: "katakana-long-vowel-standard",
+    input: "\u30b9\u30bf\u30f3\u30c0\u30fc\u30c9",
+    expected: "\u30b9\u30bf\u30f3\u30c0\u30fc\u30c9",
+    activeBundles: ["katakana-long-vowel-abbreviation"],
+    note: "internal long vowel mark is preserved"
+  },
+  {
+    id: "katakana-long-vowel-computer-particle",
+    input: "\u30b3\u30f3\u30d4\u30e5\u30fc\u30bf\u30fc\u306f",
+    expected: "\u30b3\u30f3\u30d4\u30e5\u30fc\u30bf\u306f",
+    activeBundles: ["katakana-long-vowel-abbreviation"],
+    note: "trailing long vowel before non-katakana boundary"
   }
   ,
   {
@@ -380,6 +415,48 @@ const FIXTURES = [
     expected: "\u66f8\u3044\u305f",
     activeBundles: ["okurigana-abbreviation-stage4"],
     note: "stage4 skips i-onbin past"
+  },
+  {
+    id: "stage4-tenjite",
+    input: "転じて",
+    expected: "転じて",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 keeps jite te-form"
+  },
+  {
+    id: "stage4-soujite",
+    input: "総じて",
+    expected: "総じて",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 keeps jite te-form"
+  },
+  {
+    id: "stage4-takamari",
+    input: "高まり",
+    expected: "高り",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 removes removable ma before renyou suffix"
+  },
+  {
+    id: "stage4-atsumari",
+    input: "集まり",
+    expected: "集り",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 removes removable ma before renyou suffix"
+  },
+  {
+    id: "stage4-takamatta",
+    input: "高まった",
+    expected: "高った",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 removes removable ma before ta-form suffix"
+  },
+  {
+    id: "stage4-atsumatta",
+    input: "集まった",
+    expected: "集った",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 removes removable ma before ta-form suffix"
   }
 ];
 
@@ -817,6 +894,7 @@ const OVERRIDE_FIXTURES = [
 const verifyStageOrder = (stages) => {
   const expectedIds = [
     "surface-normalization",
+    "katakana-long-vowel-abbreviation",
     "lexical-replacements",
     "okurigana-abbreviation",
     "okurigana-abbreviation-stage4",
@@ -1267,18 +1345,149 @@ const verifyWildcardBehavior = (tokenizer) => {
   const dictionaryCaptured = TransformEngine.transformTextWithStages("AfooBbarC", dictionaryStages, tokenizer);
   const dictionaryEscaped = TransformEngine.transformTextWithStages("*印", dictionaryStages, tokenizer);
   const tokenConditionWildcard = TransformEngine.transformTextWithStages("高い", tokenStages, tokenizer);
+  const kanaInsensitiveHiraganaRule = TransformEngine.transformTextWithStages("ネコ", [{
+    id: "kana-insensitive-hiragana",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "ねこ",
+      from_options: ["ねこ"],
+      to: "猫",
+      candidates: ["猫"],
+      regex: false,
+      enabled: true,
+      priority: 10,
+      match_options: { kana_insensitive: true }
+    }]
+  }], tokenizer);
+  const kanaInsensitiveKatakanaRule = TransformEngine.transformTextWithStages("ねこ", [{
+    id: "kana-insensitive-katakana",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "ネコ",
+      from_options: ["ネコ"],
+      to: "猫",
+      candidates: ["猫"],
+      regex: false,
+      enabled: true,
+      priority: 10,
+      match_options: { kana_insensitive: true }
+    }]
+  }], tokenizer);
+  const kanaSensitiveRule = TransformEngine.transformTextWithStages("ネコ", [{
+    id: "kana-sensitive",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "ねこ",
+      from_options: ["ねこ"],
+      to: "猫",
+      candidates: ["猫"],
+      regex: false,
+      enabled: true,
+      priority: 10
+    }]
+  }], tokenizer);
+  const kanaInsensitiveWildcard = TransformEngine.transformTextWithStages("ネコ", [{
+    id: "kana-insensitive-wildcard",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "*こ",
+      from_options: ["*こ"],
+      to: "*子",
+      candidates: ["*子"],
+      regex: false,
+      enabled: true,
+      priority: 10,
+      match_options: { kana_insensitive: true }
+    }]
+  }], tokenizer);
 
   return {
     passed:
       dictionarySuffix === "高" &&
       dictionaryCaptured === "XfooYbar" &&
       dictionaryEscaped === "記号" &&
-      tokenConditionWildcard === "高",
+      tokenConditionWildcard === "高" &&
+      kanaInsensitiveHiraganaRule === "猫" &&
+      kanaInsensitiveKatakanaRule === "猫" &&
+      kanaSensitiveRule === "ネコ" &&
+      kanaInsensitiveWildcard === "ネ子",
     details: {
       dictionarySuffix,
       dictionaryCaptured,
       dictionaryEscaped,
-      tokenConditionWildcard
+      tokenConditionWildcard,
+      kanaInsensitiveHiraganaRule,
+      kanaInsensitiveKatakanaRule,
+      kanaSensitiveRule,
+      kanaInsensitiveWildcard
+    }
+  };
+};
+
+const verifyDictionaryCompiledBehavior = () => {
+  const transform = (input, rules) => TransformEngine.transformTextWithStages(input, [{
+    id: "compiled-dictionary",
+    kind: "dictionary-rules",
+    order: 1,
+    rules
+  }], null);
+
+  const rule = (from, to, priority = 10) => ({
+    from,
+    from_options: [from],
+    to,
+    candidates: [to],
+    regex: false,
+    enabled: true,
+    priority
+  });
+
+  const nonCascade = transform("A B", [
+    rule("A", "B", 10),
+    rule("B", "C", 10)
+  ]);
+  const longest = transform("ABC", [
+    rule("AB", "X", 10),
+    rule("ABC", "Y", 10)
+  ]);
+  const priority = transform("ABC", [
+    rule("AB", "X", 100),
+    rule("ABC", "Y", 10)
+  ]);
+  const order = transform("A", [
+    rule("A", "X", 10),
+    rule("A", "Y", 10)
+  ]);
+
+  const manyRules = [];
+  for (let index = 0; index < 1200; index += 1) {
+    manyRules.push(rule(`NO_MATCH_${index}`, "Z", 1));
+  }
+  manyRules.push(rule("TARGET", "OK", 10));
+  const longInput = `${"x".repeat(40000)}TARGET`;
+  const startedAt = Date.now();
+  const performanceOutput = transform(longInput, manyRules);
+  const elapsedMs = Date.now() - startedAt;
+
+  return {
+    passed:
+      nonCascade === "B C" &&
+      longest === "Y" &&
+      priority === "XC" &&
+      order === "X" &&
+      performanceOutput.endsWith("OK") &&
+      elapsedMs < 3000,
+    details: {
+      nonCascade,
+      longest,
+      priority,
+      order,
+      elapsedMs,
+      performanceSuffix: performanceOutput.slice(-8)
     }
   };
 };
@@ -1342,6 +1551,11 @@ const main = async () => {
     ? "PASS [wildcard] matcher / replacement / conditions"
     : `FAIL [wildcard] ${JSON.stringify(wildcardCheck.details)}`);
 
+  const dictionaryCompiledCheck = verifyDictionaryCompiledBehavior();
+  console.log(dictionaryCompiledCheck.passed
+    ? `PASS [dictionary-compiled] non-cascade / priority / performance (${dictionaryCompiledCheck.details.elapsedMs}ms)`
+    : `FAIL [dictionary-compiled] ${JSON.stringify(dictionaryCompiledCheck.details)}`);
+
   const defaultResults = runFixtureSet("default", defaultLoaded.stages, FIXTURES, tokenizer, caseId);
   const overrideResults = runFixtureSet("override", overrideLoaded.stages, OVERRIDE_FIXTURES, tokenizer, caseId);
 
@@ -1357,6 +1571,7 @@ const main = async () => {
     disabledSubtreeCheck.passed &&
     disabledEntryCheck.passed &&
     wildcardCheck.passed &&
+    dictionaryCompiledCheck.passed &&
     [...defaultResults, ...overrideResults].every((result) => result.passed);
 
   if (!allPassed) {

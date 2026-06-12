@@ -163,8 +163,12 @@
       color: var(--ink);
     }
 
-    .cell-input { width: auto; min-width: 6ch; max-width: 30ch; }
-    .cell-input.compact { min-width: 5ch; max-width: 8ch; }
+    .cell-input { box-sizing: border-box; width: 100%; min-width: 8ch; max-width: none; }
+    .cell-input.compact { min-width: 5ch; max-width: 9ch; }
+    .entry-table { table-layout: auto; min-width: 1460px; }
+    .entry-table .text-col { min-width: 14ch; }
+    .entry-table .condition-col { min-width: 11ch; }
+    .entry-table .priority-col { width: 8ch; }
     .sequence-scroll .sequence-table { min-width: 980px; }
     .sequence-field { width: 100%; min-width: 10ch; }
     .sequence-surface, .sequence-basic { min-width: 12ch; max-width: 28ch; }
@@ -354,6 +358,7 @@
 
     <nav class="tabbar" aria-label="設定タブ">
       <button id="tab-bundles" class="tab-button secondary" type="button" aria-selected="true">Bundle編集</button>
+      <button id="tab-katakana-long-vowel" class="tab-button ghost" type="button" aria-selected="false">カタカナ長音</button>
       <button id="tab-stage4" class="tab-button ghost" type="button" aria-selected="false">Stage4</button>
       <button id="tab-diagnostics" class="tab-button ghost" type="button" aria-selected="false">診断</button>
       <button id="tab-tokenizer" class="tab-button ghost" type="button" aria-selected="false">形態素解析</button>
@@ -363,6 +368,10 @@
 
     <section id="panel-bundles" class="tab-panel">
       <main id="bundle-root" class="bundle-grid" aria-live="polite"></main>
+    </section>
+
+    <section id="panel-katakana-long-vowel" class="tab-panel" hidden>
+      <div id="katakana-long-vowel-root" class="diagnostics-grid" aria-live="polite"></div>
     </section>
 
     <section id="panel-stage4" class="tab-panel" hidden>

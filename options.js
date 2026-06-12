@@ -8,6 +8,7 @@
   const DICT_PATH = "./dict/";
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
   const STAGE4_BUNDLE_ID = "okurigana-abbreviation-stage4";
+  const KATAKANA_LONG_VOWEL_BUNDLE_ID = "katakana-long-vowel-abbreviation";
   const MESSAGE_TYPES = {
     APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
     OPEN_SHORTCUTS_PAGE: "OPEN_SHORTCUTS_PAGE"
@@ -57,18 +58,21 @@
   const hotkeysRoot = document.getElementById("hotkeys-root");
   const sitesRoot = document.getElementById("sites-root");
   const panelBundles = document.getElementById("panel-bundles");
+  const panelKatakanaLongVowel = document.getElementById("panel-katakana-long-vowel");
   const panelStage4 = document.getElementById("panel-stage4");
   const panelDiagnostics = document.getElementById("panel-diagnostics");
   const panelTokenizer = document.getElementById("panel-tokenizer");
   const panelHotkeys = document.getElementById("panel-hotkeys");
   const panelSites = document.getElementById("panel-sites");
   const tabBundlesButton = document.getElementById("tab-bundles");
+  const tabKatakanaLongVowelButton = document.getElementById("tab-katakana-long-vowel");
   const tabStage4Button = document.getElementById("tab-stage4");
   const tabDiagnosticsButton = document.getElementById("tab-diagnostics");
   const tabTokenizerButton = document.getElementById("tab-tokenizer");
   const tabHotkeysButton = document.getElementById("tab-hotkeys");
   const tabSitesButton = document.getElementById("tab-sites");
   const statusNode = document.getElementById("status");
+  const katakanaLongVowelRoot = document.getElementById("katakana-long-vowel-root");
   const stage4Root = document.getElementById("stage4-root");
   const saveAllButton = document.getElementById("save-all");
   const addBundleButton = document.getElementById("add-bundle");
@@ -453,8 +457,14 @@
     return state.roots.find((root) => root?.id === STAGE4_BUNDLE_ID) ?? null;
   };
 
+  const getKatakanaLongVowelRoot = () => {
+    return state.roots.find((root) => root?.id === KATAKANA_LONG_VOWEL_BUNDLE_ID) ?? null;
+  };
+
   const getBundleEditorRoots = () => {
-    return state.roots.filter((root) => root?.id !== STAGE4_BUNDLE_ID);
+    return state.roots.filter((root) => {
+      return root?.id !== STAGE4_BUNDLE_ID && root?.id !== KATAKANA_LONG_VOWEL_BUNDLE_ID;
+    });
   };
 
   const createEmptyCurrentBulkDraft = () => ({
@@ -1611,6 +1621,9 @@
       regex: entry.regex === true || entry.is_regex === true,
       type: inferredType,
       match_target: getEffectiveEntryMatchTarget(entry, inferredType),
+      match_options: entry.match_options && typeof entry.match_options === "object"
+        ? cloneValue(entry.match_options)
+        : null,
       conditions: cloneValue(entry.conditions ?? null),
       sequence: cloneValue(entry.sequence ?? null),
       raw: cloneValue(entry),
@@ -1634,9 +1647,10 @@
         to: `${normalizedRawRule[0] ?? ""}`.trim(),
         priority: Number.isFinite(normalizedRawRule[1]) ? normalizedRawRule[1] : Number(normalizedRawRule[1]) || fallbackPriority,
         enabled: normalizedRawRule[2] !== false,
-        regex: normalizedRawRule[3] === true,
-        match_target: null,
-        conditions: null,
+      regex: normalizedRawRule[3] === true,
+      match_target: null,
+      match_options: null,
+      conditions: null,
         sequence: null,
         raw: null,
         metaOpen: false,
@@ -1653,6 +1667,7 @@
         enabled: true,
         regex: false,
         match_target: null,
+        match_options: null,
         conditions: null,
         sequence: null,
         raw: null,
@@ -1835,6 +1850,24 @@
     return roots;
   };
 
+  const ensureRootFromBase = (roots, rootId) => {
+    if (roots.some((root) => root.id === rootId)) {
+      return roots;
+    }
+
+    const baseRoot = state.baseRoots.find((root) => root.id === rootId);
+    if (baseRoot) {
+      roots.push(cloneValue(baseRoot));
+    }
+    return roots;
+  };
+
+  const ensureRuntimeSpecialRoots = (roots) => {
+    ensureRootFromBase(roots, KATAKANA_LONG_VOWEL_BUNDLE_ID);
+    ensureRootFromBase(roots, STAGE4_BUNDLE_ID);
+    return roots;
+  };
+
   const normalizeManifestDefinition = (bundle, definition) => {
     if (!definition || !definition.kind) {
       throw new Error(`${bundle.id} の定義が不正です。`);
@@ -1921,6 +1954,12 @@
       serialized.match_target = "basic_form";
     }
 
+    if (entry.match_options?.kana_insensitive === true) {
+      serialized.match_options = {
+        kana_insensitive: true
+      };
+    }
+
     if (entry.conditions && (
       entry.conditions.prev ||
       entry.conditions.current ||
@@ -1988,6 +2027,7 @@
     state.runtimeSettings = extractRuntimeSettings(payload);
     state.disabledSites = extractDisabledSites(payload);
     state.popupBundleId = extractPopupBundleId(payload);
+    ensureRuntimeSpecialRoots(state.roots);
     ensurePopupBundleRoot(state.roots);
   };
 
@@ -1998,14 +2038,20 @@
     await storageSet({
       [STORAGE_KEY]: payload
     });
-    await notifyRuntimeSettingsApplied();
-    setStatus("設定を保存しました。現在のタブへ即時反映しました。", "success");
+    try {
+      await notifyRuntimeSettingsApplied();
+      setStatus("設定を保存しました。現在のタブへ反映しました。", "success");
+    } catch (error) {
+      console.warn("runtime notify failed after save", error);
+      setStatus(`設定は保存しました。runtime 通知は失敗しました: ${error.message}`, "warning");
+    }
   };
 
   const applyDefaultState = () => {
     state.roots = cloneValue(state.baseRoots);
     state.runtimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
     state.disabledSites = { ...DEFAULT_DISABLED_SITES };
+    ensureRuntimeSpecialRoots(state.roots);
     ensurePopupBundleRoot(state.roots);
   };
 
@@ -2397,7 +2443,8 @@
     max = 32,
     className = "cell-input",
     placeholder = "",
-    title = ""
+    title = "",
+    autosize = true
   } = {}) => {
     const input = document.createElement("input");
     input.type = type;
@@ -2405,9 +2452,13 @@
     input.value = value;
     input.placeholder = uiText(placeholder);
     input.title = uiText(title || `${value ?? ""}`);
-    autosizeInput(input, min, max);
-    input.addEventListener("input", () => {
+    if (autosize) {
       autosizeInput(input, min, max);
+    }
+    input.addEventListener("input", () => {
+      if (autosize) {
+        autosizeInput(input, min, max);
+      }
       input.title = uiText(input.value);
     });
     return input;
@@ -2888,6 +2939,7 @@
     const tableWrap = document.createElement("div");
     tableWrap.className = "scroll-area";
     const table = document.createElement("table");
+    table.className = "entry-table";
     const thead = document.createElement("thead");
     thead.innerHTML = `
       <tr>
@@ -4065,15 +4117,16 @@
     appendHeaderCell(createSortHeaderButton(node.id, "enabled", "有効"), "check-col");
     appendHeaderCell(createSortHeaderButton(node.id, "regex", "正規"), "check-col");
     appendHeaderCell(createSortHeaderButton(node.id, "basic_match", "原形一致"), "check-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "from", "変更前"));
-    appendHeaderCell(createSortHeaderButton(node.id, "to", "変更後"));
-    appendHeaderCell(createSortHeaderButton(node.id, "priority", "優先"));
-    appendHeaderCell(createSortHeaderButton(node.id, "current.surface", "現.surface"));
-    appendHeaderCell(createSortHeaderButton(node.id, "current.basic", "現.basic"));
-    appendHeaderCell(createSortHeaderButton(node.id, "current.pos", "現.pos"));
-    appendHeaderCell(createSortHeaderButton(node.id, "current.pos1", "現.pos1"));
-    appendHeaderCell(createSortHeaderButton(node.id, "current.cform", "現.cform"));
-    appendHeaderCell(createSortHeaderButton(node.id, "current.ctype", "現.ctype"));
+    appendHeaderCell("かな", "check-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "from", "変更前"), "text-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "to", "変更後"), "text-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "priority", "優先"), "priority-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.surface", "現.surface"), "condition-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.basic", "現.basic"), "condition-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.pos", "現.pos"), "condition-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.pos1", "現.pos1"), "condition-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.cform", "現.cform"), "condition-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.ctype", "現.ctype"), "condition-col");
     appendHeaderCell("操作");
     thead.appendChild(headerRow);
 
@@ -4164,9 +4217,30 @@
         ? "変更前を辞書形 basic_form に対して一致させる"
         : "dictionary-rules では使用しません";
 
+      const kanaCell = createBooleanCell(entry.match_options?.kana_insensitive === true, () => {
+        entry.match_options = {
+          ...(entry.match_options ?? {}),
+          kana_insensitive: kanaCell.checkbox.checked
+        };
+        if (!kanaCell.checkbox.checked) {
+          delete entry.match_options.kana_insensitive;
+          if (Object.keys(entry.match_options).length === 0) {
+            entry.match_options = null;
+          }
+        }
+        renderDiagnostics();
+      });
+      kanaCell.checkbox.disabled = entry.regex === true;
+      kanaCell.checkbox.title = entry.regex === true
+        ? "regex ではかな同一視を使いません"
+        : "平仮名とカタカナを双方向に同一視します";
+
       const createTextCell = (value, options, onInput, sortKey = null) => {
         const td = document.createElement("td");
-        const input = createCompactInput(value, options);
+        if (options?.cellClassName) {
+          td.className = options.cellClassName;
+        }
+        const input = createCompactInput(value, { ...options, autosize: false });
         input.addEventListener("focus", () => beginEditSession({ nodeId: node.id, entryId: entry.id, sortKey }));
         input.addEventListener("compositionstart", () => beginEditSession({ nodeId: node.id, entryId: entry.id, sortKey, composing: true }));
         input.addEventListener("compositionend", () => {
@@ -4188,13 +4262,13 @@
         return td;
       };
 
-      const fromTd = createTextCell(entry.from, { min: 2, max: 24 }, (value) => {
+      const fromTd = createTextCell(entry.from, { min: 2, max: 24, cellClassName: "text-col" }, (value) => {
         entry.from = value;
         entry.from_options = normalizeFromOptions(value);
         row.dataset.searchValue = composeEntrySearchValue(entry);
       }, "from");
 
-      const toTd = createTextCell(entry.to, { min: 2, max: 24 }, (value) => {
+      const toTd = createTextCell(entry.to, { min: 2, max: 24, cellClassName: "text-col" }, (value) => {
         entry.to = value;
         row.dataset.searchValue = composeEntrySearchValue(entry);
       }, "to");
@@ -4203,14 +4277,15 @@
         type: "number",
         min: 3,
         max: 6,
-        className: "cell-input compact"
+        className: "cell-input compact",
+        cellClassName: "priority-col"
       }, (value) => {
         entry.priority = Number(value) || 0;
       }, "priority");
 
       const currentFieldCell = (field, label) => createTextCell(
         getEntryConditionInlineValue(entry, "current", field),
-        { min: 6, max: 20, placeholder: label, title: label },
+        { min: 6, max: 20, placeholder: label, title: label, cellClassName: "condition-col" },
         (value) => {
           setEntryConditionInlineValue(entry, "current", field, value);
           row.dataset.searchValue = composeEntrySearchValue(entry);
@@ -4241,6 +4316,7 @@
         enabledCell.td,
         regexCell.td,
         basicCell.td,
+        kanaCell.td,
         fromTd,
         toTd,
         priorityTd,
@@ -4257,7 +4333,7 @@
       if (effectiveKind === "token-rules" && entry.metaOpen) {
         const detailRow = document.createElement("tr");
         const detailCell = document.createElement("td");
-        detailCell.colSpan = 15;
+        detailCell.colSpan = 16;
 
         const detailWrap = document.createElement("div");
         detailWrap.className = "panel-block";
@@ -4974,24 +5050,28 @@
 
   const renderTabState = () => {
     const bundlesActive = state.activeTab === "bundles";
+    const katakanaLongVowelActive = state.activeTab === "katakana-long-vowel";
     const stage4Active = state.activeTab === "stage4";
     const diagnosticsActive = state.activeTab === "diagnostics";
     const tokenizerActive = state.activeTab === "tokenizer";
     const hotkeysActive = state.activeTab === "hotkeys";
     const sitesActive = state.activeTab === "sites";
     panelBundles.hidden = !bundlesActive;
+    panelKatakanaLongVowel.hidden = !katakanaLongVowelActive;
     panelStage4.hidden = !stage4Active;
     panelDiagnostics.hidden = !diagnosticsActive;
     panelTokenizer.hidden = !tokenizerActive;
     panelHotkeys.hidden = !hotkeysActive;
     panelSites.hidden = !sitesActive;
     tabBundlesButton.setAttribute("aria-selected", bundlesActive ? "true" : "false");
+    tabKatakanaLongVowelButton.setAttribute("aria-selected", katakanaLongVowelActive ? "true" : "false");
     tabStage4Button.setAttribute("aria-selected", stage4Active ? "true" : "false");
     tabDiagnosticsButton.setAttribute("aria-selected", diagnosticsActive ? "true" : "false");
     tabTokenizerButton.setAttribute("aria-selected", tokenizerActive ? "true" : "false");
     tabHotkeysButton.setAttribute("aria-selected", hotkeysActive ? "true" : "false");
     tabSitesButton.setAttribute("aria-selected", sitesActive ? "true" : "false");
     tabBundlesButton.className = bundlesActive ? "tab-button secondary" : "tab-button ghost";
+    tabKatakanaLongVowelButton.className = katakanaLongVowelActive ? "tab-button secondary" : "tab-button ghost";
     tabStage4Button.className = stage4Active ? "tab-button secondary" : "tab-button ghost";
     tabDiagnosticsButton.className = diagnosticsActive ? "tab-button secondary" : "tab-button ghost";
     tabTokenizerButton.className = tokenizerActive ? "tab-button secondary" : "tab-button ghost";
@@ -5276,6 +5356,114 @@
 
   };
 
+  const renderKatakanaLongVowelPanel = () => {
+    if (!katakanaLongVowelRoot) {
+      return;
+    }
+
+    katakanaLongVowelRoot.textContent = "";
+    const root = getKatakanaLongVowelRoot();
+    const card = document.createElement("section");
+    card.className = "diagnostics-card";
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h2");
+    title.textContent = "カタカナ長音省略";
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+
+    if (root) {
+      const enabledLabel = document.createElement("label");
+      enabledLabel.className = "toggle";
+      const enabledCheckbox = document.createElement("input");
+      enabledCheckbox.type = "checkbox";
+      enabledCheckbox.checked = root.enabled !== false;
+      enabledCheckbox.addEventListener("change", () => {
+        root.enabled = enabledCheckbox.checked;
+        renderKatakanaLongVowelPanel();
+        renderDiagnostics();
+      });
+      enabledLabel.append(enabledCheckbox, document.createTextNode(t("options.fieldEnabled")));
+      actions.appendChild(enabledLabel);
+    }
+
+    head.append(title, actions);
+
+    const body = document.createElement("div");
+    body.className = "bundle-body";
+    const summary = document.createElement("p");
+    summary.className = "diag-summary";
+    summary.textContent = root
+      ? "カタカナ語末尾の長音「ー」を省略します。除外語は変換しません。"
+      : "カタカナ長音省略 bundle が見つかりません。";
+    body.appendChild(summary);
+
+    if (root) {
+      const listWrap = document.createElement("div");
+      listWrap.className = "simple-list";
+      const entries = Array.isArray(root.entries) ? root.entries : [];
+      if (entries.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "diag-summary";
+        empty.textContent = "除外語はありません。";
+        listWrap.appendChild(empty);
+      }
+
+      entries.forEach((entry, index) => {
+        const row = document.createElement("div");
+        row.className = "simple-row";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "domain-input";
+        input.value = entry.from ?? "";
+        input.placeholder = "バッター";
+        input.addEventListener("change", () => {
+          const value = input.value.trim();
+          entry.from = value;
+          entry.to = value;
+          entry.from_options = normalizeFromOptions(value);
+          renderDiagnostics();
+        });
+        row.appendChild(input);
+        row.appendChild(createButton(t("options.buttonDelete"), "danger", () => {
+          root.entries.splice(index, 1);
+          renderKatakanaLongVowelPanel();
+          renderDiagnostics();
+        }));
+        listWrap.appendChild(row);
+      });
+
+      const addRow = document.createElement("div");
+      addRow.className = "simple-row";
+      const addInput = document.createElement("input");
+      addInput.type = "text";
+      addInput.className = "domain-input";
+      addInput.placeholder = "バッター";
+      addRow.appendChild(addInput);
+      addRow.appendChild(createButton(t("options.buttonAdd"), "secondary", () => {
+        const value = addInput.value.trim();
+        if (!value) {
+          return;
+        }
+        root.entries.push(normalizeEntryFromObject({
+          from: value,
+          to: value,
+          enabled: true,
+          regex: false,
+          priority: 100
+        }));
+        renderKatakanaLongVowelPanel();
+        renderDiagnostics();
+      }));
+      listWrap.appendChild(addRow);
+      body.appendChild(listWrap);
+    }
+
+    card.append(head, body);
+    katakanaLongVowelRoot.appendChild(card);
+  };
+
   const renderStage4Panel = () => {
     if (!stage4Root) {
       return;
@@ -5448,6 +5636,7 @@
   const renderApp = () => {
     renderRuntimeSettings();
     renderBundles();
+    renderKatakanaLongVowelPanel();
     renderStage4Panel();
     renderDiagnostics();
     renderHotkeys();
@@ -5483,6 +5672,7 @@
     state.runtimeSettings = extractRuntimeSettings(parsed);
     state.disabledSites = extractDisabledSites(parsed);
     state.popupBundleId = extractPopupBundleId(parsed);
+    ensureRuntimeSpecialRoots(state.roots);
     ensurePopupBundleRoot(state.roots);
     renderApp();
     setStatus(`${fileName} を読み込みました。`, "success");
@@ -5521,6 +5711,7 @@
     state.runtimeSettings = extractRuntimeSettings(storedPayload);
     state.disabledSites = extractDisabledSites(storedPayload);
     state.popupBundleId = extractPopupBundleId(storedPayload);
+    ensureRuntimeSpecialRoots(state.roots);
     ensurePopupBundleRoot(state.roots);
     state.commands = await getAllCommands();
     state.dismissedDiagnostics = storedDiagnosticUiState?.dismissedDiagnostics && typeof storedDiagnosticUiState.dismissedDiagnostics === "object"
@@ -5540,6 +5731,11 @@
 
   tabBundlesButton.addEventListener("click", () => {
     state.activeTab = "bundles";
+    renderTabState();
+  });
+
+  tabKatakanaLongVowelButton.addEventListener("click", () => {
+    state.activeTab = "katakana-long-vowel";
     renderTabState();
   });
 
@@ -5567,7 +5763,6 @@
   saveAllButton.addEventListener("click", async () => {
     try {
       await saveAllAndNotify();
-      setStatus("設定を保存しました。現在のタブへ即時反映しました。", "success");
     } catch (error) {
       console.error(error);
       setStatus(`保存に失敗しました: ${error.message}`, "error");

@@ -77,15 +77,27 @@
     "VAR",
     "WBR"
   ]);
+  const DECORATION_BOUNDARY_TAGS = new Set([
+    "A",
+    "B",
+    "EM",
+    "I",
+    "MARK",
+    "S",
+    "SPAN",
+    "STRONG",
+    "SUB",
+    "SUP",
+    "U"
+  ]);
 
   const originalTextByRunAnchor = new WeakMap();
   const processedTextByRunAnchor = new WeakMap();
-  const pendingTextRuns = new Map();
+  const processedRevisionByRunAnchor = new WeakMap();
   const pendingRootQueue = new Map();
   const composingEditableHosts = new WeakSet();
   const json5ResourcePromiseCache = new Map();
 
-  let flushTimer = null;
   let visibleFlushHandle = null;
   let visibleFlushHandleType = null;
   let backgroundFlushHandle = null;
@@ -106,6 +118,7 @@
   let cachedOrderedRuleResourcesPromise = null;
   let tokenizerPromise = null;
   let tokenizerWarmupRevision = 0;
+  let runtimeRevision = 0;
 
   if (!TransformEngine) {
     throw new Error("TransformEngine が未読込です。manifest.json の content_scripts の順序を確認してください。");
@@ -967,6 +980,14 @@
       return true;
     }
 
+    if (
+      DECORATION_BOUNDARY_TAGS.has(element.tagName) ||
+      element.hasAttribute("style") ||
+      element.hasAttribute("class")
+    ) {
+      return true;
+    }
+
     if (INLINE_RUN_TAGS.has(element.tagName)) {
       return false;
     }
@@ -1177,7 +1198,7 @@
       return [];
     }
 
-    const roots = [];
+    const roots = new Map();
     let hasDirectText = false;
 
     for (const child of body.childNodes) {
@@ -1200,15 +1221,16 @@
       if (shouldSkipEditableHost(editableHost)) {
         continue;
       }
-
-      roots.push(child);
     }
 
+    for (const root of collectProcessableRoots(body)) {
+      roots.set(root, root);
+    }
     if (hasDirectText) {
-      roots.unshift(body);
+      roots.set(body, body);
     }
 
-    return roots.length > 0 ? roots : [body];
+    return roots.size > 0 ? [...roots.values()] : [body];
   };
 
   const buildTokenizer = () => {
@@ -1455,11 +1477,13 @@
     const current = currentParts.join("");
     if (current === original) {
       processedTextByRunAnchor.delete(runAnchor);
+      processedRevisionByRunAnchor.delete(runAnchor);
       return false;
     }
 
     redistributeTransformedText(textNodes, currentParts, original);
     processedTextByRunAnchor.delete(runAnchor);
+    processedRevisionByRunAnchor.delete(runAnchor);
     return true;
   };
 
@@ -1489,6 +1513,9 @@
 
     const runAnchor = textNodes[0];
     const lastProcessed = processedTextByRunAnchor.get(runAnchor);
+    if (processedRevisionByRunAnchor.get(runAnchor) === runtimeRevision && current === lastProcessed) {
+      return false;
+    }
     const storedOriginal = originalTextByRunAnchor.get(runAnchor);
     const sourceText = lastProcessed !== undefined && current === lastProcessed && typeof storedOriginal === "string"
       ? storedOriginal
@@ -1497,6 +1524,7 @@
 
     const transformed = transformTextWithStages(sourceText);
     processedTextByRunAnchor.set(runAnchor, transformed);
+    processedRevisionByRunAnchor.set(runAnchor, runtimeRevision);
 
     if (transformed === current) {
       return false;
@@ -1518,13 +1546,19 @@
 
   const hasAnyActiveRules = () => {
     return activeTransformStages.some((stage) => {
-      return Array.isArray(stage.rules) && stage.rules.length > 0;
+      return (Array.isArray(stage.rules) && stage.rules.length > 0) ||
+        (typeof stage.runtime_mode === "string" && stage.runtime_mode.trim() !== "");
     });
   };
 
   const runtimeRequiresTokenizer = () => {
     return activeTransformStages.some((stage) => {
-      return stage.kind === "token-rules" && Array.isArray(stage.rules) && stage.rules.length > 0;
+      return stage.kind === "token-rules" &&
+        stage.runtime_mode !== "katakana-long-vowel-abbreviation" &&
+        (
+          (Array.isArray(stage.rules) && stage.rules.length > 0) ||
+          (typeof stage.runtime_mode === "string" && stage.runtime_mode.trim() !== "")
+        );
     });
   };
 
@@ -1591,7 +1625,20 @@
     return false;
   };
 
-  const processTextRoot = (root) => {
+  const hasDirectProcessableText = (root) => {
+    if (!root || !root.childNodes) {
+      return false;
+    }
+    for (const child of root.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE && !isSkippableTextNode(child)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const processTextRoot = (root, options = {}) => {
+    const restoreFirst = options.restoreFirst === true;
     let changedCount = 0;
     const processedNodes = new Set();
 
@@ -1607,6 +1654,10 @@
         continue;
       }
 
+      if (restoreFirst) {
+        restoreTextRun(textRun);
+      }
+
       if (processTextRun(textRun)) {
         changedCount++;
       }
@@ -1617,22 +1668,6 @@
     }
 
     return changedCount;
-  };
-
-  const reapplyDocumentImmediately = (root = document.body) => {
-    if (!root) {
-      return 0;
-    }
-
-    pendingRootQueue.clear();
-    cancelRootFlushes();
-    restoreDocumentRuns(root);
-
-    if (!isRuntimeEnabled() || !hasAnyActiveRules()) {
-      return 0;
-    }
-
-    return processTextRoot(root);
   };
 
   const processQueuedRootBatch = ({ includeBackground = false, budgetMs = VISIBLE_FLUSH_BUDGET_MS } = {}) => {
@@ -1658,7 +1693,18 @@
       }
 
       pendingRootQueue.delete(root);
-      changedCount += processTextRoot(root);
+      const subRoots = root?.nodeType === Node.ELEMENT_NODE && !hasDirectProcessableText(root)
+        ? collectProcessableRoots(root)
+        : [];
+      if (subRoots.length > 1) {
+        queueProcessableRoots(subRoots, {
+          priority: entry.priority > 0 ? "background" : "visible",
+          restoreFirst: entry.restoreFirst === true
+        });
+        continue;
+      }
+
+      changedCount += processTextRoot(root, { restoreFirst: entry.restoreFirst === true });
 
       if (performance.now() >= deadline) {
         break;
@@ -1719,7 +1765,7 @@
   }
 
   const queueProcessableRoots = (roots, options = {}) => {
-    const { immediate = false, priority = "auto" } = options;
+    const { immediate = false, priority = "auto", restoreFirst = false } = options;
 
     if (!isRuntimeEnabled()) {
       return;
@@ -1739,7 +1785,9 @@
             : 1;
       const existing = pendingRootQueue.get(root);
       if (!existing || nextPriority < existing.priority) {
-        pendingRootQueue.set(root, { priority: nextPriority });
+        pendingRootQueue.set(root, { priority: nextPriority, restoreFirst: restoreFirst === true });
+      } else if (restoreFirst === true) {
+        existing.restoreFirst = true;
       }
     }
 
@@ -1754,96 +1802,6 @@
     } else if (hasPendingRoots()) {
       scheduleBackgroundRootFlush();
     }
-  };
-
-  const flushPendingTextRuns = () => {
-    flushTimer = null;
-
-    if (!isRuntimeEnabled()) {
-      pendingTextRuns.clear();
-      return;
-    }
-
-    const hasAnyRules = activeTransformStages.some((stage) => {
-      return Array.isArray(stage.rules) && stage.rules.length > 0;
-    });
-    const requiresTokenizer = activeTransformStages.some((stage) => {
-      return stage.kind === "token-rules" && Array.isArray(stage.rules) && stage.rules.length > 0;
-    });
-
-    if ((!activeTokenizer && requiresTokenizer) || !hasAnyRules || pendingTextRuns.size === 0) {
-      pendingTextRuns.clear();
-      return;
-    }
-
-    let changedCount = 0;
-    const processedNodes = new Set();
-
-    for (const [runKey, queuedRun] of pendingTextRuns) {
-      pendingTextRuns.delete(runKey);
-
-      try {
-        const textRun = queuedRun.filter((node) => {
-          return node?.isConnected && !isSkippableTextNode(node);
-        });
-        if (textRun.length === 0) {
-          continue;
-        }
-
-        if (textRun.some((node) => processedNodes.has(node))) {
-          continue;
-        }
-
-        if (processTextRun(textRun)) {
-          changedCount++;
-        }
-
-        for (const node of textRun) {
-          processedNodes.add(node);
-        }
-      } catch (error) {
-        console.error("省略変換器: 変換失敗", error, {
-          runKey: describeNodeSafely(runKey),
-          textRun: queuedRun.map((node) => describeNodeSafely(node))
-        });
-      }
-    }
-
-    if (changedCount > 0) {
-      log("更新 textRun 数", changedCount);
-    }
-  };
-
-  const queueTextRuns = (runs, options = {}) => {
-    const { immediate = false } = options;
-
-    if (!isRuntimeEnabled()) {
-      return;
-    }
-
-    for (const run of runs) {
-      if (!Array.isArray(run) || run.length === 0) {
-        continue;
-      }
-
-      pendingTextRuns.set(run[0], run);
-    }
-
-    if (immediate) {
-      if (flushTimer !== null) {
-        window.clearTimeout(flushTimer);
-        flushTimer = null;
-      }
-
-      flushPendingTextRuns();
-      return;
-    }
-
-    if (flushTimer !== null) {
-      return;
-    }
-
-    flushTimer = window.setTimeout(flushPendingTextRuns, 0);
   };
 
   const queueEditableHostRuns = (host, options = {}) => {
@@ -2019,8 +1977,10 @@
         activeTokenizer = tokenizer;
         publishRuntimeDebugSnapshot(getDebugTargetsFromDocument());
         if (isRuntimeEnabled()) {
-          reapplyDocumentImmediately(document.body);
-          queueProcessableRoots(collectDocumentProcessingRoots(), { priority: "visible" });
+          runtimeRevision += 1;
+          pendingRootQueue.clear();
+          cancelRootFlushes();
+          queueProcessableRoots(collectDocumentProcessingRoots(), { priority: "visible", restoreFirst: true });
         }
       }).catch((error) => {
         if (tokenizerRevision !== tokenizerWarmupRevision) {
@@ -2044,8 +2004,9 @@
     }
 
     pendingRootQueue.clear();
-    reapplyDocumentImmediately(document.body);
-    queueProcessableRoots(collectDocumentProcessingRoots());
+    cancelRootFlushes();
+    runtimeRevision += 1;
+    queueProcessableRoots(collectDocumentProcessingRoots(), { restoreFirst: true });
   };
 
   const handleRuntimeMessage = (message, sendResponse) => {
@@ -2069,6 +2030,7 @@
     }
 
     if (message.type === MESSAGE_TYPES.APPLY_SETTINGS_UPDATE) {
+      sendResponse({ ok: true });
       refreshRuntimeState({ reapply: true }).catch((error) => {
         console.error("runtime refresh failed", error);
       });
@@ -2118,7 +2080,7 @@
     observeDebugTargetChanges();
     const initialRoots = collectDocumentProcessingRoots();
     log("対象 root 数", initialRoots.length);
-    reapplyDocumentImmediately(document.body);
+    runtimeRevision += 1;
     queueProcessableRoots(initialRoots);
     observeDynamicContent();
   };

@@ -197,6 +197,18 @@
   const splitReplacementCandidates = (value) => splitCommaSeparatedValues(value);
   const splitMatchCandidates = (value) => splitCommaSeparatedValues(value);
 
+  const katakanaToHiragana = (value) => {
+    return Array.from(`${value ?? ""}`).map((char) => {
+      const codePoint = char.codePointAt(0);
+      if (codePoint >= 0x30a1 && codePoint <= 0x30f6) {
+        return String.fromCodePoint(codePoint - 0x60);
+      }
+      return char;
+    }).join("");
+  };
+
+  const normalizeKanaForMatch = (value) => katakanaToHiragana(value);
+
   const decodeEscapedLiteral = (value) => {
     const source = tokenizeEscapes(`${value ?? ""}`);
     let output = "";
@@ -253,30 +265,51 @@
       regexSource += "$";
     }
 
+    const flags = options.flags ?? "u";
     return {
       pattern: `${pattern ?? ""}`,
       captureCount,
-      regex: new RegExp(regexSource, options.flags ?? "u")
+      regex: new RegExp(regexSource, flags)
     };
   };
 
-  const matchWildcardPattern = (value, pattern) => {
+  const matchWildcardPattern = (value, pattern, options = {}) => {
+    const sourceValue = `${value ?? ""}`;
+    const sourcePattern = `${pattern ?? ""}`;
+    const normalizedValue = options.kanaInsensitive
+      ? normalizeKanaForMatch(sourceValue)
+      : sourceValue;
+    const normalizedPattern = options.kanaInsensitive
+      ? normalizeKanaForMatch(sourcePattern)
+      : sourcePattern;
+
     if (!hasWildcard(pattern)) {
-      const literalPattern = decodeEscapedLiteral(pattern);
-      return value === literalPattern
+      const literalPattern = decodeEscapedLiteral(normalizedPattern);
+      return normalizedValue === literalPattern
         ? { matched: true, captures: [], pattern: literalPattern }
         : null;
     }
 
-    const compiled = compileWildcardPattern(pattern);
-    const match = `${value ?? ""}`.match(compiled.regex);
+    const compiled = compileWildcardPattern(normalizedPattern, {
+      flags: options.preserveCaptures ? "du" : "u"
+    });
+    const match = normalizedValue.match(compiled.regex);
     if (!match) {
       return null;
     }
 
+    const captures = options.preserveCaptures && match.indices
+      ? match.indices.slice(1).map((range) => {
+        if (!range) {
+          return "";
+        }
+        return sourceValue.slice(range[0], range[1]);
+      })
+      : match.slice(1);
+
     return {
       matched: true,
-      captures: match.slice(1),
+      captures,
       pattern
     };
   };
@@ -304,21 +337,57 @@
     return output;
   };
 
-  const replaceWildcardPattern = (text, pattern, replacement) => {
+  const replaceWildcardPattern = (text, pattern, replacement, options = {}) => {
     const sourceText = `${text ?? ""}`;
     const sourcePattern = `${pattern ?? ""}`;
+    const normalizedText = options.kanaInsensitive
+      ? normalizeKanaForMatch(sourceText)
+      : sourceText;
+    const normalizedPattern = options.kanaInsensitive
+      ? normalizeKanaForMatch(sourcePattern)
+      : sourcePattern;
+
     if (!hasWildcard(sourcePattern)) {
       const literalReplacement = applyWildcardReplacement(replacement, []);
-      return sourceText
-        .split(decodeEscapedLiteral(sourcePattern))
-        .join(literalReplacement);
+      const literalPattern = decodeEscapedLiteral(normalizedPattern);
+      if (!options.kanaInsensitive) {
+        return sourceText.split(literalPattern).join(literalReplacement);
+      }
+
+      let output = "";
+      let cursor = 0;
+      let matchIndex = normalizedText.indexOf(literalPattern);
+      while (matchIndex >= 0) {
+        output += sourceText.slice(cursor, matchIndex);
+        output += literalReplacement;
+        cursor = matchIndex + literalPattern.length;
+        matchIndex = normalizedText.indexOf(literalPattern, cursor);
+      }
+      return output + sourceText.slice(cursor);
     }
 
-    const compiled = compileWildcardPattern(sourcePattern, { anchored: false, flags: "gu" });
-    return sourceText.replace(compiled.regex, (...args) => {
-      const captures = args.slice(1, 1 + compiled.captureCount);
-      return applyWildcardReplacement(replacement, captures);
-    });
+    const compiled = compileWildcardPattern(normalizedPattern, { anchored: false, flags: "gdu" });
+    let output = "";
+    let cursor = 0;
+    for (const match of normalizedText.matchAll(compiled.regex)) {
+      const range = match.indices?.[0];
+      if (!range || range[0] < cursor) {
+        continue;
+      }
+      const captures = match.indices.slice(1, 1 + compiled.captureCount).map((captureRange) => {
+        if (!captureRange) {
+          return "";
+        }
+        return sourceText.slice(captureRange[0], captureRange[1]);
+      });
+      output += sourceText.slice(cursor, range[0]);
+      output += applyWildcardReplacement(replacement, captures);
+      cursor = range[1];
+      if (range[0] === range[1]) {
+        cursor += 1;
+      }
+    }
+    return output + sourceText.slice(cursor);
   };
 
   const normalizePhraseRuleRecord = (from, rawRule) => {
@@ -444,6 +513,9 @@
         priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
         enabled: entry.enabled !== false,
         match_target: entry.match_target ?? entry.matchTarget ?? null,
+        match_options: entry.match_options && typeof entry.match_options === "object"
+          ? { ...entry.match_options }
+          : null,
         conditions: entry.conditions ?? null,
         sequence: Array.isArray(entry.sequence) ? entry.sequence.map(mapConditionFields) : (entry.sequence ?? null),
         character_map: entry.character_map ?? null
@@ -633,6 +705,16 @@
     return segments;
   };
 
+  const isKatakanaOnlyText = (value) => {
+    const characters = Array.from(`${value ?? ""}`);
+    return characters.length > 0 && characters.every((char) => isKatakanaChar(char) || char === "ー");
+  };
+
+  const hasTrailingKatakanaLongVowel = (value) => {
+    const text = `${value ?? ""}`;
+    return text.endsWith("ー") && isKatakanaOnlyText(text);
+  };
+
   const isVerbToken = (token) => {
     return token?.pos === "動詞";
   };
@@ -752,6 +834,8 @@
     splitDelimitedRow,
     splitMatchCandidates,
     splitReplacementCandidates,
+    katakanaToHiragana,
+    normalizeKanaForMatch,
     hasWildcard,
     compileWildcardPattern,
     matchWildcardPattern,
@@ -768,6 +852,8 @@
     splitTrailingKana,
     hasKanjiWithTrailingKana,
     splitKanjiKanaSegments,
+    isKatakanaOnlyText,
+    hasTrailingKatakanaLongVowel,
     isVerbToken,
     isSahenVerbToken,
     isIchidanVerbToken,

@@ -34,6 +34,7 @@
   const DEFAULT_DISABLED_SITES = Object.freeze({
     domains: []
   });
+  const TransformShared = globalThis.TransformShared;
   const TransformEngine = globalThis.TransformEngine;
   const SKIP_TAGS = new Set([
     "SCRIPT",
@@ -125,6 +126,7 @@
   let tokenizerWarmupRevision = 0;
   let runtimeRevision = 0;
   let transformWorker = null;
+  let transformWorkerBlobUrl = null;
   let transformWorkerReady = false;
   let transformWorkerFailed = false;
   let transformWorkerConfigurePromise = null;
@@ -140,6 +142,10 @@
     failedBatches: 0,
     lastError: null
   };
+
+  if (!TransformShared) {
+    throw new Error("TransformShared が未読込です。manifest.json の content_scripts の順序を確認してください。");
+  }
 
   if (!TransformEngine) {
     throw new Error("TransformEngine が未読込です。manifest.json の content_scripts の順序を確認してください。");
@@ -272,6 +278,30 @@
     return matches;
   };
 
+  const collectActiveRegexRuntimeRules = () => {
+    const matches = [];
+    for (const stage of activeTransformStages) {
+      const stageRules = Array.isArray(stage?.rules) ? stage.rules : [];
+      for (const rule of stageRules) {
+        if (rule?.regex !== true) {
+          continue;
+        }
+        const clonedRule = cloneDebugValue(rule);
+        if (clonedRule && typeof clonedRule === "object") {
+          delete clonedRule.raw;
+        }
+        matches.push({
+          stageId: stage.id,
+          stageLabel: stage.label,
+          stageKind: stage.kind,
+          stageOrder: stage.order ?? 0,
+          rule: clonedRule
+        });
+      }
+    }
+    return matches;
+  };
+
   const buildRuntimeDebugSnapshot = (targets) => {
     const manifestIdSet = new Set(activeManifestBundleIds);
     const loadedBundles = Array.isArray(activeLoadedBundles) ? activeLoadedBundles : [];
@@ -298,6 +328,7 @@
       })),
       worker: cloneDebugValue(workerStats),
       matchingRules: collectMatchingRuntimeRules(targets),
+      regexRules: collectActiveRegexRuntimeRules(),
       lastTransformDebug: cloneDebugValue(lastTransformDebug)
     };
   };
@@ -510,7 +541,7 @@
   const chooseReplacement = (rule, matchedText) => {
     const candidates = Array.isArray(rule.candidates) && rule.candidates.length > 0
       ? rule.candidates
-      : splitReplacementCandidates(rule.to);
+      : TransformShared.normalizeReplacementCandidates(rule.to, rule?.regex === true, rule.to);
 
     if (!candidates.length) {
       return rule.to;
@@ -875,7 +906,22 @@
       if (rule.regex === true) {
         try {
           const regex = new RegExp(rule.from, "gu");
-          result = result.replace(regex, (matchedText) => chooseReplacement(rule, matchedText));
+          result = result.replace(regex, (...args) => {
+            const matchedText = args[0];
+            const hasGroups = args.length > 0 && args[args.length - 1] && typeof args[args.length - 1] === "object";
+            const groups = hasGroups ? args[args.length - 1] : null;
+            const sourceText = hasGroups ? args[args.length - 2] : args[args.length - 1];
+            const offset = hasGroups ? args[args.length - 3] : args[args.length - 2];
+            const captures = args.slice(1, hasGroups ? -3 : -2);
+            return TransformShared.expandRegexReplacementTemplate(
+              chooseReplacement(rule, matchedText),
+              matchedText,
+              captures,
+              groups,
+              sourceText,
+              offset
+            );
+          });
         } catch (error) {
           log("regex 置換失敗", { rule, error: error.message });
         }
@@ -1448,6 +1494,53 @@
     transformWorkerConfigurePromise = null;
   };
 
+  const revokeTransformWorkerBlobUrl = () => {
+    if (!transformWorkerBlobUrl) {
+      return;
+    }
+    try {
+      globalThis.URL?.revokeObjectURL?.(transformWorkerBlobUrl);
+    } catch (error) {
+      // Best effort cleanup only.
+    }
+    transformWorkerBlobUrl = null;
+  };
+
+  const attachTransformWorkerHandlers = (worker) => {
+    worker.onmessage = handleTransformWorkerMessage;
+    worker.onerror = (event) => {
+      markTransformWorkerFailed(new Error(event?.message ?? "transform worker error"));
+    };
+    worker.onmessageerror = () => {
+      markTransformWorkerFailed(new Error("transform worker message error"));
+    };
+  };
+
+  const createBlobBootstrappedWorker = () => {
+    if (typeof Blob !== "function" || !globalThis.URL?.createObjectURL) {
+      throw new Error("Blob worker bootstrap is not available.");
+    }
+    const extensionBaseUrl = chrome.runtime.getURL("");
+    const workerScriptUrl = chrome.runtime.getURL(TRANSFORM_WORKER_PATH);
+    const bootstrapSource = [
+      `self.__jpnTransformExtensionBase = ${JSON.stringify(extensionBaseUrl)};`,
+      `importScripts(${JSON.stringify(workerScriptUrl)});`
+    ].join("\n");
+    const blobUrl = globalThis.URL.createObjectURL(new Blob([bootstrapSource], { type: "application/javascript" }));
+    try {
+      const worker = new Worker(blobUrl);
+      transformWorkerBlobUrl = blobUrl;
+      return worker;
+    } catch (error) {
+      try {
+        globalThis.URL.revokeObjectURL(blobUrl);
+      } catch (revokeError) {
+        // Best effort cleanup only.
+      }
+      throw error;
+    }
+  };
+
   const markTransformWorkerFailed = (error) => {
     const message = error?.message ?? `${error ?? "unknown worker error"}`;
     transformWorkerFailed = true;
@@ -1464,6 +1557,7 @@
       }
     }
     transformWorker = null;
+    revokeTransformWorkerBlobUrl();
     workerBatchQueue = [];
     if (workerBatchFlushHandle !== null) {
       window.clearTimeout(workerBatchFlushHandle);
@@ -1581,14 +1675,12 @@
     }
 
     try {
-      transformWorker = new Worker(chrome.runtime.getURL(TRANSFORM_WORKER_PATH));
-      transformWorker.onmessage = handleTransformWorkerMessage;
-      transformWorker.onerror = (event) => {
-        markTransformWorkerFailed(new Error(event?.message ?? "transform worker error"));
-      };
-      transformWorker.onmessageerror = () => {
-        markTransformWorkerFailed(new Error("transform worker message error"));
-      };
+      try {
+        transformWorker = new Worker(chrome.runtime.getURL(TRANSFORM_WORKER_PATH));
+      } catch (directError) {
+        transformWorker = createBlobBootstrappedWorker();
+      }
+      attachTransformWorkerHandlers(transformWorker);
       return true;
     } catch (error) {
       markTransformWorkerFailed(error);

@@ -2,11 +2,18 @@
 (() => {
   "use strict";
 
+  const resolveWorkerResource = (path) => {
+    const baseUrl = typeof self.__jpnTransformExtensionBase === "string"
+      ? self.__jpnTransformExtensionBase
+      : "";
+    return baseUrl ? new URL(path, baseUrl).href : path;
+  };
+
   try {
     importScripts(
-      "lib/kuromoji.js",
-      "transform-shared.js",
-      "transform-engine.js"
+      resolveWorkerResource("lib/kuromoji.js"),
+      resolveWorkerResource("transform-shared.js"),
+      resolveWorkerResource("transform-engine.js")
     );
   } catch (error) {
     self.postMessage({

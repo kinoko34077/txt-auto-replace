@@ -414,6 +414,32 @@
                     runtimeCard.appendChild(matchList);
                 }
 
+                const regexRules = Array.isArray(runtimeSnapshot.regexRules) ? runtimeSnapshot.regexRules : [];
+                const regexTitle = document.createElement("h4");
+                regexTitle.textContent = `Active regex rules (${regexRules.length})`;
+                runtimeCard.appendChild(regexTitle);
+                if (regexRules.length === 0) {
+                    const empty = document.createElement("p");
+                    empty.className = "note";
+                    empty.textContent = "regex rule はありません。";
+                    runtimeCard.appendChild(empty);
+                } else {
+                    const regexList = document.createElement("div");
+                    regexList.className = "debug-list";
+                    regexRules.forEach((match) => {
+                        const item = document.createElement("div");
+                        item.className = "debug-item";
+                        const title = document.createElement("h4");
+                        title.textContent = `${match.rule?.from ?? ""} -> ${match.rule?.to ?? ""}`;
+                        const summary = document.createElement("p");
+                        summary.className = "note";
+                        summary.textContent = `${match.stageId} / ${match.stageKind} / order=${match.stageOrder ?? 0}`;
+                        item.append(title, summary, createJsonDetails("rule object", match.rule));
+                        regexList.appendChild(item);
+                    });
+                    runtimeCard.appendChild(regexList);
+                }
+
                 runtimeCard.appendChild(createJsonDetails("runtime snapshot json", runtimeSnapshot));
             }
             debugViewerRoot.appendChild(runtimeCard);

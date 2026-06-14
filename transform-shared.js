@@ -19,6 +19,7 @@
       .replaceAll(`${ESCAPE_SENTINEL}]`, "]")
       .replaceAll(`${ESCAPE_SENTINEL},`, ",")
       .replaceAll(`${ESCAPE_SENTINEL}*`, "\\*")
+      .replaceAll(`${ESCAPE_SENTINEL}-`, "\\-")
       .replaceAll(`${ESCAPE_SENTINEL}\\`, "\\");
   };
 
@@ -32,7 +33,7 @@
       const char = value[index];
       if (char === "\\" && index + 1 < value.length) {
         const next = value[index + 1];
-        if (next === "[" || next === "]" || next === "," || next === "*" || next === "\\") {
+        if (next === "[" || next === "]" || next === "," || next === "*" || next === "-" || next === "\\") {
           output += `${ESCAPE_SENTINEL}${next}`;
           index += 1;
           continue;
@@ -196,6 +197,90 @@
 
   const splitReplacementCandidates = (value) => splitCommaSeparatedValues(value);
   const splitMatchCandidates = (value) => splitCommaSeparatedValues(value);
+
+  const normalizeReplacementCandidates = (value, isRegex = false, fallbackValue = "") => {
+    const fallback = `${fallbackValue ?? value ?? ""}`.trim();
+    if (isRegex) {
+      return fallback ? [fallback] : [];
+    }
+    const candidates = splitReplacementCandidates(value);
+    if (candidates.length > 0) {
+      return candidates;
+    }
+    return fallback ? [fallback] : [];
+  };
+
+  const expandRegexReplacementTemplate = (
+    template,
+    matchedText,
+    captures = [],
+    groups = null,
+    sourceText = "",
+    offset = 0
+  ) => {
+    return `${template ?? ""}`.replace(/\$(\$|&|`|'|<([A-Za-z][A-Za-z0-9_]*)>|[0-9]{1,2})/g, (...args) => {
+      const token = args[0];
+      const marker = args[1];
+      const groupName = args[2];
+      if (marker === "$") {
+        return "$";
+      }
+      if (marker === "&") {
+        return matchedText;
+      }
+      if (marker === "`") {
+        return `${sourceText ?? ""}`.slice(0, offset);
+      }
+      if (marker === "'") {
+        return `${sourceText ?? ""}`.slice(offset + matchedText.length);
+      }
+      if (groupName) {
+        return groups && Object.prototype.hasOwnProperty.call(groups, groupName)
+          ? `${groups[groupName] ?? ""}`
+          : "";
+      }
+      const groupIndex = Number(marker);
+      if (Number.isFinite(groupIndex) && groupIndex > 0 && groupIndex <= captures.length) {
+        return `${captures[groupIndex - 1] ?? ""}`;
+      }
+      if (marker.length === 2) {
+        const firstDigitIndex = Number(marker[0]);
+        if (firstDigitIndex > 0 && firstDigitIndex <= captures.length) {
+          return `${captures[firstDigitIndex - 1] ?? ""}${marker[1]}`;
+        }
+      }
+      return token;
+    });
+  };
+
+  const isNegativeMatchCandidate = (value) => {
+    const text = `${value ?? ""}`;
+    return text.startsWith("-") && !text.startsWith("\\-");
+  };
+
+  const normalizeMatcherCandidateLiteral = (value) => {
+    const text = `${value ?? ""}`;
+    return text.startsWith("\\-") ? text.slice(1) : text;
+  };
+
+  const splitPositiveNegativeCandidates = (value) => {
+    const positive = [];
+    const negative = [];
+    for (const candidate of splitMatchCandidates(value)) {
+      if (isNegativeMatchCandidate(candidate)) {
+        const normalized = normalizeMatcherCandidateLiteral(candidate.slice(1).trim());
+        if (normalized) {
+          negative.push(normalized);
+        }
+      } else {
+        const normalized = normalizeMatcherCandidateLiteral(candidate);
+        if (normalized) {
+          positive.push(normalized);
+        }
+      }
+    }
+    return { positive, negative };
+  };
 
   const katakanaToHiragana = (value) => {
     return Array.from(`${value ?? ""}`).map((char) => {
@@ -391,10 +476,13 @@
   };
 
   const normalizePhraseRuleRecord = (from, rawRule) => {
-    const fromCandidates = splitMatchCandidates(from);
+    const isArrayRegexRule = Array.isArray(rawRule) && rawRule[3] === true;
+    const fromCandidates = isArrayRegexRule
+      ? [`${from ?? ""}`.trim()].filter(Boolean)
+      : splitMatchCandidates(from);
 
     if (typeof rawRule === "string") {
-      const candidates = splitReplacementCandidates(rawRule);
+      const candidates = normalizeReplacementCandidates(rawRule, false, rawRule);
       return {
         from: fromCandidates[0] ?? from,
         from_options: fromCandidates,
@@ -407,7 +495,7 @@
     }
 
     if (Array.isArray(rawRule)) {
-      const candidates = splitReplacementCandidates(rawRule[0]);
+      const candidates = normalizeReplacementCandidates(rawRule[0], isArrayRegexRule, rawRule[0]);
       return {
         from: fromCandidates[0] ?? from,
         from_options: fromCandidates,
@@ -420,8 +508,11 @@
     }
 
     if (rawRule && typeof rawRule === "object") {
-      const candidates = splitReplacementCandidates(rawRule.candidates ?? rawRule.to);
-      const ruleFromCandidates = splitMatchCandidates(rawRule.from ?? from ?? "");
+      const isRegexRule = rawRule.regex === true || rawRule.is_regex === true;
+      const candidates = normalizeReplacementCandidates(rawRule.candidates ?? rawRule.to, isRegexRule, rawRule.to);
+      const ruleFromCandidates = isRegexRule
+        ? [`${rawRule.from ?? from ?? ""}`.trim()].filter(Boolean)
+        : splitMatchCandidates(rawRule.from ?? from ?? "");
       return {
         ...rawRule,
         from: ruleFromCandidates[0] ?? `${rawRule.from ?? from ?? ""}`,
@@ -475,7 +566,8 @@
       conjugated_form: condition.conjugated_form ?? condition.cform,
       reading: condition.reading,
       pronunciation: condition.pronunciation,
-      word_type: condition.word_type
+      word_type: condition.word_type,
+      sequence: Array.isArray(condition.sequence) ? condition.sequence.map(mapConditionFields) : condition.sequence
     };
   };
 
@@ -499,7 +591,10 @@
         continue;
       }
 
-      const fromOptions = splitMatchCandidates(entry.from_options ?? entry.from ?? from);
+      const isRegexRule = entry.regex === true || entry.is_regex === true;
+      const fromOptions = isRegexRule
+        ? [from]
+        : splitMatchCandidates(entry.from_options ?? entry.from ?? from);
 
       replaceRules.push({
         id: `${entry.id ?? ""}`.trim() || undefined,
@@ -508,7 +603,7 @@
         from_options: fromOptions,
         to,
         raw: { ...entry },
-        candidates: splitReplacementCandidates(entry.candidates ?? to),
+        candidates: normalizeReplacementCandidates(entry.candidates ?? to, isRegexRule, to),
         regex: entry.regex === true || entry.is_regex === true,
         priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
         enabled: entry.enabled !== false,
@@ -570,6 +665,9 @@
       id: `${node?.id ?? fallbackId}`.trim() || fallbackId,
       label: `${node?.label ?? fallbackLabel}`.trim() || fallbackLabel,
       enabled: node?.enabled !== false,
+      settings: node?.settings && typeof node.settings === "object" && !Array.isArray(node.settings)
+        ? { ...node.settings }
+        : null,
       entries: directEntries.length > 0 ? directEntries : (directRules.length > 0 ? directRules : legacyEntries),
       children: childSource.map((child, index) => {
         return normalizeDictionaryNode(child, `${fallbackId}-${index + 1}`, `${fallbackLabel} ${index + 1}`);
@@ -834,6 +932,11 @@
     splitDelimitedRow,
     splitMatchCandidates,
     splitReplacementCandidates,
+    normalizeReplacementCandidates,
+    splitPositiveNegativeCandidates,
+    isNegativeMatchCandidate,
+    normalizeMatcherCandidateLiteral,
+    expandRegexReplacementTemplate,
     katakanaToHiragana,
     normalizeKanaForMatch,
     hasWildcard,
@@ -845,6 +948,7 @@
     normalizePhraseRulesInput,
     splitNodeEntries,
     normalizeDictionaryNode,
+    isKatakanaChar,
     isKanaChar,
     isKanjiChar,
     containsKanji,

@@ -264,6 +264,19 @@
   const splitReplacementCandidates = typeof TransformShared?.splitReplacementCandidates === "function"
     ? TransformShared.splitReplacementCandidates
     : splitCommaSeparatedValues;
+  const normalizeReplacementCandidates = typeof TransformShared?.normalizeReplacementCandidates === "function"
+    ? TransformShared.normalizeReplacementCandidates
+    : (value, isRegex = false, fallbackValue = "") => {
+      const fallback = `${fallbackValue ?? value ?? ""}`.trim();
+      if (isRegex) {
+        return fallback ? [fallback] : [];
+      }
+      const candidates = splitReplacementCandidates(value);
+      if (candidates.length > 0) {
+        return candidates;
+      }
+      return fallback ? [fallback] : [];
+    };
 
   const normalizeFromOptions = (value, fallbackValue = "") => {
     const candidates = splitMatchCandidates(value);
@@ -277,6 +290,90 @@
 
   const stringifyFromOptions = (value, fallbackValue = "") => {
     return normalizeFromOptions(value, fallbackValue).join(",");
+  };
+
+  const getNormalizedEntryFromOptions = (value, isRegex, fallbackValue = "") => {
+    if (isRegex) {
+      const fallback = `${fallbackValue ?? value ?? ""}`.trim();
+      return fallback ? [fallback] : [];
+    }
+    return normalizeFromOptions(value, fallbackValue);
+  };
+
+  const setEntryFromValue = (entry, value) => {
+    entry.from = `${value ?? ""}`.trim();
+    entry.from_options = getNormalizedEntryFromOptions(entry.from, entry.regex === true, entry.from);
+  };
+
+  const getNormalizedEntryReplacementCandidates = (value, isRegex, fallbackValue = "") => {
+    return normalizeReplacementCandidates(value, isRegex, fallbackValue);
+  };
+
+  const detectRegexEntryIssue = (entry, normalizedFrom, normalizedTo) => {
+    const isRegexEntry = entry?.regex === true || entry?.is_regex === true;
+    if (!isRegexEntry) {
+      return null;
+    }
+
+    if (Array.isArray(entry?.from_options) && entry.from_options.length > 1) {
+      return {
+        code: "split-from-options",
+        message: "regex ON の rule に plain 用 from_options が残っています。正規表現を再入力してください。"
+      };
+    }
+
+    if (Array.isArray(entry?.candidates) && entry.candidates.length > 1) {
+      return {
+        code: "split-candidates",
+        message: "regex ON の rule に plain 用 replacement candidates が残っています。置換後を再入力してください。"
+      };
+    }
+
+    try {
+      new RegExp(`${normalizedFrom ?? ""}`, "gu");
+    } catch (error) {
+      return {
+        code: "invalid-regex",
+        message: `無効な正規表現です: ${error?.message ?? error}`
+      };
+    }
+
+    const replacementCandidates = getNormalizedEntryReplacementCandidates(
+      entry?.candidates ?? normalizedTo,
+      true,
+      normalizedTo
+    );
+    if (replacementCandidates.length !== 1 || replacementCandidates[0] !== normalizedTo) {
+      return {
+        code: "replacement-mode-mismatch",
+        message: "regex ON の置換後に plain 用候補分割の痕跡があります。置換後を再入力してください。"
+      };
+    }
+
+    return null;
+  };
+
+  const getRegexInputMeta = (field, isRegex) => {
+    if (!isRegex) {
+      return {
+        placeholder: field === "from" ? "" : "",
+        title: field === "from"
+          ? "通常一致。カンマで OR を指定できます。"
+          : "通常置換。カンマで候補指定できます。"
+      };
+    }
+
+    if (field === "from") {
+      return {
+        placeholder: "JS RegExp source",
+        title: "JS RegExp source。文字として記号を使う場合は \\ で escape します。"
+      };
+    }
+
+    return {
+      placeholder: "JS replacement",
+      title: "JS replacement string。$1 $2 $& $$ を使えます。"
+    };
   };
 
   const listifyValue = (value) => {
@@ -852,8 +949,7 @@
       case "from":
       case "変更前":
       case "螟画峩蜑・":
-        entry.from = value;
-        entry.from_options = normalizeFromOptions(value);
+        setEntryFromValue(entry, value);
         return;
       case "to":
       case "変更後":
@@ -1011,14 +1107,15 @@
       }
 
       const priority = Number(cells[2]);
+      const regex = parseBooleanLike(cells[4], false);
       entries.push({
         id: createEntryId(),
-        from: cells[0],
-        from_options: normalizeFromOptions(cells[0]),
+        from: `${cells[0] ?? ""}`.trim(),
+        from_options: getNormalizedEntryFromOptions(cells[0], regex, cells[0]),
         to: cells[1],
         priority: Number.isFinite(priority) ? priority : 90,
         enabled: parseBooleanLike(cells[3], true),
-        regex: parseBooleanLike(cells[4], false),
+        regex,
         match_target: effectiveKind === "token-rules" && parseBooleanLike(cells[5], false)
           ? "basic_form"
           : null,
@@ -1053,8 +1150,7 @@
         return;
       case "from":
       case "変更前":
-        entry.from = value;
-        entry.from_options = normalizeFromOptions(value);
+        setEntryFromValue(entry, value);
         return;
       case "to":
       case "変更後":
@@ -1089,7 +1185,7 @@
       entry.from = formatSequenceDsl(entry.sequence);
     }
     if (entry.from) {
-      entry.from_options = normalizeFromOptions(entry.from_options ?? entry.from, entry.from);
+      entry.from_options = getNormalizedEntryFromOptions(entry.from_options ?? entry.from, entry.regex === true, entry.from);
     }
     return entry.from && entry.to ? entry : null;
   };
@@ -1200,12 +1296,12 @@
         return [];
       }
       const entry = createEmptyBulkEntry();
-      entry.from = cells[0];
-      entry.from_options = normalizeFromOptions(cells[0]);
+      entry.from = `${cells[0] ?? ""}`.trim();
       entry.to = cells[1];
       entry.priority = Number.isFinite(Number(cells[2])) ? Number(cells[2]) : 90;
       entry.enabled = parseBooleanLike(cells[3], true);
       entry.regex = parseBooleanLike(cells[4], false);
+      entry.from_options = getNormalizedEntryFromOptions(entry.from, entry.regex === true, entry.from);
       entry.match_target = effectiveKind === "token-rules" && parseBooleanLike(cells[5], false)
         ? "basic_form"
         : null;
@@ -1599,15 +1695,17 @@
           .filter(Boolean)
           .join(" ")
       : "";
+    const isRegexEntry = entry.regex === true || entry.is_regex === true;
     const from = `${entry.from ?? sequenceLabel ?? ""}`.trim();
-    const fromOptions = normalizeFromOptions(entry.from_options ?? entry.from, sequenceLabel);
-    const displayFrom = stringifyFromOptions(fromOptions, from);
+    const fromOptions = getNormalizedEntryFromOptions(entry.from_options ?? entry.from, isRegexEntry, sequenceLabel);
+    const displayFrom = isRegexEntry ? from : stringifyFromOptions(fromOptions, from);
     const to = `${entry.to ?? ""}`.trim();
     if (!displayFrom) {
       return null;
     }
 
     const inferredType = inferEntryType(entry);
+    const regexIssue = detectRegexEntryIssue(entry, from, to);
 
     return {
       id: `${entry.id ?? createEntryId()}`,
@@ -1616,7 +1714,7 @@
       to,
       priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
       enabled: entry.enabled !== false,
-      regex: entry.regex === true || entry.is_regex === true,
+      regex: isRegexEntry,
       type: inferredType,
       match_target: getEffectiveEntryMatchTarget(entry, inferredType),
       match_options: entry.match_options && typeof entry.match_options === "object"
@@ -1624,6 +1722,7 @@
         : null,
       conditions: cloneValue(entry.conditions ?? null),
       sequence: cloneValue(entry.sequence ?? null),
+      regex_issue: regexIssue,
       raw: cloneValue(entry),
       metaOpen: false,
       selected: false
@@ -1639,25 +1738,25 @@
         return normalizeReplacementRecord(from, firstValue, fallbackPriority);
       }
 
-      return {
+      return normalizeEntryFromObject({
         id: createEntryId(),
         from: `${from ?? ""}`.trim(),
+        from_options: normalizedRawRule[3] === true
+          ? [`${from ?? ""}`.trim()].filter(Boolean)
+          : normalizeFromOptions(from),
         to: `${normalizedRawRule[0] ?? ""}`.trim(),
         priority: Number.isFinite(normalizedRawRule[1]) ? normalizedRawRule[1] : Number(normalizedRawRule[1]) || fallbackPriority,
         enabled: normalizedRawRule[2] !== false,
-      regex: normalizedRawRule[3] === true,
-      match_target: null,
-      match_options: null,
-      conditions: null,
-        sequence: null,
-        raw: null,
-        metaOpen: false,
-        selected: false
-      };
+        regex: normalizedRawRule[3] === true,
+        match_target: null,
+        match_options: null,
+        conditions: null,
+        sequence: null
+      }, fallbackPriority);
     }
 
     if (typeof normalizedRawRule === "string") {
-      return {
+      return normalizeEntryFromObject({
         id: createEntryId(),
         from: `${from ?? ""}`.trim(),
         to: normalizedRawRule.trim(),
@@ -1667,11 +1766,8 @@
         match_target: null,
         match_options: null,
         conditions: null,
-        sequence: null,
-        raw: null,
-        metaOpen: false,
-        selected: false
-      };
+        sequence: null
+      }, fallbackPriority);
     }
 
     if (normalizedRawRule && typeof normalizedRawRule === "object") {
@@ -1803,6 +1899,9 @@
       enabled: source?.enabled !== false,
       selected: source?.selected === true,
       order: Number.isFinite(source?.order) ? source.order : Number(source?.order) || 0,
+      settings: source?.settings && typeof source.settings === "object" && !Array.isArray(source.settings)
+        ? cloneValue(source.settings)
+        : null,
       entries: normalizeEntries(source),
       children: childrenSource.map((child, index) => {
         return normalizeNode(child, `${fallbackId}-${index + 1}`, `${fallbackLabel} ${index + 1}`);
@@ -1927,8 +2026,13 @@
 
   const serializeEntry = (entry, index) => {
     const inferredType = inferEntryType(entry);
-    const fromOptions = normalizeFromOptions(entry.from_options ?? entry.from, entry.from);
-    const serializedFrom = stringifyFromOptions(fromOptions, entry.from);
+    const isRegexEntry = entry.regex === true;
+    const fromOptions = isRegexEntry
+      ? [`${entry.from ?? ""}`.trim()].filter(Boolean)
+      : normalizeFromOptions(entry.from_options ?? entry.from, entry.from);
+    const serializedFrom = isRegexEntry
+      ? `${entry.from ?? ""}`.trim()
+      : stringifyFromOptions(fromOptions, entry.from);
 
     const serialized = {
       id: `${entry.id ?? createEntryId()}`.trim() || `entry-${index + 1}`,
@@ -1936,10 +2040,10 @@
       to: `${entry.to ?? ""}`.trim(),
       priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || 0,
       enabled: entry.enabled !== false,
-      regex: entry.regex === true
+      regex: isRegexEntry
     };
 
-    if (fromOptions.length > 1) {
+    if (!isRegexEntry && fromOptions.length > 1) {
       serialized.from_options = cloneValue(fromOptions);
     }
 
@@ -1991,6 +2095,9 @@
       order,
       children: node.children.map((child, index) => serializeNode(child, index + 1))
     };
+    if (node.settings && typeof node.settings === "object" && !Array.isArray(node.settings)) {
+      base.settings = cloneValue(node.settings);
+    }
 
     const serializedEntries = node.entries
       .map((entry, index) => serializeEntry(entry, index))
@@ -2638,6 +2745,14 @@
         if (!trimmed) {
           return "";
         }
+        if (trimmed.startsWith("-") && !trimmed.startsWith("\\-")) {
+          const body = trimmed.slice(1).trim();
+          return body ? `-${aliases?.[body] ?? body}` : "";
+        }
+        if (trimmed.startsWith("\\-")) {
+          const body = trimmed.slice(1);
+          return aliases?.[body] ?? body;
+        }
         return aliases?.[trimmed] ?? trimmed;
       })
       .filter(Boolean);
@@ -2709,6 +2824,9 @@
         normalized[key] = value;
       }
     }
+    if (Array.isArray(draft?.sequence) && draft.sequence.length > 0) {
+      normalized.sequence = cloneValue(draft.sequence);
+    }
     return Object.keys(normalized).length > 0 ? normalized : null;
   };
 
@@ -2775,6 +2893,19 @@
       }
     }
     assignConditionSlot(entry, slot, drafts);
+  };
+
+  const getConditionSequenceDsl = (draft) => {
+    return Array.isArray(draft?.sequence) ? formatSequenceDsl(draft.sequence) : "";
+  };
+
+  const setConditionSequenceDsl = (draft, value) => {
+    const sequence = parseSequenceDsl(value);
+    if (Array.isArray(sequence) && sequence.length > 0) {
+      draft.sequence = sequence;
+    } else {
+      delete draft.sequence;
+    }
   };
 
   const setAllRowsSelected = (entries, selected) => {
@@ -3127,6 +3258,39 @@
       container.appendChild(grid);
     };
 
+    const appendConditionSequenceEditor = (container, draft) => {
+      const sequenceValue = getConditionSequenceDsl(draft);
+      const isOpen = Boolean(sequenceValue) || draft._sequenceOpen === true;
+      const sequenceWrap = document.createElement("div");
+      sequenceWrap.className = "panel-actions";
+      if (!isOpen) {
+        sequenceWrap.appendChild(createButton("sequence 追加", "ghost", () => {
+          draft._sequenceOpen = true;
+          renderApp();
+        }));
+        container.appendChild(sequenceWrap);
+        return;
+      }
+
+      const input = createCompactInput(sequenceValue, {
+        min: 12,
+        max: 64,
+        className: "cell-input sequence-field",
+        placeholder: "sequence DSL"
+      });
+      input.addEventListener("change", () => {
+        setConditionSequenceDsl(draft, input.value);
+        syncDrafts();
+      });
+      sequenceWrap.append("sequence", input, createButton("解除", "ghost", () => {
+        delete draft.sequence;
+        delete draft._sequenceOpen;
+        syncDrafts();
+        renderApp();
+      }));
+      container.appendChild(sequenceWrap);
+    };
+
     drafts.forEach((draft, matcherIndex) => {
       const matcherWrap = document.createElement("div");
       matcherWrap.className = "panel-block";
@@ -3157,6 +3321,7 @@
       matcherHead.append(matcherTitle, matcherActions);
       matcherWrap.appendChild(matcherHead);
       appendMatcherGrid(matcherWrap, draft);
+      appendConditionSequenceEditor(matcherWrap, draft);
       listWrap.appendChild(matcherWrap);
     });
 
@@ -3318,10 +3483,10 @@
 
     const sequence = Array.isArray(entry.sequence) ? entry.sequence : [];
     if (sequence.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "count";
-      empty.textContent = t("options.emptySequenceShort");
-      wrap.append(head, empty);
+      wrap.className = "panel-actions";
+      title.textContent = "sequence";
+      hint.textContent = t("options.emptySequenceShort");
+      wrap.append(head);
       return wrap;
     }
 
@@ -3658,6 +3823,46 @@
     ].join(" ");
   };
 
+  const getEntryRegexDiagnostic = (entry, pathText) => {
+    if (entry?.regex !== true) {
+      return null;
+    }
+
+    const currentIssue = detectRegexEntryIssue({
+      from: entry.from,
+      to: entry.to,
+      regex: true,
+      from_options: entry.from_options,
+      candidates: [entry.to]
+    }, entry.from, entry.to);
+    if (currentIssue?.code === "invalid-regex") {
+      return {
+        ...currentIssue,
+        from: entry.from,
+        to: entry.to,
+        entryId: entry.id,
+        pathText
+      };
+    }
+
+    if (entry.raw && (entry.from !== `${entry.raw.from ?? ""}`.trim() || entry.to !== `${entry.raw.to ?? ""}`.trim())) {
+      return null;
+    }
+
+    const rawIssue = detectRegexEntryIssue(entry.raw ?? entry, entry.from, entry.to);
+    if (!rawIssue) {
+      return null;
+    }
+
+    return {
+      ...rawIssue,
+      from: entry.from,
+      to: entry.to,
+      entryId: entry.id,
+      pathText
+    };
+  };
+
   const normalizeSearchText = (value) => `${value ?? ""}`.trim().toLowerCase();
 
   const composeNodeOwnSearchValue = (node, effectiveKind = null) => {
@@ -3935,8 +4140,9 @@
       regexCheckbox.checked = entry.regex === true;
       regexCheckbox.addEventListener("change", () => {
         entry.regex = regexCheckbox.checked;
+        entry.from_options = getNormalizedEntryFromOptions(entry.from_options ?? entry.from, entry.regex === true, entry.from);
         row.dataset.searchValue = `${entry.regex ? "regex" : "plain"} ${entry.from} ${entry.to}`;
-        renderDiagnostics();
+        renderApp();
       });
       regexTd.appendChild(regexCheckbox);
 
@@ -3956,17 +4162,29 @@
       basicTd.appendChild(basicCheckbox);
 
       const fromTd = document.createElement("td");
-      const fromInput = createCompactInput(entry.from, { min: 2, max: 24 });
+      const legacyFromMeta = getRegexInputMeta("from", entry.regex === true);
+      const fromInput = createCompactInput(entry.from, {
+        min: 2,
+        max: 24,
+        placeholder: legacyFromMeta.placeholder,
+        title: legacyFromMeta.title
+      });
       fromInput.addEventListener("input", () => {
         entry.from = fromInput.value;
-        entry.from_options = normalizeFromOptions(fromInput.value);
+        entry.from_options = getNormalizedEntryFromOptions(fromInput.value, entry.regex === true, fromInput.value);
         row.dataset.searchValue = `${entry.regex ? "regex" : "plain"} ${entry.from} ${entry.to}`;
         renderDiagnostics();
       });
       fromTd.appendChild(fromInput);
 
       const toTd = document.createElement("td");
-      const toInput = createCompactInput(entry.to, { min: 2, max: 24 });
+      const legacyToMeta = getRegexInputMeta("to", entry.regex === true);
+      const toInput = createCompactInput(entry.to, {
+        min: 2,
+        max: 24,
+        placeholder: legacyToMeta.placeholder,
+        title: legacyToMeta.title
+      });
       toInput.addEventListener("input", () => {
         entry.to = toInput.value;
         row.dataset.searchValue = `${entry.regex ? "regex" : "plain"} ${entry.from} ${entry.to}`;
@@ -4199,8 +4417,9 @@
 
       const regexCell = createBooleanCell(entry.regex === true, () => {
         entry.regex = regexCell.checkbox.checked;
+        entry.from_options = getNormalizedEntryFromOptions(entry.from_options ?? entry.from, entry.regex === true, entry.from);
         row.dataset.searchValue = composeEntrySearchValue(entry);
-        refreshEntryRowEffects(node.id, "regex");
+        renderApp();
       });
 
       const basicCell = createBooleanCell(
@@ -4260,13 +4479,27 @@
         return td;
       };
 
-      const fromTd = createTextCell(entry.from, { min: 2, max: 24, cellClassName: "text-col" }, (value) => {
+      const fromMeta = getRegexInputMeta("from", entry.regex === true);
+      const fromTd = createTextCell(entry.from, {
+        min: 2,
+        max: 24,
+        cellClassName: "text-col",
+        placeholder: fromMeta.placeholder,
+        title: fromMeta.title
+      }, (value) => {
         entry.from = value;
-        entry.from_options = normalizeFromOptions(value);
+        entry.from_options = getNormalizedEntryFromOptions(value, entry.regex === true, value);
         row.dataset.searchValue = composeEntrySearchValue(entry);
       }, "from");
 
-      const toTd = createTextCell(entry.to, { min: 2, max: 24, cellClassName: "text-col" }, (value) => {
+      const toMeta = getRegexInputMeta("to", entry.regex === true);
+      const toTd = createTextCell(entry.to, {
+        min: 2,
+        max: 24,
+        cellClassName: "text-col",
+        placeholder: toMeta.placeholder,
+        title: toMeta.title
+      }, (value) => {
         entry.to = value;
         row.dataset.searchValue = composeEntrySearchValue(entry);
       }, "to");
@@ -4613,6 +4846,7 @@
     const duplicateFromMap = new Map();
     const duplicateNodeLabelMap = new Map();
     const overlapIssues = [];
+    const regexIssues = [];
     const plainEntries = [];
 
     walkNodes(state.roots, (node, trail) => {
@@ -4641,6 +4875,15 @@
           priority: entry.priority,
           regex: entry.regex === true
         });
+
+        const regexIssue = getEntryRegexDiagnostic(entry, pathText);
+        if (regexIssue) {
+          regexIssues.push({
+            rootId: trail[0]?.id ?? null,
+            nodeId: node.id,
+            ...regexIssue
+          });
+        }
 
         if (entry.regex !== true) {
           plainEntries.push({
@@ -4679,6 +4922,7 @@
     }
 
     return {
+      regexIssues,
       duplicateFromIssues: [...duplicateFromMap.entries()].filter(([, entries]) => entries.length > 1),
       duplicateNodeLabelIssues: [...duplicateNodeLabelMap.entries()].filter(([, entries]) => entries.length > 1),
       overlapIssues
@@ -4848,6 +5092,31 @@
   const renderDiagnostics = () => {
     diagnosticsRoot.textContent = "";
     const diagnostics = collectDiagnostics();
+    diagnosticsRoot.appendChild(renderIssueCard(
+      "regex 問題",
+      diagnostics.regexIssues,
+      "regex ルールの問題はありません。",
+      (issue) => createDiagnosticIssueId("regex", [issue.pathText, issue.entryId, issue.code, issue.from, issue.to]),
+      (issue) => `regex: ${issue.from}`,
+      (issue) => {
+        const item = document.createElement("div");
+        item.className = "diag-item";
+        const heading = document.createElement("h3");
+        heading.textContent = issue.from;
+        const body = document.createElement("div");
+        body.className = "diag-occurrence";
+        const locationLine = document.createElement("div");
+        locationLine.appendChild(createJumpButton(t("options.jumpTarget"), issue));
+        locationLine.append(` ${issue.pathText}`);
+        const messageLine = document.createElement("div");
+        messageLine.textContent = issue.message;
+        const replacementLine = document.createElement("div");
+        replacementLine.textContent = `to: ${issue.to}`;
+        body.append(locationLine, messageLine, replacementLine);
+        item.append(heading, body);
+        return item;
+      }
+    ));
 
     diagnosticsRoot.appendChild(renderIssueCard(
       "重複した変更前",
@@ -5396,8 +5665,37 @@
       ? "カタカナ語末尾の長音「ー」を省略します。除外語は変換しません。"
       : "カタカナ長音省略 bundle が見つかりません。";
     body.appendChild(summary);
+    if (root) {
+      summary.textContent = "カタカナ語片末尾の長音「ー」を省略します。除外語は変換しません。";
+    }
 
     if (root) {
+      if (!root.settings || typeof root.settings !== "object" || Array.isArray(root.settings)) {
+        root.settings = {};
+      }
+      const settingsRow = document.createElement("div");
+      settingsRow.className = "simple-row";
+      const minLengthLabel = document.createElement("label");
+      minLengthLabel.className = "toggle";
+      const minLengthInput = document.createElement("input");
+      minLengthInput.type = "number";
+      minLengthInput.min = "1";
+      minLengthInput.step = "1";
+      minLengthInput.className = "cell-input compact";
+      minLengthInput.value = String(Number(root.settings.min_length) > 0 ? Math.floor(Number(root.settings.min_length)) : 1);
+      minLengthInput.addEventListener("change", () => {
+        const nextValue = Math.max(1, Math.floor(Number(minLengthInput.value) || 1));
+        root.settings.min_length = nextValue;
+        minLengthInput.value = String(nextValue);
+        renderDiagnostics();
+      });
+      minLengthLabel.append("対象文字数", minLengthInput);
+      const minLengthHint = document.createElement("span");
+      minLengthHint.className = "count";
+      minLengthHint.textContent = "長音を含む語片の文字数。4 なら「○○○ー」以上を対象にします。";
+      settingsRow.append(minLengthLabel, minLengthHint);
+      body.appendChild(settingsRow);
+
       const listWrap = document.createElement("div");
       listWrap.className = "simple-list";
       const entries = Array.isArray(root.entries) ? root.entries : [];
@@ -5420,7 +5718,7 @@
           const value = input.value.trim();
           entry.from = value;
           entry.to = value;
-          entry.from_options = normalizeFromOptions(value);
+          entry.from_options = getNormalizedEntryFromOptions(value, entry.regex === true, value);
           renderDiagnostics();
         });
         row.appendChild(input);

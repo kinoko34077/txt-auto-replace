@@ -15,7 +15,10 @@
   }
   const splitCommaSeparatedValues = TransformShared.splitCommaSeparatedValues;
   const splitReplacementCandidates = TransformShared.splitReplacementCandidates;
+  const normalizeReplacementCandidates = TransformShared.normalizeReplacementCandidates;
   const splitMatchCandidates = TransformShared.splitMatchCandidates;
+  const splitPositiveNegativeCandidates = TransformShared.splitPositiveNegativeCandidates;
+  const normalizeMatcherCandidateLiteral = TransformShared.normalizeMatcherCandidateLiteral;
   const normalizePhraseRuleRecord = TransformShared.normalizePhraseRuleRecord;
   const normalizePhraseRulesInput = TransformShared.normalizePhraseRulesInput;
   const splitNodeEntries = TransformShared.splitNodeEntries;
@@ -24,8 +27,10 @@
   const matchWildcardPattern = TransformShared.matchWildcardPattern;
   const applyWildcardReplacement = TransformShared.applyWildcardReplacement;
   const replaceWildcardPattern = TransformShared.replaceWildcardPattern;
+  const expandRegexReplacementTemplate = TransformShared.expandRegexReplacementTemplate;
   const normalizeKanaForMatch = TransformShared.normalizeKanaForMatch;
   const hasTrailingKatakanaLongVowel = TransformShared.hasTrailingKatakanaLongVowel;
+  const isKatakanaChar = TransformShared.isKatakanaChar;
   const containsKanji = TransformShared.containsKanji;
   const splitTrailingKana = TransformShared.splitTrailingKana;
   const hasKanjiWithTrailingKana = TransformShared.hasKanjiWithTrailingKana;
@@ -119,6 +124,15 @@
       return normalized;
     }
 
+    if (normalized.startsWith("-") && !normalized.startsWith("\\-")) {
+      const body = normalized.slice(1).trim();
+      return body ? `-${aliases[body] ?? body}` : "";
+    }
+    if (normalized.startsWith("\\-")) {
+      const body = normalized.slice(1);
+      return aliases[body] ?? body;
+    }
+
     return aliases[normalized] ?? normalized;
   };
 
@@ -160,7 +174,8 @@
       conjugated_form: normalizeConditionValue("conjugated_form", condition.conjugated_form ?? condition.cform),
       reading: normalizeConditionValue("reading", condition.reading),
       pronunciation: normalizeConditionValue("pronunciation", condition.pronunciation),
-      word_type: normalizeConditionValue("word_type", condition.word_type)
+      word_type: normalizeConditionValue("word_type", condition.word_type),
+      sequence: Array.isArray(condition.sequence) ? condition.sequence.map(normalizeCondition) : undefined
     };
   };
 
@@ -219,8 +234,11 @@
 
   const normalizeRule = (rule) => {
     const conditions = rule.conditions || {};
-    const candidates = splitReplacementCandidates(rule.candidates ?? rule.to);
-    const fromOptions = splitMatchCandidates(rule.from_options ?? rule.from);
+    const isRegexRule = rule.regex === true || rule.is_regex === true;
+    const candidates = normalizeReplacementCandidates(rule.candidates ?? rule.to, isRegexRule, rule.to);
+    const fromOptions = isRegexRule
+      ? [`${rule.from ?? ""}`.trim()].filter(Boolean)
+      : splitMatchCandidates(rule.from_options ?? rule.from);
 
     return {
       ...rule,
@@ -328,7 +346,7 @@
   const chooseReplacementTemplate = (rule, matchedText) => {
     const candidates = Array.isArray(rule.candidates) && rule.candidates.length > 0
       ? rule.candidates
-      : splitReplacementCandidates(rule.to);
+      : normalizeReplacementCandidates(rule.to, rule?.regex === true, rule.to);
 
     if (!candidates.length) {
       return rule.to;
@@ -365,20 +383,47 @@
     }
 
     if (Array.isArray(expected)) {
-      return expected.some((entry) => valueMatches(actual, entry, options));
+      const positive = [];
+      const negative = [];
+      for (const entry of expected) {
+        const text = `${entry ?? ""}`;
+        if (text.startsWith("-") && !text.startsWith("\\-")) {
+          const normalized = normalizeMatcherCandidateLiteral(text.slice(1).trim());
+          if (normalized) {
+            negative.push(normalized);
+          }
+        } else {
+          const normalized = normalizeMatcherCandidateLiteral(text);
+          if (normalized) {
+            positive.push(normalized);
+          }
+        }
+      }
+      const negativeMatched = negative.some((entry) => valueMatches(actual, entry, options));
+      if (negativeMatched) {
+        return false;
+      }
+      return positive.length === 0
+        ? true
+        : positive.some((entry) => valueMatches(actual, entry, options));
     }
 
     if (typeof actual === "string" && typeof expected === "string") {
+      if (expected.startsWith("-") && !expected.startsWith("\\-")) {
+        const negativeExpected = normalizeMatcherCandidateLiteral(expected.slice(1).trim());
+        return negativeExpected ? !valueMatches(actual, negativeExpected, options) : true;
+      }
+      const normalizedExpected = normalizeMatcherCandidateLiteral(expected);
       const kanaInsensitive = options.kanaInsensitive === true;
-      if (hasWildcard(expected)) {
-        return Boolean(matchWildcardPattern(actual, expected, {
+      if (hasWildcard(normalizedExpected)) {
+        return Boolean(matchWildcardPattern(actual, normalizedExpected, {
           kanaInsensitive,
           preserveCaptures: true
         }));
       }
       return kanaInsensitive
-        ? normalizeKanaForMatch(actual) === normalizeKanaForMatch(expected)
-        : actual === expected;
+        ? normalizeKanaForMatch(actual) === normalizeKanaForMatch(normalizedExpected)
+        : actual === normalizedExpected;
     }
 
     return actual === expected;
@@ -389,7 +434,33 @@
   };
 
   const matchAnyCandidate = (actual, candidates, options = {}) => {
-    for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const normalizedCandidates = Array.isArray(candidates) ? candidates : [];
+    const positive = [];
+    const negative = [];
+    for (const candidate of normalizedCandidates) {
+      const text = `${candidate ?? ""}`;
+      if (text.startsWith("-") && !text.startsWith("\\-")) {
+        const normalized = normalizeMatcherCandidateLiteral(text.slice(1).trim());
+        if (normalized) {
+          negative.push(normalized);
+        }
+      } else {
+        const normalized = normalizeMatcherCandidateLiteral(text);
+        if (normalized) {
+          positive.push(normalized);
+        }
+      }
+    }
+
+    if (negative.length > 0 && matchAnyCandidate(actual, negative, { ...options, ignoreNegative: true })) {
+      return null;
+    }
+
+    if (positive.length === 0 && options.ignoreNegative !== true) {
+      return null;
+    }
+
+    for (const candidate of positive) {
       if (typeof actual !== "string" || typeof candidate !== "string") {
         if (actual === candidate) {
           return {
@@ -434,6 +505,13 @@
   const getRuleFromCandidates = (rule) => {
     const candidates = splitMatchCandidates(rule?.from_options ?? rule?.from);
     return candidates.length > 0 ? candidates : [`${rule?.from ?? ""}`.trim()].filter(Boolean);
+  };
+
+  const getPositiveRuleFromCandidates = (rule) => {
+    return getRuleFromCandidates(rule).filter((candidate) => {
+      const text = `${candidate ?? ""}`;
+      return text && (!text.startsWith("-") || text.startsWith("\\-"));
+    });
   };
 
   const compareRuleOrder = (left, right) => {
@@ -614,6 +692,21 @@
       start: index,
       length: rule.sequence.length
     };
+  };
+
+  const sequenceMatcherMatchesAt = (tokens, start, sequence) => {
+    if (!Array.isArray(sequence) || sequence.length === 0 || start < 0) {
+      return false;
+    }
+
+    for (let offset = 0; offset < sequence.length; offset++) {
+      const token = tokens[start + offset];
+      const matcher = sequence[offset];
+      if (!token || !tokenSatisfiesMatcher(token, matcher)) {
+        return false;
+      }
+    }
+    return true;
   };
 
   const singleTokenMatches = (tokens, index, rule) => {
@@ -826,15 +919,37 @@
     const conditions = rule.conditions || {};
     const { current, prev, next } = conditions;
 
-    if (current && !anyConditionMatches(currentToken, current)) {
+    const branchMatches = (conditionList, anchorToken, sequenceStart, expectedSequenceLength = null) => {
+      if (!conditionList) {
+        return true;
+      }
+      const list = Array.isArray(conditionList) ? conditionList : [conditionList];
+      return list.some((condition) => {
+        if (!tokenMatchesCondition(anchorToken, condition)) {
+          return false;
+        }
+        if (!condition || typeof condition !== "object" || !Array.isArray(condition.sequence) || condition.sequence.length === 0) {
+          return true;
+        }
+        if (expectedSequenceLength !== null && condition.sequence.length !== expectedSequenceLength) {
+          return false;
+        }
+        const start = typeof sequenceStart === "function" ? sequenceStart(condition) : sequenceStart;
+        return sequenceMatcherMatchesAt(tokens, start, condition.sequence);
+      });
+    };
+
+    if (current && !branchMatches(current, currentToken, index, length)) {
       return false;
     }
 
-    if (prev && !anyConditionMatches(prevToken, prev)) {
+    if (prev && !branchMatches(prev, prevToken, (condition) => {
+      return index - (Array.isArray(condition?.sequence) && condition.sequence.length > 0 ? condition.sequence.length : 1);
+    })) {
       return false;
     }
 
-    if (next && !anyConditionMatches(nextToken, next)) {
+    if (next && !branchMatches(next, nextToken, index + length)) {
       return false;
     }
 
@@ -943,7 +1058,7 @@
       }
 
       const kanaInsensitive = ruleUsesKanaInsensitiveMatch(rule);
-      const fromCandidates = getRuleFromCandidates(rule);
+      const fromCandidates = getPositiveRuleFromCandidates(rule);
       let hasIndexedCandidate = false;
 
       for (const fromCandidate of fromCandidates) {
@@ -1072,8 +1187,15 @@
       if (rule.regex === true) {
         try {
           const regex = new RegExp(rule.from, "gu");
-          result = result.replace(regex, (matchedText) => {
-            const replacement = chooseReplacement(rule, matchedText);
+          result = result.replace(regex, (...args) => {
+            const matchedText = args[0];
+            const hasGroups = args.length > 0 && args[args.length - 1] && typeof args[args.length - 1] === "object";
+            const groups = hasGroups ? args[args.length - 1] : null;
+            const sourceText = hasGroups ? args[args.length - 2] : args[args.length - 1];
+            const offset = hasGroups ? args[args.length - 3] : args[args.length - 2];
+            const captures = args.slice(1, hasGroups ? -3 : -2);
+            const replacementTemplate = chooseReplacementTemplate(rule, matchedText);
+            const replacement = expandRegexReplacementTemplate(replacementTemplate, matchedText, captures, groups, sourceText, offset);
             emitDebugEvent(debugCollector, {
               phase: "dictionary-match",
               stageId,
@@ -1095,7 +1217,7 @@
         continue;
       }
 
-      const fromCandidates = getRuleFromCandidates(rule);
+      const fromCandidates = getPositiveRuleFromCandidates(rule);
       for (const fromCandidate of fromCandidates) {
         if (!fromCandidate) {
           continue;
@@ -1183,8 +1305,12 @@
         return;
       }
 
-      const fromCandidates = getRuleFromCandidates(compiledRule)
+      const fromCandidates = getPositiveRuleFromCandidates(compiledRule)
         .filter((candidate) => candidate && !candidate.includes("\\") && !hasWildcard(candidate));
+      if (fromCandidates.length === 0) {
+        compiled.broadRules.push(compiledRule);
+        return;
+      }
       if (ruleRequiresStrictBasicFormMatch(compiledRule)) {
         for (const candidate of fromCandidates) {
           addRuleToMap(compiled.basicMap, candidate, compiledRule);
@@ -1806,6 +1932,9 @@
       if (!sahenSuffix) {
         return null;
       }
+      if (sahenSuffix === "\u3059" && nextToken) {
+        return null;
+      }
 
       return replaceTrailingKanaWithSuffix(token.surface_form, sahenSuffix);
     }
@@ -1895,7 +2024,59 @@
     return joinTokenSurfaces(outputTokens);
   };
 
-  const applyKatakanaLongVowelAbbreviation = (text, rules = [], debugCollector, stageId) => {
+  const KATAKANA_COMPOUND_START_CHARS = new Set(Array.from(
+    "アイウエオ"
+  ));
+
+  const getKatakanaLongVowelMinLength = (settings) => {
+    const value = Number(settings?.min_length ?? settings?.minLength ?? 1);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
+  };
+
+  const isKatakanaCompoundBoundaryAfterLongVowel = (nextChar) => {
+    return Boolean(nextChar && KATAKANA_COMPOUND_START_CHARS.has(nextChar));
+  };
+
+  const applyKatakanaLongVowelAbbreviationToRun = (run, exclusions, minLength, debugCollector, stageId) => {
+    const chars = Array.from(`${run ?? ""}`);
+    const output = [];
+    let segmentStart = 0;
+
+    for (let index = 0; index < chars.length; index += 1) {
+      const char = chars[index];
+      if (char !== "ー") {
+        output.push(char);
+        continue;
+      }
+
+      const nextChar = chars[index + 1] ?? "";
+      const isRunFinal = index === chars.length - 1;
+      const isInternalBoundary = !isRunFinal && isKatakanaCompoundBoundaryAfterLongVowel(nextChar);
+      const segment = chars.slice(segmentStart, index + 1).join("");
+      if (
+        (isRunFinal || isInternalBoundary) &&
+        Array.from(segment).length >= minLength &&
+        hasTrailingKatakanaLongVowel(segment) &&
+        !exclusions.has(segment)
+      ) {
+        const replacement = segment.slice(0, -1);
+        emitDebugEvent(debugCollector, {
+          phase: "katakana-long-vowel",
+          stageId,
+          matchedText: segment,
+          replacement
+        });
+        segmentStart = index + 1;
+        continue;
+      }
+
+      output.push(char);
+    }
+
+    return output.join("");
+  };
+
+  const applyKatakanaLongVowelAbbreviation = (text, rules = [], debugCollector, stageId, settings = null) => {
     if (!text || !text.trim()) {
       return text;
     }
@@ -1908,19 +2089,10 @@
         }
       }
     }
+    const minLength = getKatakanaLongVowelMinLength(settings);
 
-    return `${text}`.replace(/[\u30a1-\u30fa\u30fc]+\u30fc(?=$|[^\u30a1-\u30fa\u30fc])/gu, (matchedText) => {
-      if (!hasTrailingKatakanaLongVowel(matchedText) || exclusions.has(matchedText)) {
-        return matchedText;
-      }
-      const replacement = matchedText.slice(0, -1);
-      emitDebugEvent(debugCollector, {
-        phase: "katakana-long-vowel",
-        stageId,
-        matchedText,
-        replacement
-      });
-      return replacement;
+    return `${text}`.replace(/[\u30a1-\u30fa\u30fc]+/gu, (matchedText) => {
+      return applyKatakanaLongVowelAbbreviationToRun(matchedText, exclusions, minLength, debugCollector, stageId);
     });
   };
 
@@ -1965,7 +2137,7 @@
         if (stage.runtime_mode === "verb-okurigana-stage4") {
           transformedText = applyVerbOkuriganaStage4(transformedText, tokenizer, debugCollector, stage.id);
         } else if (stage.runtime_mode === "katakana-long-vowel-abbreviation") {
-          transformedText = applyKatakanaLongVowelAbbreviation(transformedText, stage.rules, debugCollector, stage.id);
+          transformedText = applyKatakanaLongVowelAbbreviation(transformedText, stage.rules, debugCollector, stage.id, stage.settings);
         } else {
           transformedText = tokenizeAndApplyTokenRules(
             transformedText,
@@ -2009,6 +2181,9 @@
       kind: bundle.kind ?? "dictionary-rules",
       runtime_mode: bundle.runtime_mode ?? null,
       enabled: bundle.enabled !== false,
+      settings: bundle.settings && typeof bundle.settings === "object" && !Array.isArray(bundle.settings)
+        ? { ...bundle.settings }
+        : null,
       entries: Array.isArray(bundle.entries) ? bundle.entries : [],
       children: Array.isArray(bundle.children) ? bundle.children : []
     };
@@ -2072,6 +2247,9 @@
       kind: inferredKind,
       order: Number.isFinite(override.order) ? override.order : Number(override.order) || null,
       enabled: typeof override.enabled === "boolean" ? override.enabled : null,
+      settings: normalizedRoot.settings && typeof normalizedRoot.settings === "object"
+        ? { ...normalizedRoot.settings }
+        : null,
       entries: normalizedRoot.entries,
       children: normalizedRoot.children
     };
@@ -2143,7 +2321,9 @@
             ...baseRule,
             id: entry.id ?? baseRule.id,
             from: entry.from,
-            from_options: Array.isArray(entry.from_options) ? [...entry.from_options] : splitMatchCandidates(entry.from),
+            from_options: entry.regex === true
+              ? [`${entry.from ?? ""}`.trim()].filter(Boolean)
+              : (Array.isArray(entry.from_options) ? [...entry.from_options] : splitMatchCandidates(entry.from)),
             to: entry.to,
             priority: entry.priority,
             enabled: entry.enabled !== false,
@@ -2172,6 +2352,7 @@
         runtime_mode: override.runtime_mode ?? definition.runtime_mode,
         label: override.label ?? definition.label,
         enabled: override.enabled ?? definition.enabled,
+        settings: override.settings ?? definition.settings ?? null,
         rules: flattenNodesToRules(override)
       };
     }
@@ -2182,6 +2363,7 @@
       runtime_mode: override.runtime_mode ?? definition.runtime_mode,
       label: override.label ?? definition.label,
       enabled: override.enabled ?? definition.enabled,
+      settings: override.settings ?? definition.settings ?? null,
       entries: Array.isArray(override.entries) ? override.entries : (definition.entries ?? []),
       children: Array.isArray(override.children) ? override.children : (definition.children ?? [])
     };
@@ -2290,9 +2472,9 @@
         : null;
       const dictionaryRules = definition.kind === "dictionary-rules"
         ? bundleRules.filter((rule) => !ruleRequiresTokenMatching(rule))
-        : [];
+        : bundleRules.filter((rule) => rule?.regex === true);
       const tokenRules = definition.kind === "token-rules"
-        ? bundleRules
+        ? bundleRules.filter((rule) => rule?.regex !== true)
         : bundleRules.filter((rule) => ruleRequiresTokenMatching(rule));
 
       if (dictionaryRules.length > 0) {
@@ -2302,6 +2484,7 @@
           kind: "dictionary-rules",
           order: bundle.order ?? 0,
           runtime_mode: runtimeMode,
+          settings: definition.settings ?? null,
           rules: dictionaryRules
         });
         stringRuleCount += dictionaryRules.length;
@@ -2314,6 +2497,7 @@
           kind: "token-rules",
           order: bundle.order ?? 0,
           runtime_mode: runtimeMode,
+          settings: definition.settings ?? null,
           rules: tokenRules
         });
         tokenRuleCount += tokenRules.length;

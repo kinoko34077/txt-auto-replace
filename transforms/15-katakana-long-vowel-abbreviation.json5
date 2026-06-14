@@ -3,6 +3,9 @@
   label: "カタカナ長音省略",
   kind: "token-rules",
   runtime_mode: "katakana-long-vowel-abbreviation",
+  settings: {
+    min_length: 1,
+  },
   rules: [
     {
       id: "exclude-batter",

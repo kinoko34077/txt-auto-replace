@@ -232,6 +232,13 @@ const FIXTURES = [
     expected: "\u30b3\u30f3\u30d4\u30e5\u30fc\u30bf\u306f",
     activeBundles: ["katakana-long-vowel-abbreviation"],
     note: "trailing long vowel before non-katakana boundary"
+  },
+  {
+    id: "katakana-long-vowel-user-interface",
+    input: "\u30e6\u30fc\u30b6\u30fc\u30a4\u30f3\u30bf\u30fc\u30d5\u30a7\u30fc\u30b9",
+    expected: "\u30e6\u30fc\u30b6\u30a4\u30f3\u30bf\u30fc\u30d5\u30a7\u30fc\u30b9",
+    activeBundles: ["katakana-long-vowel-abbreviation"],
+    note: "internal compound katakana long vowel boundary"
   }
   ,
   {
@@ -370,9 +377,9 @@ const FIXTURES = [
   {
     id: "stage4-kakunin-suru-baai",
     input: "\u78ba\u8a8d\u3059\u308b\u5834\u5408",
-    expected: "\u78ba\u8a8d\u3059\u5834\u5408",
+    expected: "\u78ba\u8a8d\u3059\u308b\u5834\u5408",
     activeBundles: ["okurigana-abbreviation-stage4"],
-    note: "stage4 sahen attributive before noun"
+    note: "stage4 keeps sahen attributive before noun"
   },
   {
     id: "stage4-kakunin-sureba",
@@ -387,6 +394,13 @@ const FIXTURES = [
     expected: "\u78ba\u8a8d\u3057\u305f",
     activeBundles: ["okurigana-abbreviation-stage4"],
     note: "stage4 keeps sahen past"
+  },
+  {
+    id: "stage4-kakunin-shi",
+    input: "\u78ba\u8a8d\u3057",
+    expected: "\u78ba\u8a8d\u3057",
+    activeBundles: ["okurigana-abbreviation-stage4"],
+    note: "stage4 keeps sahen renyou"
   },
   {
     id: "stage4-kakunin-shite",
@@ -1484,6 +1498,248 @@ const verifyWildcardBehavior = (tokenizer) => {
   };
 };
 
+const verifyRegexReplacementBehavior = (tokenizer) => {
+  const compactStages = [{
+    id: "regex-check",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "(\\d{4})年([1-9]|1[0-2])月([1-9]|[12]\\d|3[01])日",
+      to: "$1$2$3",
+      candidates: ["$1$2$3"],
+      regex: true,
+      enabled: true,
+      priority: 10
+    }]
+  }];
+  const slashStages = [{
+    id: "regex-slash-check",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "(\\d{4})年(\\d{1,2})月(\\d{1,2})日",
+      to: "$1/$2/$3",
+      regex: true,
+      enabled: true,
+      priority: 10
+    }]
+  }];
+  const actual = TransformEngine.transformTextWithStages("2026年6月13日", compactStages, tokenizer);
+  const slashActual = TransformEngine.transformTextWithStages("2026年6月14日", slashStages, tokenizer);
+  return {
+    passed: actual === "2026613" && slashActual === "2026/6/14",
+    details: { actual, slashActual }
+  };
+};
+
+const verifyRegexReplacementBehaviorV2 = (tokenizer) => {
+  const compactStages = [{
+    id: "regex-check-v2",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "(\\d{4})\\u5e74([1-9]|1[0-2])\\u6708([1-9]|[12]\\d|3[01])\\u65e5",
+      to: "$1$2$3",
+      regex: true,
+      enabled: true,
+      priority: 10
+    }]
+  }];
+  const slashStages = [{
+    id: "regex-slash-check-v2",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "(\\d{4})\\u5e74(\\d{1,2})\\u6708(\\d{1,2})\\u65e5",
+      to: "$1/$2/$3",
+      regex: true,
+      enabled: true,
+      priority: 10
+    }]
+  }];
+  const namedStages = [{
+    id: "regex-named-check-v2",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "(?<year>\\d{4})\\u5e74(?<month>\\d{1,2})\\u6708(?<day>\\d{1,2})\\u65e5",
+      to: "$<year>-$<month>-$<day>",
+      regex: true,
+      enabled: true,
+      priority: 10
+    }, {
+      from: "abc",
+      to: "[$&]-$$",
+      regex: true,
+      enabled: true,
+      priority: 9
+    }]
+  }];
+  const actual = TransformEngine.transformTextWithStages("2026年6月13日", compactStages, tokenizer);
+  const slashActual = TransformEngine.transformTextWithStages("2026年6月14日", slashStages, tokenizer);
+  const namedActual = TransformEngine.transformTextWithStages("2026年6月14日 abc", namedStages, tokenizer);
+  return {
+    passed:
+      actual === "2026613" &&
+      slashActual === "2026/6/14" &&
+      namedActual === "2026-6-14 [abc]-$",
+    details: { actual, slashActual, namedActual }
+  };
+};
+
+const verifyRegexRuleInTokenBundleBehavior = (tokenizer) => {
+  const loaded = loadStages({
+    roots: [
+      {
+        id: "regex-token-box",
+        label: "regex-token-box",
+        kind: "token-rules",
+        enabled: true,
+        order: 42,
+        entries: [
+          {
+            id: "date-regex-token-entry",
+            from: "(\\d{4})\\u5e74(\\d{1,2})\\u6708(\\d{1,2})\\u65e5",
+            to: "$1$2$3",
+            enabled: true,
+            regex: true,
+            priority: 100
+          }
+        ],
+        children: []
+      }
+    ]
+  });
+  const actual = TransformEngine.transformTextWithStages(
+    "2026\u5e746\u670814\u65e5",
+    loaded.stages,
+    tokenizer
+  );
+  const dictionaryStage = loaded.stages.find((stage) => stage.id === "regex-token-box" && stage.kind === "dictionary-rules");
+  const tokenStage = loaded.stages.find((stage) => stage.id === "regex-token-box" && stage.kind === "token-rules");
+  return {
+    passed:
+      actual === "2026614" &&
+      Array.isArray(dictionaryStage?.rules) &&
+      dictionaryStage.rules.some((rule) => rule.regex === true) &&
+      (!tokenStage || !tokenStage.rules.some((rule) => rule.regex === true)),
+    details: {
+      actual,
+      stageKinds: loaded.stages.map((stage) => `${stage.id}:${stage.kind}`),
+      dictionaryRuleCount: dictionaryStage?.rules?.length ?? 0,
+      tokenRuleCount: tokenStage?.rules?.length ?? 0
+    }
+  };
+};
+
+const verifyKatakanaLongVowelSettingsBehavior = (tokenizer) => {
+  const stages = [{
+    id: "katakana-long-vowel-abbreviation",
+    kind: "token-rules",
+    runtime_mode: "katakana-long-vowel-abbreviation",
+    order: 15,
+    settings: { min_length: 4 },
+    rules: [{
+      from: "\u30d0\u30c3\u30bf\u30fc",
+      from_options: ["\u30d0\u30c3\u30bf\u30fc"],
+      to: "\u30d0\u30c3\u30bf\u30fc",
+      candidates: ["\u30d0\u30c3\u30bf\u30fc"],
+      regex: false,
+      enabled: true,
+      priority: 100
+    }]
+  }];
+  const user = TransformEngine.transformTextWithStages("\u30e6\u30fc\u30b6\u30fc", stages, tokenizer);
+  const key = TransformEngine.transformTextWithStages("\u30ad\u30fc", stages, tokenizer);
+  const compound = TransformEngine.transformTextWithStages(
+    "\u30e6\u30fc\u30b6\u30fc\u30a4\u30f3\u30bf\u30fc\u30d5\u30a7\u30fc\u30b9",
+    stages,
+    tokenizer
+  );
+  const excluded = TransformEngine.transformTextWithStages("\u30d0\u30c3\u30bf\u30fc", stages, tokenizer);
+  return {
+    passed:
+      user === "\u30e6\u30fc\u30b6" &&
+      key === "\u30ad\u30fc" &&
+      compound === "\u30e6\u30fc\u30b6\u30a4\u30f3\u30bf\u30fc\u30d5\u30a7\u30fc\u30b9" &&
+      excluded === "\u30d0\u30c3\u30bf\u30fc",
+    details: { user, key, compound, excluded }
+  };
+};
+
+const verifySequenceConditionBehavior = (tokenizer) => {
+  const stages = [{
+    id: "sequence-condition-check",
+    kind: "token-rules",
+    order: 1,
+    rules: [
+      {
+        from: "\u306f",
+        from_options: ["\u306f"],
+        to: "\u306f_MATCH",
+        candidates: ["\u306f_MATCH"],
+        regex: false,
+        enabled: true,
+        priority: 30,
+        conditions: {
+          prev: {
+            sequence: [
+              { surface: "\u79c1", pos: "\u540d\u8a5e" }
+            ]
+          }
+        }
+      },
+      {
+        from: "\u9762\u5012 \u3054\u3068",
+        to: "\u9762\u5012\u4e8b_MATCH",
+        candidates: ["\u9762\u5012\u4e8b_MATCH"],
+        regex: false,
+        enabled: true,
+        priority: 20,
+        sequence: [
+          { surface: "\u9762\u5012", pos: "\u540d\u8a5e" },
+          { surface: "\u3054\u3068", pos: "\u540d\u8a5e" }
+        ],
+        conditions: {
+          current: {
+            sequence: [
+              { surface: "\u9762\u5012", pos: "\u540d\u8a5e" },
+              { surface: "\u3054\u3068", pos: "\u540d\u8a5e" }
+            ]
+          },
+          next: {
+            sequence: [
+              { surface: "\u306b", pos: "\u52a9\u8a5e" }
+            ]
+          }
+        }
+      },
+      {
+        from: "\u3053\u3068",
+        from_options: ["\u3053\u3068"],
+        to: "\u4e8b_NEG",
+        candidates: ["\u4e8b_NEG"],
+        regex: false,
+        enabled: true,
+        priority: 10,
+        conditions: {
+          current: { pos: "-[\u52d5\u8a5e,\u5f62\u5bb9\u8a5e]" }
+        }
+      }
+    ]
+  }];
+  const prevSequence = TransformEngine.transformTextWithStages("\u79c1\u306f", stages, tokenizer);
+  const currentNextSequence = TransformEngine.transformTextWithStages("\u9762\u5012\u3054\u3068\u306b", stages, tokenizer);
+  const negativeNoun = TransformEngine.transformTextWithStages("\u3053\u3068", stages, tokenizer);
+  return {
+    passed:
+      prevSequence === "\u79c1\u306f_MATCH" &&
+      currentNextSequence === "\u9762\u5012\u4e8b_MATCH\u306b" &&
+      negativeNoun === "\u4e8b_NEG",
+    details: { prevSequence, currentNextSequence, negativeNoun }
+  };
+};
+
 const verifyDictionaryCompiledBehavior = () => {
   const transform = (input, rules) => TransformEngine.transformTextWithStages(input, [{
     id: "compiled-dictionary",
@@ -1607,6 +1863,26 @@ const main = async () => {
     ? "PASS [wildcard] matcher / replacement / conditions"
     : `FAIL [wildcard] ${JSON.stringify(wildcardCheck.details)}`);
 
+  const regexReplacementCheck = verifyRegexReplacementBehaviorV2(tokenizer);
+  console.log(regexReplacementCheck.passed
+    ? "PASS [regex] capture replacement"
+    : `FAIL [regex] ${JSON.stringify(regexReplacementCheck.details)}`);
+
+  const tokenBundleRegexCheck = verifyRegexRuleInTokenBundleBehavior(tokenizer);
+  console.log(tokenBundleRegexCheck.passed
+    ? "PASS [regex-token-bundle] regex rule in token bundle runs on dictionary path"
+    : `FAIL [regex-token-bundle] ${JSON.stringify(tokenBundleRegexCheck.details)}`);
+
+  const katakanaLongVowelSettingsCheck = verifyKatakanaLongVowelSettingsBehavior(tokenizer);
+  console.log(katakanaLongVowelSettingsCheck.passed
+    ? "PASS [katakana-long-vowel] min length / compound"
+    : `FAIL [katakana-long-vowel] ${JSON.stringify(katakanaLongVowelSettingsCheck.details)}`);
+
+  const sequenceConditionCheck = verifySequenceConditionBehavior(tokenizer);
+  console.log(sequenceConditionCheck.passed
+    ? "PASS [sequence-condition] prev/current/next sequence and negative matcher"
+    : `FAIL [sequence-condition] ${JSON.stringify(sequenceConditionCheck.details)}`);
+
   const dictionaryCompiledCheck = verifyDictionaryCompiledBehavior();
   console.log(dictionaryCompiledCheck.passed
     ? `PASS [dictionary-compiled] non-cascade / priority / performance (${dictionaryCompiledCheck.details.elapsedMs}ms)`
@@ -1627,6 +1903,10 @@ const main = async () => {
     disabledSubtreeCheck.passed &&
     disabledEntryCheck.passed &&
     wildcardCheck.passed &&
+    regexReplacementCheck.passed &&
+    tokenBundleRegexCheck.passed &&
+    katakanaLongVowelSettingsCheck.passed &&
+    sequenceConditionCheck.passed &&
     dictionaryCompiledCheck.passed &&
     [...defaultResults, ...overrideResults].every((result) => result.passed);
 

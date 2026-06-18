@@ -3909,6 +3909,10 @@
     ].join(" ").toLowerCase();
   };
 
+  const resolveNodeEffectiveKind = (node, inheritedKind = null) => {
+    return node?.kind ?? inheritedKind ?? "dictionary-rules";
+  };
+
   const entryMatchesSearchText = (entry, searchText) => {
     if (!searchText) {
       return true;
@@ -3917,7 +3921,7 @@
   };
 
   const composeNodeSearchValue = (node, inheritedKind = null) => {
-    const effectiveKind = inheritedKind ?? node?.kind ?? "dictionary-rules";
+    const effectiveKind = resolveNodeEffectiveKind(node, inheritedKind);
     const entryValues = (Array.isArray(node?.entries) ? node.entries : [])
       .map((entry) => composeEntrySearchValue(entry))
       .join(" ");
@@ -3937,7 +3941,7 @@
       return true;
     }
 
-    const effectiveKind = inheritedKind ?? node?.kind ?? "dictionary-rules";
+    const effectiveKind = resolveNodeEffectiveKind(node, inheritedKind);
     if (composeNodeOwnSearchValue(node, effectiveKind).includes(searchText)) {
       return true;
     }
@@ -4666,9 +4670,7 @@
     card.id = `node-${node.id}`;
     card.dataset.focused = state.focusedNodeId === node.id ? "true" : "false";
     card.dataset.enabled = node.enabled !== false ? "true" : "false";
-    const effectiveKind = isRoot
-      ? (node.kind ?? "dictionary-rules")
-      : (inheritedKind ?? node.kind ?? "dictionary-rules");
+    const effectiveKind = resolveNodeEffectiveKind(node, isRoot ? null : inheritedKind);
 
     const header = document.createElement("div");
     header.className = isRoot ? "bundle-head" : "group-head";
@@ -5613,9 +5615,7 @@
       const searchText = normalizeSearchText(state.bundleUi.searchText);
 
       const appendNodeSection = ({ node, parentChildren, index, isRoot = false, inheritedKind = null }) => {
-        const effectiveKind = isRoot
-          ? (node.kind ?? inheritedKind ?? "dictionary-rules")
-          : (inheritedKind ?? node.kind ?? "dictionary-rules");
+        const effectiveKind = resolveNodeEffectiveKind(node, isRoot ? null : inheritedKind);
         if (nodeHasSearchMatch(node, effectiveKind, searchText)) {
           content.appendChild(renderNodeSection({
             node,

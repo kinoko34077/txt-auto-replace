@@ -237,7 +237,29 @@
         </section>
 
         <section>
-            <h2>7. 確認ポイント</h2>
+            <h2>7. Inline Run テスト</h2>
+            <p class="note">inline 要素を跨いでも 1 run として崩れず変換されるかを確認します。</p>
+            <div class="test-text">其<span>れを</span><strong>やっぱり</strong><em>分かる</em>文にする。</div>
+            <div class="test-text"><span>面倒</span><span>ごとに</span><span>当たる</span>。</div>
+        </section>
+
+        <section>
+            <h2>8. Mutation Burst テスト</h2>
+            <p class="note">短時間に複数 node を追加しても root 集約され、全体再処理になりにくいことを確認します。</p>
+            <button id="addBurstBtn" type="button">8件まとめて追加</button>
+            <button id="clearBurstBtn" type="button">burst領域をクリア</button>
+            <div id="burstArea"></div>
+        </section>
+
+        <section>
+            <h2>9. Editable 除外テスト</h2>
+            <p class="note"><code>textarea</code> / <code>input</code> / <code>contenteditable</code> が既定で変換されないことを確認します。</p>
+            <input value="それを書き出す。やっぱり分かる。" />
+            <div class="test-text" contenteditable="true">それを書き出す。やっぱり分かる。</div>
+        </section>
+
+        <section>
+            <h2>10. 確認ポイント</h2>
             <ul>
                 <li>ページ表示後、本文中の「それ」が「其」へ変換されるか。</li>
                 <li>「やっぱり」が「矢ッ張」へ変換されるか。</li>
@@ -245,12 +267,17 @@
                 <li>単独トークンとして解析された「こと」が「ヿ」へ変換されるか。</li>
                 <li>「ことば」のような別トークン語が巻き込まれないか。</li>
                 <li>後から追加した文章にも自動で変換が反映されるか。</li>
+                <li>inline 要素を跨ぐ文が一つの流れとして崩れず変換されるか。</li>
+                <li>burst 追加後、runtime snapshot の <code>mutationBatches</code> と <code>pendingRootCount</code> が更新されるか。</li>
+                <li><code>textarea</code> / <code>input</code> / <code>contenteditable</code> の中身が既定で書き換わらないか。</li>
+                <li>ルビ fixture と動的追加後の ruby が base / rt を維持するか。</li>
+                <li>設定変更後に restore → reapply され、runtime snapshot の planVersion と changedRuns が更新されるか。</li>
                 <li>Console に <code>変換初期化完了</code> と MutationObserver 開始ログが出るか。</li>
             </ul>
         </section>
 
         <section id="ruby-fixtures">
-            <h2>8. ルビ変換テスト</h2>
+            <h2>11. ルビ変換テスト</h2>
             <p class="note"><code>Bluetooth → 青歯《Bluetooth》</code> のルールと、動的追加後のルビ保持を確認します。</p>
             <div class="test-text" id="rubyBluetoothFixture">Bluetooth</div>
             <div id="rubyDynamicFixture"></div>
@@ -258,7 +285,7 @@
         </section>
 
         <section>
-            <h2>9. Runtime Debug Viewer</h2>
+            <h2>12. Runtime Debug Viewer</h2>
             <p class="note">content script が document 属性へ書き出した runtime snapshot と transform debug を、このページ上で直接確認します。</p>
             <div class="debug-toolbar">
                 <label for="debugTargetInput">確認する from</label>
@@ -266,6 +293,7 @@
                 <label><input id="debugAutoRefreshInput" type="checkbox" /> 自動更新</label>
                 <button id="applyDebugTargetsBtn" type="button">対象を更新</button>
                 <button id="refreshDebugViewBtn" type="button">再読込</button>
+                <button id="copyDebugViewBtn" type="button">全コピー</button>
             </div>
             <div id="debugStatusNode" class="debug-status"></div>
             <div id="debugViewerRoot" class="debug-grid"></div>
@@ -275,6 +303,7 @@
     <script>
         const dynamicInput = document.getElementById("dynamicInput");
         const dynamicArea = document.getElementById("dynamicArea");
+        const burstArea = document.getElementById("burstArea");
         const fixtureSelect = document.getElementById("fixtureSelect");
         const debugViewerRoot = document.getElementById("debugViewerRoot");
         const debugTargetInput = document.getElementById("debugTargetInput");
@@ -315,6 +344,19 @@
             fixture.className = "test-text";
             fixture.textContent = "Bluetooth";
             document.getElementById("rubyDynamicFixture").appendChild(fixture);
+        });
+
+        document.getElementById("addBurstBtn").addEventListener("click", () => {
+            for (let index = 0; index < 8; index += 1) {
+                const fixture = document.createElement("p");
+                fixture.className = "test-text";
+                fixture.textContent = `burst ${index + 1}: それを書き出すことにした。やっぱり分かる。`;
+                burstArea.appendChild(fixture);
+            }
+        });
+
+        document.getElementById("clearBurstBtn").addEventListener("click", () => {
+            burstArea.textContent = "";
         });
 
         const safeParseJsonAttribute = (attributeName) => {
@@ -371,7 +413,14 @@
                     `generated: ${runtimeSnapshot.generatedAt ?? "unknown"}`,
                     `stages: ${runtimeSnapshot.stages?.length ?? 0}`,
                     `virtual: ${runtimeSnapshot.virtualBundleIds?.length ?? 0}`,
-                    `runtimeEnabled: ${runtimeSnapshot.runtimeEnabled === true ? "true" : "false"}`
+                    `runtimeEnabled: ${runtimeSnapshot.runtimeEnabled === true ? "true" : "false"}`,
+                    `planVersion: ${runtimeSnapshot.planVersion ?? "none"}`,
+                    `compileMs: ${Number(runtimeSnapshot.runtimeMetrics?.compileMs ?? 0).toFixed(2)}`,
+                    `processingMs: ${Number(runtimeSnapshot.runtimeMetrics?.processingMsTotal ?? 0).toFixed(2)}`,
+                    `changedRuns: ${runtimeSnapshot.runtimeMetrics?.changedRuns ?? 0}`,
+                    `mutationBatches: ${runtimeSnapshot.runtimeMetrics?.mutationBatches ?? 0}`,
+                    `pendingRoots: ${runtimeSnapshot.pendingRootCount ?? 0}`,
+                    `pendingMutationRoots: ${runtimeSnapshot.pendingMutationRootCount ?? 0}`
                 ].forEach((text) => {
                     const chip = document.createElement("span");
                     chip.className = "debug-chip";
@@ -403,6 +452,7 @@
                     runtimeCard.appendChild(virtualList);
                 }
 
+                runtimeCard.appendChild(createJsonDetails("runtime metrics", runtimeSnapshot.runtimeMetrics ?? null));
                 runtimeCard.appendChild(createJsonDetails("直近のルビ判定", runtimeSnapshot.lastRubyDebug ?? null));
                 runtimeCard.appendChild(createJsonDetails("先行ルールに遮蔽される重複", runtimeSnapshot.shadowedRules ?? []));
 
@@ -525,6 +575,20 @@
 
         document.getElementById("refreshDebugViewBtn").addEventListener("click", () => {
             renderRuntimeDebugViewer();
+        });
+
+        document.getElementById("copyDebugViewBtn").addEventListener("click", async () => {
+            const payload = {
+                runtimeSnapshot: safeParseJsonAttribute(DEBUG_RUNTIME_ATTRIBUTE),
+                lastTransformDebug: safeParseJsonAttribute(DEBUG_LAST_ATTRIBUTE),
+                debugHistory: safeParseJsonAttribute(DEBUG_HISTORY_ATTRIBUTE)
+            };
+            try {
+                await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+                setDebugStatus("debug情報をクリップボードへコピーしました。");
+            } catch (error) {
+                setDebugStatus(`コピーに失敗しました: ${error.message}`);
+            }
         });
 
         const debugAttributeObserver = new MutationObserver((mutations) => {

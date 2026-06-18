@@ -51,6 +51,85 @@
   const dictionaryStageCompileCache = new WeakMap();
   const tokenStageCompileCache = new WeakMap();
   const crossStageConflictCache = new WeakMap();
+  const runtimePlanCache = new WeakMap();
+  let nextRuntimePlanVersion = 1;
+  const DEFAULT_TEXT_CACHE_ENTRIES = 5000;
+  const DEFAULT_TOKEN_CACHE_ENTRIES = 2000;
+  const DEFAULT_TEXT_CACHE_MAX_LENGTH = 8192;
+  const DEFAULT_TOKEN_CACHE_MAX_LENGTH = 4096;
+  const JAPANESE_TEXT_PATTERN = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/u;
+
+  const getNow = () => {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+      return performance.now();
+    }
+    return Date.now();
+  };
+
+  const createLruCache = (maxEntries) => {
+    const limit = Number.isFinite(Number(maxEntries))
+      ? Math.max(1, Math.floor(Number(maxEntries)))
+      : 0;
+    const entries = new Map();
+
+    return {
+      maxEntries: limit,
+      clear() {
+        entries.clear();
+      },
+      get(key) {
+        if (limit <= 0 || !entries.has(key)) {
+          return undefined;
+        }
+        const value = entries.get(key);
+        entries.delete(key);
+        entries.set(key, value);
+        return value;
+      },
+      set(key, value) {
+        if (limit <= 0) {
+          return value;
+        }
+        if (entries.has(key)) {
+          entries.delete(key);
+        }
+        entries.set(key, value);
+        while (entries.size > limit) {
+          const oldestKey = entries.keys().next().value;
+          entries.delete(oldestKey);
+        }
+        return value;
+      }
+    };
+  };
+
+  const containsJapaneseText = (value) => {
+    return JAPANESE_TEXT_PATTERN.test(`${value ?? ""}`);
+  };
+
+  const appendUnique = (list, value) => {
+    if (!value || list.includes(value)) {
+      return;
+    }
+    list.push(value);
+  };
+
+  const incrementMetric = (metrics, field, amount = 1) => {
+    if (!metrics || !field) {
+      return;
+    }
+    metrics[field] = (Number(metrics[field]) || 0) + amount;
+  };
+
+  const addStageTiming = (metrics, stageId, elapsedMs) => {
+    if (!metrics || !stageId || !Number.isFinite(elapsedMs)) {
+      return;
+    }
+    if (!metrics.stageTimings || typeof metrics.stageTimings !== "object") {
+      metrics.stageTimings = {};
+    }
+    metrics.stageTimings[stageId] = (Number(metrics.stageTimings[stageId]) || 0) + elapsedMs;
+  };
 
   const emitDebugEvent = (debugCollector, event) => {
     if (typeof debugCollector === "function" && event && typeof event === "object") {
@@ -1073,6 +1152,66 @@
       left.order - right.order;
   };
 
+  const compileSlowDictionaryRule = (item) => {
+    const rule = item?.rule ?? item;
+    if (!rule || typeof rule !== "object") {
+      return {
+        ...item,
+        rule
+      };
+    }
+
+    if (rule.regex === true) {
+      try {
+        return {
+          ...item,
+          rule,
+          compiledRegex: new RegExp(rule.from, "gu")
+        };
+      } catch (error) {
+        return {
+          ...item,
+          rule,
+          compiledRegex: null
+        };
+      }
+    }
+
+    const compiledPatterns = [];
+    for (const fromCandidate of getPositiveRuleFromCandidates(rule)) {
+      if (!fromCandidate) {
+        continue;
+      }
+      const normalizedPattern = `${fromCandidate}`;
+      if (!hasWildcard(normalizedPattern)) {
+        compiledPatterns.push({
+          fromCandidate: normalizedPattern,
+          literal: true
+        });
+        continue;
+      }
+      compiledPatterns.push({
+        fromCandidate: normalizedPattern,
+        literal: false,
+        compiledWildcard: compileWildcardPattern(
+          ruleUsesKanaInsensitiveMatch(rule)
+            ? normalizeKanaForMatch(normalizedPattern)
+            : normalizedPattern,
+          {
+            anchored: false,
+            flags: "gdu"
+          }
+        )
+      });
+    }
+
+    return {
+      ...item,
+      rule,
+      compiledPatterns
+    };
+  };
+
   const compileDictionaryStage = (rules) => {
     const safeRules = Array.isArray(rules) ? rules : [];
     const cached = dictionaryStageCompileCache.get(safeRules);
@@ -1155,6 +1294,7 @@
         { ...right.rule, __compiledOrder: right.order }
       );
     });
+    compiled.slowRules = compiled.slowRules.map(compileSlowDictionaryRule);
 
     dictionaryStageCompileCache.set(safeRules, compiled);
     return compiled;
@@ -1179,7 +1319,7 @@
     return best;
   };
 
-  const applyCompiledDictionaryExactRules = (text, compiled, debugCollector, stageId) => {
+  const applyCompiledDictionaryExactRules = (text, compiled, debugCollector, stageId, metrics = null) => {
     if (!compiled || (compiled.exactBuckets.size === 0 && compiled.kanaExactBuckets.size === 0)) {
       return text;
     }
@@ -1214,6 +1354,7 @@
         regex: false,
         from: record.rule.from
       });
+      incrementMetric(metrics, "dictionaryMatches");
       output += replacement;
       cursor += record.length;
     }
@@ -1256,7 +1397,7 @@
       return output + sourceText.slice(cursor);
     }
 
-    const compiled = compileWildcardPattern(normalizedPattern, { anchored: false, flags: "gdu" });
+    const compiled = options?.compiledWildcard ?? compileWildcardPattern(normalizedPattern, { anchored: false, flags: "gdu" });
     let output = "";
     let cursor = 0;
     for (const match of normalizedText.matchAll(compiled.regex)) {
@@ -1285,7 +1426,7 @@
     return output + sourceText.slice(cursor);
   };
 
-  const applySlowDictionaryRules = (text, slowRules, debugCollector, stageId) => {
+  const applySlowDictionaryRules = (text, slowRules, debugCollector, stageId, metrics = null) => {
     let result = text;
 
     for (const item of Array.isArray(slowRules) ? slowRules : []) {
@@ -1295,8 +1436,11 @@
       }
 
       if (rule.regex === true) {
+        const regex = item?.compiledRegex;
+        if (!regex) {
+          continue;
+        }
         try {
-          const regex = new RegExp(rule.from, "gu");
           result = result.replace(regex, (...args) => {
             const matchedText = args[0];
             const hasGroups = args.length > 0 && args[args.length - 1] && typeof args[args.length - 1] === "object";
@@ -1319,6 +1463,7 @@
               regex: true,
               from: rule.from
             });
+            incrementMetric(metrics, "regexMatches");
             return replacement;
           });
         } catch (error) {
@@ -1332,7 +1477,13 @@
       }
 
       const fromCandidates = getPositiveRuleFromCandidates(rule);
-      for (const fromCandidate of fromCandidates) {
+      const compiledPatterns = Array.isArray(item?.compiledPatterns)
+        ? item.compiledPatterns
+        : fromCandidates.map((fromCandidate) => ({
+          fromCandidate
+        }));
+      for (const pattern of compiledPatterns) {
+        const fromCandidate = pattern?.fromCandidate ?? "";
         if (!fromCandidate) {
           continue;
         }
@@ -1346,9 +1497,13 @@
           fromCandidate,
           replacementTemplate,
           {
-            kanaInsensitive: ruleUsesKanaInsensitiveMatch(rule)
+            kanaInsensitive: ruleUsesKanaInsensitiveMatch(rule),
+            compiledWildcard: pattern?.compiledWildcard ?? null
           },
-          (replacement, matchedText) => appendSourceRubyAnnotation(rule, replacement, matchedText)
+          (replacement, matchedText) => {
+            incrementMetric(metrics, hasWildcard(fromCandidate) ? "wildcardMatches" : "dictionaryMatches");
+            return appendSourceRubyAnnotation(rule, replacement, matchedText);
+          }
         );
       }
     }
@@ -1443,6 +1598,38 @@
     return rebuildRubyAnnotatedText(transformedSegments);
   };
 
+  const applyCompiledStageTransformPreservingRuby = (text, stage, tokenizer, plan, debugCollector, metrics) => {
+    if (!canPreserveNarouRubyAnnotations(text)) {
+      return applyCompiledStageTransform(text, stage, tokenizer, plan, debugCollector, metrics);
+    }
+
+    const normalizedText = normalizeNarouRubyText(text, {
+      allowLooseImplicitBase: true
+    });
+    const segments = parseRubySegments(normalizedText, DEFAULT_RUBY_MARKERS, {
+      allowLooseImplicitBase: false
+    });
+    if (!hasRubySegments(segments)) {
+      return applyCompiledStageTransform(text, stage, tokenizer, plan, debugCollector, metrics);
+    }
+
+    return rebuildRubyAnnotatedText(segments.map((segment) => {
+      if (!segment) {
+        return segment;
+      }
+      if (segment.type === "ruby") {
+        return {
+          ...segment,
+          base: applyCompiledStageTransform(`${segment.base ?? ""}`, stage, tokenizer, plan, debugCollector, metrics) || segment.base
+        };
+      }
+      return {
+        ...segment,
+        text: applyCompiledStageTransform(`${segment.text ?? ""}`, stage, tokenizer, plan, debugCollector, metrics)
+      };
+    }));
+  };
+
   const addRuleToMap = (map, key, rule) => {
     if (!key) {
       return;
@@ -1455,11 +1642,6 @@
     map.set(key, [rule]);
   };
 
-  const hasRuleConditions = (rule) => {
-    const conditions = rule?.conditions ?? {};
-    return Boolean(conditions.current || conditions.prev || conditions.next);
-  };
-
   const canIndexTokenRule = (rule) => {
     if (!rule || rule.enabled === false || rule.regex === true || rule.character_map) {
       return false;
@@ -1469,13 +1651,175 @@
       return false;
     }
 
-    if (ruleUsesKanaInsensitiveMatch(rule) || hasRuleConditions(rule)) {
+    if (ruleUsesKanaInsensitiveMatch(rule)) {
       return false;
     }
 
     return getRuleFromCandidates(rule).some((candidate) => {
       return candidate && !candidate.includes("\\") && !hasWildcard(candidate);
     });
+  };
+
+  const getPositiveLiteralConditionValues = (value) => {
+    const values = Array.isArray(value) ? value : [value];
+    return values
+      .map((entry) => `${entry ?? ""}`.trim())
+      .filter((entry) => {
+        return entry &&
+          !entry.startsWith("-") &&
+          !entry.includes("\\") &&
+          !hasWildcard(entry);
+      });
+  };
+
+  const indexSequenceRule = (compiled, rule) => {
+    const firstMatcher = Array.isArray(rule?.sequence) ? rule.sequence[0] : null;
+    if (!firstMatcher) {
+      return false;
+    }
+
+    if (typeof firstMatcher === "string") {
+      const values = getPositiveLiteralConditionValues(firstMatcher);
+      for (const value of values) {
+        addRuleToMap(compiled.sequenceSurfaceMap, value, rule);
+        addRuleToMap(compiled.sequenceBasicMap, value, rule);
+      }
+      return values.length > 0;
+    }
+
+    if (typeof firstMatcher !== "object") {
+      return false;
+    }
+
+    const surfaceValues = getPositiveLiteralConditionValues(firstMatcher.surface_form);
+    const basicValues = getPositiveLiteralConditionValues(firstMatcher.basic_form);
+    for (const value of surfaceValues) {
+      addRuleToMap(compiled.sequenceSurfaceMap, value, rule);
+    }
+    for (const value of basicValues) {
+      addRuleToMap(compiled.sequenceBasicMap, value, rule);
+    }
+    return surfaceValues.length > 0 || basicValues.length > 0;
+  };
+
+  const extractSequenceTriggerCandidate = (sequence) => {
+    const first = Array.isArray(sequence) ? sequence[0] : null;
+    if (!first) {
+      return "";
+    }
+    if (typeof first === "string") {
+      return first;
+    }
+    if (typeof first === "object") {
+      return `${first.surface_form ?? first.surface ?? first.from ?? first.basic_form ?? first.basic ?? ""}`.trim();
+    }
+    return "";
+  };
+
+  const buildTokenTriggerMetadata = (rules, runtimeMode = null) => {
+    const triggerTerms = [];
+    const triggerChars = [];
+    let hasUnknownTrigger = false;
+    let hasJapaneseTrigger = false;
+    let hasNonJapaneseTrigger = false;
+    const requiresJapanese = runtimeMode === "verb-okurigana-stage4";
+
+    for (const rule of Array.isArray(rules) ? rules : []) {
+      if (!rule || rule.enabled === false) {
+        continue;
+      }
+
+      const sequenceTrigger = Array.isArray(rule.sequence) && rule.sequence.length > 0
+        ? extractSequenceTriggerCandidate(rule.sequence)
+        : "";
+      const candidates = sequenceTrigger
+        ? [sequenceTrigger]
+        : getPositiveRuleFromCandidates(rule);
+      if (candidates.length === 0) {
+        hasUnknownTrigger = true;
+      }
+
+      for (const candidate of candidates) {
+        const term = `${candidate ?? ""}`.trim();
+        if (!term) {
+          continue;
+        }
+        if (rule.regex === true || term.includes("\\") || hasWildcard(term)) {
+          hasUnknownTrigger = true;
+          continue;
+        }
+
+        appendUnique(triggerTerms, term);
+        const termHasJapanese = containsJapaneseText(term);
+        if (termHasJapanese) {
+          hasJapaneseTrigger = true;
+        } else {
+          hasNonJapaneseTrigger = true;
+        }
+
+        for (const char of Array.from(term)) {
+          appendUnique(triggerChars, char);
+        }
+      }
+    }
+
+    return {
+      requiresJapanese,
+      hasUnknownTrigger,
+      hasJapaneseTrigger,
+      hasNonJapaneseTrigger,
+      terms: triggerTerms,
+      chars: triggerChars
+    };
+  };
+
+  const textMatchesTokenTriggers = (text, metadata) => {
+    const sourceText = `${text ?? ""}`;
+    if (!sourceText.trim()) {
+      return false;
+    }
+
+    const safeMetadata = metadata && typeof metadata === "object"
+      ? metadata
+      : {
+        requiresJapanese: false,
+        hasUnknownTrigger: true,
+        hasJapaneseTrigger: false,
+        hasNonJapaneseTrigger: false,
+        terms: [],
+        chars: []
+      };
+    const hasJapaneseText = containsJapaneseText(sourceText);
+
+    if (safeMetadata.requiresJapanese && !hasJapaneseText) {
+      return false;
+    }
+
+    if (Array.isArray(safeMetadata.chars) && safeMetadata.chars.length > 0) {
+      const hasTriggerChar = safeMetadata.chars.some((char) => char && sourceText.includes(char));
+      if (!hasTriggerChar) {
+        return false;
+      }
+    } else if (safeMetadata.hasJapaneseTrigger && !safeMetadata.hasNonJapaneseTrigger && !hasJapaneseText) {
+      return false;
+    }
+
+    if (
+      Array.isArray(safeMetadata.terms) &&
+      safeMetadata.terms.length > 0 &&
+      !safeMetadata.hasJapaneseTrigger
+    ) {
+      const hasTriggerTerm = safeMetadata.terms.some((term) => term && sourceText.includes(term));
+      if (!hasTriggerTerm && !safeMetadata.hasUnknownTrigger) {
+        return false;
+      }
+    }
+
+    if (safeMetadata.hasUnknownTrigger) {
+      return safeMetadata.requiresJapanese ? hasJapaneseText : true;
+    }
+
+    return true;
   };
 
   const compileTokenStage = (rules) => {
@@ -1488,6 +1832,8 @@
     const compiled = {
       surfaceMap: new Map(),
       basicMap: new Map(),
+      sequenceSurfaceMap: new Map(),
+      sequenceBasicMap: new Map(),
       broadRules: []
     };
 
@@ -1500,6 +1846,13 @@
         ...rule,
         __compiledOrder: index
       };
+
+      if (Array.isArray(compiledRule.sequence) && compiledRule.sequence.length > 0) {
+        if (!indexSequenceRule(compiled, compiledRule)) {
+          compiled.broadRules.push(compiledRule);
+        }
+        return;
+      }
 
       if (!canIndexTokenRule(compiledRule)) {
         compiled.broadRules.push(compiledRule);
@@ -1534,6 +1887,12 @@
     for (const rulesForKey of compiled.basicMap.values()) {
       sortRules(rulesForKey);
     }
+    for (const rulesForKey of compiled.sequenceSurfaceMap.values()) {
+      sortRules(rulesForKey);
+    }
+    for (const rulesForKey of compiled.sequenceBasicMap.values()) {
+      sortRules(rulesForKey);
+    }
     sortRules(compiled.broadRules);
 
     tokenStageCompileCache.set(safeRules, compiled);
@@ -1554,6 +1913,8 @@
 
     pushRules(compiled.surfaceMap.get(token?.surface_form));
     pushRules(compiled.basicMap.get(token?.basic_form));
+    pushRules(compiled.sequenceSurfaceMap.get(token?.surface_form));
+    pushRules(compiled.sequenceBasicMap.get(token?.basic_form));
     pushRules(compiled.broadRules);
     return candidates.sort(compareRuleOrder);
   };
@@ -1856,27 +2217,15 @@
     return outputTokens;
   };
 
-  const tokenizeAndApplyTokenRules = (text, tokenRules, tokenizer, debugCollector, stageId) => {
-    if (!text || !text.trim()) {
-      return text;
-    }
-
-    if (!Array.isArray(tokenRules) || tokenRules.length === 0) {
-      return text;
-    }
-
-    if (!tokenizer) {
-      return text;
-    }
-
-    const tokens = tokenizer.tokenize(text);
+  const applyTokenRulesToTokens = (text, tokens, tokenRules, debugCollector, stageId) => {
+    const safeTokens = Array.isArray(tokens) ? tokens : [];
     emitDebugEvent(debugCollector, {
       phase: "tokenize",
       stageId,
       text,
-      tokens: tokens.map(snapshotToken)
+      tokens: safeTokens.map(snapshotToken)
     });
-    const transformedTokens = applyTransformationsToTokens(tokens, tokenRules, debugCollector, stageId);
+    const transformedTokens = applyTransformationsToTokens(safeTokens, tokenRules, debugCollector, stageId);
     const adjectiveFallbackTokens = applyAdjectiveSurfaceFallbackToTokens(
       transformedTokens,
       tokenRules,
@@ -1891,6 +2240,22 @@
         stageId
       )
     );
+  };
+
+  const tokenizeAndApplyTokenRules = (text, tokenRules, tokenizer, debugCollector, stageId) => {
+    if (!text || !text.trim()) {
+      return text;
+    }
+
+    if (!Array.isArray(tokenRules) || tokenRules.length === 0) {
+      return text;
+    }
+
+    if (!tokenizer) {
+      return text;
+    }
+
+    return applyTokenRulesToTokens(text, tokenizer.tokenize(text), tokenRules, debugCollector, stageId);
   };
 
   const isMasuAuxiliaryToken = (token) => {
@@ -2186,12 +2551,8 @@
     return null;
   };
 
-  const applyVerbOkuriganaStage4 = (text, tokenizer, debugCollector, stageId) => {
-    if (!text || !text.trim() || !tokenizer) {
-      return text;
-    }
-
-    const outputTokens = tokenizer.tokenize(text).map((token) => ({ ...token }));
+  const applyVerbOkuriganaStage4ToTokens = (text, tokens, debugCollector, stageId) => {
+    const outputTokens = (Array.isArray(tokens) ? tokens : []).map((token) => ({ ...token }));
     emitDebugEvent(debugCollector, {
       phase: "tokenize",
       stageId,
@@ -2223,6 +2584,14 @@
     }
 
     return joinTokenSurfaces(outputTokens);
+  };
+
+  const applyVerbOkuriganaStage4 = (text, tokenizer, debugCollector, stageId) => {
+    if (!text || !text.trim() || !tokenizer) {
+      return text;
+    }
+
+    return applyVerbOkuriganaStage4ToTokens(text, tokenizer.tokenize(text), debugCollector, stageId);
   };
 
   const KATAKANA_COMPOUND_START_CHARS = new Set(Array.from(
@@ -2381,7 +2750,149 @@
     return resolved;
   };
 
-  const transformTextWithStages = (text, stages, tokenizer, options = {}) => {
+  const stageRequiresTokenizer = (stage) => {
+    return stage?.kind === "token-rules" &&
+      stage.runtime_mode !== "katakana-long-vowel-abbreviation" &&
+      (
+        (Array.isArray(stage.rules) && stage.rules.length > 0) ||
+        (typeof stage.runtime_mode === "string" && stage.runtime_mode.trim() !== "")
+      );
+  };
+
+  const compileRuntimePlan = (stages, options = {}) => {
+    const compileStartedAt = getNow();
+    const safeStages = Array.isArray(stages) ? stages : [];
+    const revision = Number(options?.revision) || 0;
+    const cacheable = options?.disableCache !== true;
+    const maxTextCacheEntries = options?.maxTextCacheEntries ?? DEFAULT_TEXT_CACHE_ENTRIES;
+    const maxTokenCacheEntries = options?.maxTokenCacheEntries ?? DEFAULT_TOKEN_CACHE_ENTRIES;
+    const maxTextCacheLength = Number.isFinite(Number(options?.maxTextCacheLength))
+      ? Math.max(0, Math.floor(Number(options.maxTextCacheLength)))
+      : DEFAULT_TEXT_CACHE_MAX_LENGTH;
+    const maxTokenCacheLength = Number.isFinite(Number(options?.maxTokenCacheLength))
+      ? Math.max(0, Math.floor(Number(options.maxTokenCacheLength)))
+      : DEFAULT_TOKEN_CACHE_MAX_LENGTH;
+    const cacheKey = [
+      revision,
+      maxTextCacheEntries,
+      maxTokenCacheEntries,
+      maxTextCacheLength,
+      maxTokenCacheLength,
+      options?.planVersion ?? ""
+    ].join(":");
+    if (cacheable) {
+      const cached = runtimePlanCache.get(safeStages);
+      if (cached && cached.cacheKey === cacheKey) {
+        return cached;
+      }
+    }
+
+    const resolvedStages = resolveCrossStageExactRuleConflicts(safeStages);
+    const planVersion = options?.planVersion ?? `runtime-plan-${nextRuntimePlanVersion++}`;
+    const plan = {
+      revision,
+      planVersion,
+      cacheKey,
+      compileMs: 0,
+      maxTextCacheLength,
+      maxTokenCacheLength,
+      stages: resolvedStages.map((stage) => {
+        const requiresTokenizer = stageRequiresTokenizer(stage);
+        return {
+          ...stage,
+          requiresTokenizer,
+          compiledDictionary: stage.kind === "dictionary-rules"
+            ? compileDictionaryStage(stage.rules)
+            : null,
+          compiledToken: stage.kind === "token-rules" && Array.isArray(stage.rules) && stage.rules.length > 0
+            ? compileTokenStage(stage.rules)
+            : null,
+          triggerMetadata: stage.kind === "token-rules"
+            ? buildTokenTriggerMetadata(stage.rules, stage.runtime_mode)
+            : null
+        };
+      }),
+      textTransformCache: createLruCache(maxTextCacheEntries),
+      tokenizeCache: createLruCache(maxTokenCacheEntries)
+    };
+    plan.compileMs = getNow() - compileStartedAt;
+
+    if (cacheable) {
+      runtimePlanCache.set(safeStages, plan);
+    }
+
+    return plan;
+  };
+
+  const getTokenizeCacheKey = (text) => {
+    return `${text ?? ""}`;
+  };
+
+  const getCachedTokens = (text, tokenizer, plan, metrics) => {
+    if (!tokenizer) {
+      return null;
+    }
+
+    const key = getTokenizeCacheKey(text);
+    const cacheable = key.length <= (Number(plan?.maxTokenCacheLength) || 0);
+    const cachedTokens = cacheable ? plan?.tokenizeCache?.get(key) : undefined;
+    if (cachedTokens) {
+      incrementMetric(metrics, "tokenCacheHits");
+      return cachedTokens.map((token) => ({ ...token }));
+    }
+
+    incrementMetric(metrics, "tokenCacheMisses");
+    incrementMetric(metrics, "tokenizeCalls");
+    const tokens = tokenizer.tokenize(text);
+    if (cacheable) {
+      plan?.tokenizeCache?.set(key, tokens.map((token) => ({ ...token })));
+    } else {
+      incrementMetric(metrics, "tokenCacheBypasses");
+    }
+    return tokens;
+  };
+
+  const applyCompiledStageTransform = (text, stage, tokenizer, plan, debugCollector, metrics) => {
+    if (stage.kind === "dictionary-rules") {
+      const compiled = stage.compiledDictionary ?? compileDictionaryStage(stage.rules);
+      const exactResult = applyCompiledDictionaryExactRules(text, compiled, debugCollector, stage.id, metrics);
+      return applySlowDictionaryRules(exactResult, compiled.slowRules, debugCollector, stage.id, metrics);
+    }
+
+    if (stage.kind !== "token-rules") {
+      return text;
+    }
+
+    if (stage.runtime_mode === "katakana-long-vowel-abbreviation") {
+      return applyKatakanaLongVowelAbbreviation(text, stage.rules, debugCollector, stage.id, stage.settings);
+    }
+
+    if (!stage.requiresTokenizer) {
+      return text;
+    }
+
+    if (!tokenizer) {
+      return text;
+    }
+
+    if (!textMatchesTokenTriggers(text, stage.triggerMetadata)) {
+      incrementMetric(metrics, "tokenizeSkipped");
+      return text;
+    }
+
+    const tokens = getCachedTokens(text, tokenizer, plan, metrics);
+    if (!tokens) {
+      return text;
+    }
+
+    if (stage.runtime_mode === "verb-okurigana-stage4") {
+      return applyVerbOkuriganaStage4ToTokens(text, tokens, debugCollector, stage.id);
+    }
+
+    return applyTokenRulesToTokens(text, tokens, stage.rules, debugCollector, stage.id);
+  };
+
+  const transformTextWithPlan = (text, plan, tokenizer, options = {}) => {
     if (!text || !text.trim()) {
       return text;
     }
@@ -2389,9 +2900,34 @@
     const debugCollector = typeof options === "function"
       ? options
       : options?.debugCollector;
+    const metrics = typeof options === "object" && options
+      ? options.metrics ?? null
+      : null;
+    const safePlan = plan && typeof plan === "object"
+      ? plan
+      : compileRuntimePlan(Array.isArray(plan?.stages) ? plan.stages : []);
+    const processingStartedAt = getNow();
+    if (metrics && !Number.isFinite(Number(metrics.compileMs))) {
+      metrics.compileMs = Number(safePlan.compileMs) || 0;
+    }
+    const textCacheKey = `${safePlan.planVersion}::${text}`;
+    const textCacheable = `${text ?? ""}`.length <= (Number(safePlan.maxTextCacheLength) || 0);
+    const cachedResult = textCacheable
+      ? safePlan.textTransformCache?.get(textCacheKey)
+      : undefined;
+    if (cachedResult !== undefined) {
+      incrementMetric(metrics, "textCacheHits");
+      incrementMetric(metrics, "processingMsTotal", getNow() - processingStartedAt);
+      return cachedResult;
+    }
+
+    incrementMetric(metrics, "textCacheMisses");
+    if (!textCacheable) {
+      incrementMetric(metrics, "textCacheBypasses");
+    }
     let transformedText = text;
 
-    for (const stage of resolveCrossStageExactRuleConflicts(stages)) {
+    for (const stage of safePlan.stages) {
       if (!stage) {
         continue;
       }
@@ -2403,12 +2939,25 @@
       }
 
       const beforeStage = transformedText;
-      transformedText = applyStageTransformPreservingRuby(
-        transformedText,
-        stage,
-        tokenizer,
-        debugCollector
-      );
+      const startedAt = getNow();
+      transformedText = canPreserveNarouRubyAnnotations(transformedText)
+        ? applyCompiledStageTransformPreservingRuby(
+          transformedText,
+          stage,
+          tokenizer,
+          safePlan,
+          debugCollector,
+          metrics
+        )
+        : applyCompiledStageTransform(
+          transformedText,
+          stage,
+          tokenizer,
+          safePlan,
+          debugCollector,
+          metrics
+        );
+      addStageTiming(metrics, stage.id, getNow() - startedAt);
       if (beforeStage !== transformedText) {
         emitDebugEvent(debugCollector, {
           phase: "stage-result",
@@ -2420,7 +2969,16 @@
       }
     }
 
+    if (textCacheable) {
+      safePlan.textTransformCache?.set(textCacheKey, transformedText);
+    }
+    incrementMetric(metrics, "processingMsTotal", getNow() - processingStartedAt);
     return transformedText;
+  };
+
+  const transformTextWithStages = (text, stages, tokenizer, options = {}) => {
+    const plan = compileRuntimePlan(stages, options);
+    return transformTextWithPlan(text, plan, tokenizer, options);
   };
 
   const normalizeBundle = (bundle) => {
@@ -2777,6 +3335,7 @@
     applyDictionaryRules,
     applyAdjectiveFallbackTransformations,
     applyVerbFallbackTransformations,
+    compileRuntimePlan,
     loadStagesFromDefinitions,
     normalizeBundleOverridesPayload,
     resolveCrossStageExactRuleConflicts,
@@ -2784,6 +3343,7 @@
     splitMatchCandidates,
     splitReplacementCandidates,
     tokenizeAndApplyTokenRules,
+    transformTextWithPlan,
     transformTextWithStages
   };
 });

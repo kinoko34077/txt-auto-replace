@@ -114,6 +114,18 @@ const summarizeStages = (stages) => {
   return stages.map((stage) => `${stage.order}:${stage.id}`).join(", ");
 };
 
+const transformWithCompiledPlan = (input, stages, tokenizer, options = {}) => {
+  const revision = Number(options.revision) || 1;
+  const plan = TransformEngine.compileRuntimePlan(stages, { revision });
+  const metrics = options.metrics ?? null;
+  const actual = TransformEngine.transformTextWithPlan(input, plan, tokenizer, { metrics });
+  return {
+    actual,
+    plan,
+    metrics
+  };
+};
+
 const FIXTURES = [
   {
     id: "wakaru-basic",
@@ -1805,6 +1817,114 @@ const verifyDictionaryCompiledBehavior = () => {
   };
 };
 
+const verifyCompiledPlanCompatibility = (stages, tokenizer) => {
+  const fixtures = FIXTURES.slice(0, 12);
+  const mismatches = [];
+
+  for (const fixture of fixtures) {
+    const activeStages = filterStages(stages, fixture.activeBundles);
+    const direct = TransformEngine.transformTextWithStages(fixture.input, activeStages, tokenizer);
+    const compiled = transformWithCompiledPlan(fixture.input, activeStages, tokenizer, { revision: 7 }).actual;
+    if (direct !== compiled) {
+      mismatches.push({
+        id: fixture.id,
+        direct,
+        compiled
+      });
+    }
+  }
+
+  return {
+    passed: mismatches.length === 0,
+    details: {
+      mismatches
+    }
+  };
+};
+
+const verifyTokenTriggerAndCaches = (stages, tokenizer) => {
+  const lexicalStages = filterStages(stages, ["lexical-replacements"]);
+  let tokenizeCalls = 0;
+  const wrappedTokenizer = {
+    tokenize(text) {
+      tokenizeCalls += 1;
+      return tokenizer.tokenize(text);
+    }
+  };
+  const metrics = {
+    planVersion: null,
+    tokenizeCalls: 0,
+    tokenizeSkipped: 0,
+    textCacheHits: 0,
+    textCacheMisses: 0,
+    tokenCacheHits: 0,
+    tokenCacheMisses: 0,
+    stageTimings: {}
+  };
+  const plan = TransformEngine.compileRuntimePlan(lexicalStages, { revision: 9 });
+  const lexicalCompiledToken = plan.stages.find((stage) => stage.id === "lexical-replacements")?.compiledToken;
+  const indexedSequenceRules = lexicalCompiledToken?.sequenceSurfaceMap?.get("面倒") ?? [];
+  const skipped = TransformEngine.transformTextWithPlan("alphabet only text", plan, wrappedTokenizer, { metrics });
+  const first = TransformEngine.transformTextWithPlan("それは面倒ごとです。", plan, wrappedTokenizer, { metrics });
+  const second = TransformEngine.transformTextWithPlan("それは面倒ごとです。", plan, wrappedTokenizer, { metrics });
+  const longMetrics = {
+    tokenizeCalls: 0,
+    tokenizeSkipped: 0,
+    textCacheHits: 0,
+    textCacheMisses: 0,
+    textCacheBypasses: 0,
+    tokenCacheHits: 0,
+    tokenCacheMisses: 0,
+    tokenCacheBypasses: 0,
+    processingMsTotal: 0,
+    stageTimings: {}
+  };
+  const boundedPlan = TransformEngine.compileRuntimePlan(lexicalStages, {
+    revision: 10,
+    maxTextCacheLength: 4,
+    maxTokenCacheLength: 4
+  });
+  const longInput = "それは面倒ごとです。";
+  TransformEngine.transformTextWithPlan(longInput, boundedPlan, tokenizer, { metrics: longMetrics });
+  TransformEngine.transformTextWithPlan(longInput, boundedPlan, tokenizer, { metrics: longMetrics });
+  const dictionaryMetrics = {
+    dictionaryMatches: 0,
+    regexMatches: 0,
+    wildcardMatches: 0,
+    stageTimings: {}
+  };
+  const dictionaryStages = filterStages(stages, ["official-homophone-restoration"]);
+  const dictionaryPlan = TransformEngine.compileRuntimePlan(dictionaryStages, { revision: 11 });
+  TransformEngine.transformTextWithPlan("奇跡", dictionaryPlan, tokenizer, { metrics: dictionaryMetrics });
+
+  return {
+    passed: skipped === "alphabet only text" &&
+      first === second &&
+      tokenizeCalls === 1 &&
+      metrics.tokenizeSkipped >= 1 &&
+      metrics.textCacheHits >= 1 &&
+      indexedSequenceRules.length >= 1 &&
+      lexicalCompiledToken?.broadRules?.length === 0 &&
+      Number(metrics.compileMs) >= 0 &&
+      Number(metrics.processingMsTotal) >= 0 &&
+      longMetrics.textCacheHits === 0 &&
+      longMetrics.textCacheBypasses === 2 &&
+      longMetrics.tokenCacheBypasses >= 2 &&
+      dictionaryMetrics.dictionaryMatches >= 1,
+    details: {
+      skipped,
+      first,
+      second,
+      tokenizeCalls,
+      indexedSequenceRuleCount: indexedSequenceRules.length,
+      broadRuleCount: lexicalCompiledToken?.broadRules?.length ?? null,
+      metrics,
+      longMetrics,
+      dictionaryMetrics
+    }
+  };
+};
+
 const verifyRubyTransformBehavior = () => {
   const autoRubyStages = [{
     id: "ruby-auto-source",
@@ -2179,6 +2299,14 @@ const main = async () => {
   console.log(dictionaryCompiledCheck.passed
     ? `PASS [dictionary-compiled] non-cascade / priority / performance (${dictionaryCompiledCheck.details.elapsedMs}ms)`
     : `FAIL [dictionary-compiled] ${JSON.stringify(dictionaryCompiledCheck.details)}`);
+  const compiledPlanCheck = verifyCompiledPlanCompatibility(defaultLoaded.stages, tokenizer);
+  console.log(compiledPlanCheck.passed
+    ? "PASS [compiled-plan] wrapper and compiled plan stay compatible"
+    : `FAIL [compiled-plan] ${JSON.stringify(compiledPlanCheck.details)}`);
+  const tokenTriggerCacheCheck = verifyTokenTriggerAndCaches(defaultLoaded.stages, tokenizer);
+  console.log(tokenTriggerCacheCheck.passed
+    ? "PASS [token-trigger-cache] trigger skip and caches reduce tokenize work"
+    : `FAIL [token-trigger-cache] ${JSON.stringify(tokenTriggerCacheCheck.details)}`);
 
   const rubyTransformCheck = verifyRubyTransformBehavior();
   console.log(rubyTransformCheck.passed
@@ -2210,6 +2338,8 @@ const main = async () => {
     katakanaLongVowelSettingsCheck.passed &&
     sequenceConditionCheck.passed &&
     dictionaryCompiledCheck.passed &&
+    compiledPlanCheck.passed &&
+    tokenTriggerCacheCheck.passed &&
     rubyTransformCheck.passed &&
     rubySharedCheck.passed &&
     [...defaultResults, ...overrideResults].every((result) => result.passed);

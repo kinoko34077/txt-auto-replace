@@ -24,10 +24,40 @@
   }
 
   let activeStages = [];
+  let activePlan = null;
   let activeRevision = 0;
   let dictPath = "";
   let tokenizerPromise = null;
   let tokenizer = null;
+  const RUNTIME_METRIC_COUNTER_FIELDS = Object.freeze([
+    "tokenizeCalls",
+    "tokenizeSkipped",
+    "textCacheHits",
+    "textCacheMisses",
+    "textCacheBypasses",
+    "tokenCacheHits",
+    "tokenCacheMisses",
+    "tokenCacheBypasses",
+    "processingMsTotal",
+    "dictionaryMatches",
+    "regexMatches",
+    "wildcardMatches",
+    "changedRuns",
+    "queuedRoots",
+    "mutationBatches"
+  ]);
+
+  const createMetricsRecord = (planVersion) => {
+    const metrics = {
+      planVersion: planVersion ?? null,
+      compileMs: Number(activePlan?.compileMs) || 0,
+      stageTimings: {}
+    };
+    for (const field of RUNTIME_METRIC_COUNTER_FIELDS) {
+      metrics[field] = 0;
+    }
+    return metrics;
+  };
 
   const stageRequiresTokenizer = (stage) => {
     return stage?.kind === "token-rules" &&
@@ -87,6 +117,9 @@
     activeStages = Array.isArray(message.stages) ? message.stages : [];
     activeRevision = Number(message.revision) || 0;
     dictPath = `${message.dictPath ?? ""}`;
+    activePlan = TransformEngine.compileRuntimePlan(activeStages, {
+      revision: activeRevision
+    });
     tokenizer = null;
     tokenizerPromise = null;
 
@@ -103,7 +136,8 @@
     self.postMessage({
       type: "CONFIGURED",
       revision: activeRevision,
-      requiresTokenizer: runtimeRequiresTokenizer()
+      requiresTokenizer: runtimeRequiresTokenizer(),
+      planVersion: activePlan?.planVersion ?? null
     });
   };
 
@@ -125,9 +159,11 @@
 
     for (const run of Array.isArray(message.runs) ? message.runs : []) {
       const text = `${run.text ?? ""}`;
+      const metrics = createMetricsRecord(activePlan?.planVersion ?? null);
       results.push({
         runId: run.runId,
-        transformedText: TransformEngine.transformTextWithStages(text, activeStages, tokenizerForRun)
+        transformedText: TransformEngine.transformTextWithPlan(text, activePlan, tokenizerForRun, { metrics }),
+        metrics
       });
     }
 

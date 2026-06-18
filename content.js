@@ -19,8 +19,27 @@
   const VISIBLE_FLUSH_BUDGET_MS = 8;
   const BACKGROUND_FLUSH_BUDGET_MS = 16;
   const WORKER_BATCH_SIZE = 32;
-  const MAX_TEXT_NODES_PER_ROOT_BATCH = 48;
+  const MAX_RUNS_PER_ROOT_BATCH = 24;
+  const MUTATION_DEBOUNCE_MS = 120;
+  const RECENT_WRITE_TTL_MS = 400;
   const DEBUG_HISTORY_LIMIT = 20;
+  const RUNTIME_METRIC_COUNTER_FIELDS = Object.freeze([
+    "tokenizeCalls",
+    "tokenizeSkipped",
+    "textCacheHits",
+    "textCacheMisses",
+    "textCacheBypasses",
+    "tokenCacheHits",
+    "tokenCacheMisses",
+    "tokenCacheBypasses",
+    "processingMsTotal",
+    "dictionaryMatches",
+    "regexMatches",
+    "wildcardMatches",
+    "changedRuns",
+    "queuedRoots",
+    "mutationBatches"
+  ]);
   const MESSAGE_TYPES = {
     APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
     GET_PAGE_CONTEXT: "GET_PAGE_CONTEXT",
@@ -110,12 +129,13 @@
   ]);
 
   const originalTextByRunAnchor = new WeakMap();
-  const processedTextByRunAnchor = new WeakMap();
-  const processedRevisionByRunAnchor = new WeakMap();
+  let nodeStateCache = new WeakMap();
   const runIdByRunAnchor = new WeakMap();
   const pendingWorkerRuns = new Map();
   const pendingRootQueue = new Map();
+  const pendingMutationRoots = new Set();
   const composingEditableHosts = new WeakSet();
+  let recentWriteRoots = new WeakMap();
   const json5ResourcePromiseCache = new Map();
 
   let visibleFlushHandle = null;
@@ -124,6 +144,7 @@
   let backgroundFlushHandleType = null;
   let scrollRefreshScheduled = false;
   let activeTransformStages = [];
+  let activeCompiledPlan = null;
   let activeDictionaryOnlyStages = [];
   let activeTokenRules = [];
   let activeStringRules = [];
@@ -151,6 +172,8 @@
   let nextWorkerRunId = 1;
   let workerBatchQueue = [];
   let workerBatchFlushHandle = null;
+  let mutationFlushHandle = null;
+  let runtimeMetrics = null;
   let workerStats = {
     enabled: false,
     pendingRuns: 0,
@@ -173,12 +196,124 @@
     }
   };
 
+  const createRuntimeMetrics = () => ({
+    planVersion: null,
+    compileMs: 0,
+    tokenizeCalls: 0,
+    tokenizeSkipped: 0,
+    textCacheHits: 0,
+    textCacheMisses: 0,
+    textCacheBypasses: 0,
+    tokenCacheHits: 0,
+    tokenCacheMisses: 0,
+    tokenCacheBypasses: 0,
+    processingMsTotal: 0,
+    dictionaryMatches: 0,
+    regexMatches: 0,
+    wildcardMatches: 0,
+    changedRuns: 0,
+    queuedRoots: 0,
+    mutationBatches: 0,
+    stageTimings: {}
+  });
+
+  const resetRuntimeMetrics = (planVersion = null) => {
+    runtimeMetrics = createRuntimeMetrics();
+    runtimeMetrics.planVersion = planVersion;
+    runtimeMetrics.compileMs = Number(activeCompiledPlan?.compileMs) || 0;
+  };
+
+  const mergeRuntimeMetrics = (delta) => {
+    if (!delta || typeof delta !== "object") {
+      return;
+    }
+    if (!runtimeMetrics) {
+      resetRuntimeMetrics(delta.planVersion ?? null);
+    }
+    if (delta.planVersion) {
+      runtimeMetrics.planVersion = delta.planVersion;
+    }
+    if (Number.isFinite(Number(delta.compileMs))) {
+      runtimeMetrics.compileMs = Math.max(
+        Number(runtimeMetrics.compileMs) || 0,
+        Number(delta.compileMs)
+      );
+    }
+    for (const key of RUNTIME_METRIC_COUNTER_FIELDS) {
+      if (Number.isFinite(Number(delta[key]))) {
+        runtimeMetrics[key] = (Number(runtimeMetrics[key]) || 0) + Number(delta[key]);
+      }
+    }
+    if (delta.stageTimings && typeof delta.stageTimings === "object") {
+      for (const [stageId, value] of Object.entries(delta.stageTimings)) {
+        if (!Number.isFinite(Number(value))) {
+          continue;
+        }
+        runtimeMetrics.stageTimings[stageId] = (Number(runtimeMetrics.stageTimings[stageId]) || 0) + Number(value);
+      }
+    }
+  };
+
   const readNodeValueSafely = (node) => {
     try {
       return typeof node?.nodeValue === "string" ? node.nodeValue : "";
     } catch (error) {
       return "";
     }
+  };
+
+  const getRunState = (runAnchor) => {
+    return runAnchor ? nodeStateCache.get(runAnchor) ?? null : null;
+  };
+
+  const setRunState = (runAnchor, state) => {
+    if (!runAnchor || !state) {
+      return;
+    }
+    nodeStateCache.set(runAnchor, state);
+  };
+
+  const clearRunState = (runAnchor) => {
+    if (!runAnchor) {
+      return;
+    }
+    nodeStateCache.delete(runAnchor);
+  };
+
+  const markRecentWriteNode = (node) => {
+    if (!node) {
+      return;
+    }
+    recentWriteRoots.set(node, {
+      revision: runtimeRevision,
+      timestamp: Date.now()
+    });
+  };
+
+  const markRecentWriteForRun = (textNodes, extraNode = null) => {
+    for (const textNode of Array.isArray(textNodes) ? textNodes : []) {
+      markRecentWriteNode(textNode);
+      markRecentWriteNode(textNode.parentNode);
+      markRecentWriteNode(textNode.parentElement);
+    }
+    if (extraNode) {
+      markRecentWriteNode(extraNode);
+      markRecentWriteNode(extraNode.parentNode);
+      markRecentWriteNode(extraNode.parentElement);
+    }
+  };
+
+  const wasRecentlyWritten = (node) => {
+    let current = node;
+    const now = Date.now();
+    while (current) {
+      const record = recentWriteRoots.get(current);
+      if (record && record.revision === runtimeRevision && now - record.timestamp <= RECENT_WRITE_TTL_MS) {
+        return true;
+      }
+      current = current.parentNode ?? null;
+    }
+    return false;
   };
 
   const publishTransformDebug = (payload) => {
@@ -401,6 +536,10 @@
         order: stage.order ?? 0,
         ruleCount: Array.isArray(stage.rules) ? stage.rules.length : 0
       })),
+      planVersion: activeCompiledPlan?.planVersion ?? null,
+      runtimeMetrics: cloneDebugValue(runtimeMetrics),
+      pendingRootCount: pendingRootQueue.size,
+      pendingMutationRootCount: pendingMutationRoots.size,
       worker: cloneDebugValue(workerStats),
       matchingRules: collectMatchingRuntimeRules(targets),
       shadowedRules: collectShadowedRuntimeRules(targets),
@@ -952,6 +1091,7 @@
       });
       if (textNodes.length === 1) {
         firstNode.replaceWith(wrapper);
+        markRecentWriteForRun(textNodes, wrapper);
         recordRubyDebug({
           ...(lastRubyDebug ?? {}),
           decision: "dom-applied-single-node",
@@ -960,11 +1100,15 @@
           textNodeCount: 1,
           renderedStyles: inspectRenderedRubyStyles(wrapper)
         });
-        processedTextByRunAnchor.set(firstNode, transformed);
-        processedRevisionByRunAnchor.set(firstNode, revision);
+        setRunState(firstNode, {
+          sourceText,
+          transformedText: transformed,
+          revision
+        });
         return true;
       }
       if (replaceTextRunWithRubyWrapper(textNodes, wrapper)) {
+        markRecentWriteForRun(textNodes, wrapper);
         recordRubyDebug({
           ...(lastRubyDebug ?? {}),
           decision: "dom-applied-shared-parent",
@@ -973,11 +1117,15 @@
           textNodeCount: textNodes.length,
           renderedStyles: inspectRenderedRubyStyles(wrapper)
         });
-        processedTextByRunAnchor.set(firstNode, transformed);
-        processedRevisionByRunAnchor.set(firstNode, revision);
+        setRunState(firstNode, {
+          sourceText,
+          transformedText: transformed,
+          revision
+        });
         return true;
       }
       if (replaceTextRunRangeWithRubyWrapper(textNodes, wrapper, currentParts.join(""))) {
+        markRecentWriteForRun(textNodes, wrapper);
         recordRubyDebug({
           ...(lastRubyDebug ?? {}),
           decision: "dom-applied-range",
@@ -986,8 +1134,11 @@
           textNodeCount: textNodes.length,
           renderedStyles: inspectRenderedRubyStyles(wrapper)
         });
-        processedTextByRunAnchor.set(firstNode, transformed);
-        processedRevisionByRunAnchor.set(firstNode, revision);
+        setRunState(firstNode, {
+          sourceText,
+          transformedText: transformed,
+          revision
+        });
         return true;
       }
       recordRubyDebug({
@@ -1000,466 +1151,22 @@
     }
 
     if (transformed === currentParts.join("")) {
-      processedTextByRunAnchor.set(firstNode, transformed);
-      processedRevisionByRunAnchor.set(firstNode, revision);
+      setRunState(firstNode, {
+        sourceText,
+        transformedText: transformed,
+        revision
+      });
       return false;
     }
 
     redistributeTransformedText(textNodes, currentParts, transformed);
-    processedTextByRunAnchor.set(firstNode, transformed);
-    processedRevisionByRunAnchor.set(firstNode, revision);
-    return true;
-  };
-
-  const escapeRegex = (value) => {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  };
-
-  const valueMatches = (actual, expected) => {
-    if (expected === undefined || expected === null) {
-      return true;
-    }
-
-    if (Array.isArray(expected)) {
-      return expected.includes(actual);
-    }
-
-    return actual === expected;
-  };
-
-  const tokenMatchesCondition = (token, condition) => {
-    if (!token || !condition) {
-      return false;
-    }
-
-    if (typeof condition === "string") {
-      return (
-        token.surface_form === condition ||
-        token.basic_form === condition ||
-        token.pos === condition ||
-        token.pos_detail_1 === condition ||
-        token.pos_detail_2 === condition ||
-        token.pos_detail_3 === condition ||
-        token.conjugated_form === condition ||
-        `${token.pos}${token.conjugated_form}` === condition ||
-        `${token.pos}${token.pos_detail_1}` === condition
-      );
-    }
-
-    return (
-      valueMatches(token.surface_form, condition.surface_form) &&
-      valueMatches(token.basic_form, condition.basic_form) &&
-      valueMatches(token.pos, condition.pos) &&
-      valueMatches(token.pos_detail_1, condition.pos_detail_1) &&
-      valueMatches(token.pos_detail_2, condition.pos_detail_2) &&
-      valueMatches(token.pos_detail_3, condition.pos_detail_3) &&
-      valueMatches(token.conjugated_type, condition.conjugated_type) &&
-      valueMatches(token.conjugated_form, condition.conjugated_form) &&
-      valueMatches(token.reading, condition.reading) &&
-      valueMatches(token.pronunciation, condition.pronunciation) &&
-      valueMatches(token.word_type, condition.word_type)
-    );
-  };
-
-  const anyConditionMatches = (token, conditionList) => {
-    if (!Array.isArray(conditionList)) {
-      return tokenMatchesCondition(token, conditionList);
-    }
-
-    return conditionList.some((condition) => tokenMatchesCondition(token, condition));
-  };
-
-  const listifyConditions = (conditions) => {
-    if (!conditions) {
-      return [];
-    }
-
-    return Array.isArray(conditions) ? conditions : [conditions];
-  };
-
-  const ruleUsesBasicFormMatch = (rule) => {
-    if (rule?.match_target === "basic_form" || rule?.type === "verb") {
-      return true;
-    }
-
-    if (rule?.type === "compound" && inferGodanEnding(rule?.from, rule?.to)) {
-      return true;
-    }
-
-    return listifyConditions(rule?.conditions?.current).some((condition) => {
-      if (!condition || typeof condition !== "object") {
-        return false;
-      }
-
-      return (
-        condition.basic_form !== undefined ||
-        condition.pos === "動詞" ||
-        condition.conjugated_form !== undefined ||
-        condition.conjugated_type !== undefined
-      );
+    markRecentWriteForRun(textNodes);
+    setRunState(firstNode, {
+      sourceText,
+      transformedText: transformed,
+      revision
     });
-  };
-
-  const tokenSatisfiesMatcher = (token, matcher) => {
-    return tokenMatchesCondition(token, matcher);
-  };
-
-  const transformSurfaceWithCharacterMap = (surface, characterMap) => {
-    if (!surface || !characterMap) {
-      return surface;
-    }
-
-    let changed = false;
-    const transformed = Array.from(surface, (character) => {
-      const mappedCharacter = characterMap[character];
-      if (mappedCharacter && mappedCharacter !== character) {
-        changed = true;
-        return mappedCharacter;
-      }
-
-      return character;
-    }).join("");
-
-    return changed ? transformed : surface;
-  };
-
-  const sequenceMatches = (tokens, index, rule) => {
-    if (!Array.isArray(rule.sequence) || rule.sequence.length === 0) {
-      return null;
-    }
-
-    for (let offset = 0; offset < rule.sequence.length; offset++) {
-      const token = tokens[index + offset];
-      const matcher = rule.sequence[offset];
-
-      if (!token || !tokenSatisfiesMatcher(token, matcher)) {
-        return null;
-      }
-    }
-
-    return {
-      start: index,
-      length: rule.sequence.length
-    };
-  };
-
-  const singleTokenMatches = (tokens, index, rule) => {
-    const token = tokens[index];
-    if (!token) {
-      return false;
-    }
-
-    if (token.surface_form === rule.from) {
-      return true;
-    }
-
-    if (ruleUsesBasicFormMatch(rule) && token.basic_form === rule.from) {
-      return true;
-    }
-
-    return false;
-  };
-
-  const getSharedSuffix = (left, right) => {
-    const leftChars = Array.from(left ?? "");
-    const rightChars = Array.from(right ?? "");
-    let index = 0;
-
-    while (
-      index < leftChars.length &&
-      index < rightChars.length &&
-      leftChars[leftChars.length - 1 - index] === rightChars[rightChars.length - 1 - index]
-    ) {
-      index++;
-    }
-
-    return index > 0 ? leftChars.slice(leftChars.length - index).join("") : "";
-  };
-
-  const applyBasicFormReplacement = (token, rule, replacementBase) => {
-    if (!token || !ruleUsesBasicFormMatch(rule) || !rule.from || !replacementBase) {
-      return replacementBase;
-    }
-
-    if (token.basic_form !== rule.from) {
-      return replacementBase;
-    }
-
-    const sharedSuffix = getSharedSuffix(rule.from, replacementBase);
-    if (!sharedSuffix) {
-      return token.surface_form === rule.from ? replacementBase : replacementBase;
-    }
-
-    const fromStem = rule.from.slice(0, rule.from.length - sharedSuffix.length);
-    const toStem = replacementBase.slice(0, replacementBase.length - sharedSuffix.length);
-    if (!fromStem) {
-      return replacementBase;
-    }
-
-    if (!token.surface_form.startsWith(fromStem)) {
-      return token.surface_form === rule.from ? replacementBase : replacementBase;
-    }
-
-    return `${toStem}${token.surface_form.slice(fromStem.length)}`;
-  };
-
-  const isEligibleForVerbSurfaceFallback = (rule, replacementBase) => {
-    if (!rule || rule.enabled === false || rule.regex === true) {
-      return false;
-    }
-
-    if (!rule.from || !replacementBase || rule.from === replacementBase) {
-      return false;
-    }
-
-    if (Array.isArray(rule.sequence) && rule.sequence.length > 0) {
-      return false;
-    }
-
-    if (rule.conditions?.prev || rule.conditions?.next) {
-      return false;
-    }
-
-    if (!ruleUsesBasicFormMatch(rule)) {
-      return false;
-    }
-
-    return Boolean(inferGodanEnding(rule.from, replacementBase));
-  };
-
-  const buildVerbSurfaceFallbackVariants = (rule, replacementBase) => {
-    if (!isEligibleForVerbSurfaceFallback(rule, replacementBase)) {
-      return [];
-    }
-
-    const endingInfo = inferGodanEnding(rule.from, replacementBase);
-    if (!endingInfo) {
-      return [];
-    }
-
-    const fromStem = rule.from.slice(0, -1);
-    const toStem = replacementBase.slice(0, -1);
-    if (!fromStem || !toStem) {
-      return [];
-    }
-
-    const variants = [];
-    pushUniqueVariant(variants, rule.from, replacementBase);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.a}`, `${toStem}${endingInfo.a}`);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.i}`, `${toStem}${endingInfo.i}`);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.e}`, `${toStem}${endingInfo.e}`);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.o}`, `${toStem}${endingInfo.o}`);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.te}`, `${toStem}${endingInfo.te}`);
-    pushUniqueVariant(variants, `${fromStem}${endingInfo.ta}`, `${toStem}${endingInfo.ta}`);
-
-    return variants.sort((left, right) => {
-      return right.from.length - left.from.length;
-    });
-  };
-
-  const applyVerbFallbackTransformations = (text, rules) => {
-    let result = text;
-
-    for (const rule of rules) {
-      const replacementBase = chooseReplacement(rule, rule.from);
-      const variants = buildVerbSurfaceFallbackVariants(rule, replacementBase);
-      for (const variant of variants) {
-        result = result.replace(new RegExp(escapeRegex(variant.from), "gu"), variant.to);
-      }
-    }
-
-    return result;
-  };
-
-  const resolveTokenReplacement = (token, rule, matchedText) => {
-    const replacement = chooseReplacement(rule, matchedText);
-    return applyBasicFormReplacement(token, rule, replacement);
-  };
-
-  const surroundingConditionsMatch = (tokens, index, length, rule) => {
-    const currentTokens = tokens.slice(index, index + length);
-    const currentToken = currentTokens[0];
-    const prevToken = tokens[index - 1];
-    const nextToken = tokens[index + length];
-
-    const { current, prev, next } = rule.conditions;
-
-    if (current && !anyConditionMatches(currentToken, current)) {
-      return false;
-    }
-
-    if (prev && !anyConditionMatches(prevToken, prev)) {
-      return false;
-    }
-
-    if (next && !anyConditionMatches(nextToken, next)) {
-      return false;
-    }
-
     return true;
-  };
-
-  const ruleMatches = (tokens, index, rule) => {
-    if (rule.character_map) {
-      const token = tokens[index];
-      if (!token) {
-        return null;
-      }
-
-      const transformedSurface = transformSurfaceWithCharacterMap(token.surface_form, rule.character_map);
-      if (transformedSurface === token.surface_form) {
-        return null;
-      }
-
-      if (!surroundingConditionsMatch(tokens, index, 1, rule)) {
-        return null;
-      }
-
-      return {
-        start: index,
-        length: 1,
-        replacement: transformedSurface
-      };
-    }
-
-    const sequenceMatch = sequenceMatches(tokens, index, rule);
-    if (sequenceMatch) {
-      if (!surroundingConditionsMatch(tokens, sequenceMatch.start, sequenceMatch.length, rule)) {
-        return null;
-      }
-
-      return sequenceMatch;
-    }
-
-    if (!singleTokenMatches(tokens, index, rule)) {
-      return null;
-    }
-
-    if (!surroundingConditionsMatch(tokens, index, 1, rule)) {
-      return null;
-    }
-
-    return {
-      start: index,
-      length: 1
-    };
-  };
-
-  const applyStringTransformations = (text, rules) => {
-    let result = text;
-
-    for (const rule of rules) {
-      if (!rule || rule.enabled === false) {
-        continue;
-      }
-
-      if (rule.regex === true) {
-        try {
-          const regex = new RegExp(rule.from, "gu");
-          result = result.replace(regex, (...args) => {
-            const matchedText = args[0];
-            const hasGroups = args.length > 0 && args[args.length - 1] && typeof args[args.length - 1] === "object";
-            const groups = hasGroups ? args[args.length - 1] : null;
-            const sourceText = hasGroups ? args[args.length - 2] : args[args.length - 1];
-            const offset = hasGroups ? args[args.length - 3] : args[args.length - 2];
-            const captures = args.slice(1, hasGroups ? -3 : -2);
-            return TransformShared.expandRegexReplacementTemplate(
-              chooseReplacement(rule, matchedText),
-              matchedText,
-              captures,
-              groups,
-              sourceText,
-              offset
-            );
-          });
-        } catch (error) {
-          log("regex 置換失敗", { rule, error: error.message });
-        }
-        continue;
-      }
-
-      if (!rule.from) {
-        continue;
-      }
-
-      const replacement = chooseReplacement(rule, rule.from);
-      result = result.replace(new RegExp(escapeRegex(rule.from), "gu"), replacement);
-    }
-
-    return result;
-  };
-
-  const tokenLabel = (token) => {
-    if (!token) {
-      return null;
-    }
-
-    return {
-      surface_form: token.surface_form,
-      basic_form: token.basic_form,
-      pos: token.pos,
-      pos_detail_1: token.pos_detail_1,
-      conjugated_form: token.conjugated_form,
-      word_type: token.word_type
-    };
-  };
-
-  const applyTransformations = (tokens, rules) => {
-    const outputTokens = tokens.map((token) => ({ ...token }));
-
-    for (let index = 0; index < outputTokens.length; index++) {
-      const token = outputTokens[index];
-
-      if (DEBUG && token.surface_form === "こと") {
-        log("こと検出", {
-          index,
-          prev: tokenLabel(outputTokens[index - 1]),
-          current: tokenLabel(token),
-          next: tokenLabel(outputTokens[index + 1]),
-          matchedRules: rules.filter((rule) => rule.from === "こと")
-        });
-      }
-
-      for (const rule of rules) {
-        const match = ruleMatches(outputTokens, index, rule);
-        if (!match) {
-          continue;
-        }
-
-        const matchedTokens = outputTokens
-          .slice(match.start, match.start + match.length)
-          .map((matchedToken) => matchedToken.surface_form);
-
-        const matchedText = matchedTokens.join("");
-        outputTokens[match.start].surface_form = match.replacement ?? resolveTokenReplacement(outputTokens[match.start], rule, matchedText);
-
-        for (let offset = 1; offset < match.length; offset++) {
-          outputTokens[match.start + offset].surface_form = "";
-        }
-
-        if (DEBUG) {
-          log("変換", {
-            from: matchedText,
-            matchedTokens,
-            to: outputTokens[match.start].surface_form,
-            rule,
-            bundle: {
-              id: rule.bundle_id,
-              label: rule.bundle_label,
-              order: rule.bundle_order
-            },
-            prev: tokenLabel(outputTokens[match.start - 1]),
-            current: tokenLabel(outputTokens[match.start]),
-            next: tokenLabel(outputTokens[match.start + match.length])
-          });
-        }
-
-        index = match.start + match.length - 1;
-        break;
-      }
-    }
-
-    return outputTokens.map((token) => token.surface_form).join("");
   };
 
   const isSkippableTextNode = (node) => {
@@ -1526,67 +1233,94 @@
     return !display.startsWith("inline");
   };
 
-  const collectProcessableTextRuns = (root) => {
+  const createRunWalker = (root) => {
     if (!root) {
-      return [];
+      return null;
     }
 
-    if (root.nodeType === Node.TEXT_NODE) {
-      return isSkippableTextNode(root) ? [] : [[root]];
+    const initialNode = root.nodeType === Node.DOCUMENT_NODE ? root.body : root;
+    if (!initialNode) {
+      return null;
     }
 
-    const runs = [];
+    const stack = [{
+      node: initialNode,
+      childIndex: -1,
+      entered: false,
+      isRoot: true,
+      boundary: false
+    }];
     let currentRun = [];
 
     const flushRun = () => {
-      if (currentRun.length > 0) {
-        runs.push(currentRun);
-        currentRun = [];
+      if (currentRun.length === 0) {
+        return null;
       }
+      const run = currentRun;
+      currentRun = [];
+      return run;
     };
 
-    const walk = (node, isRoot = false) => {
-      if (!node) {
-        return;
-      }
+    return {
+      nextRun() {
+        while (stack.length > 0) {
+          const frame = stack[stack.length - 1];
+          const node = frame.node;
 
-      if (node.nodeType === Node.TEXT_NODE) {
-        if (!isSkippableTextNode(node)) {
-          currentRun.push(node);
+          if (!frame.entered) {
+            frame.entered = true;
+
+            if (node.nodeType === Node.TEXT_NODE) {
+              stack.pop();
+              if (!isSkippableTextNode(node)) {
+                currentRun.push(node);
+              }
+              continue;
+            }
+
+            if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
+              stack.pop();
+              continue;
+            }
+
+            if (node.nodeType === Node.ELEMENT_NODE && SKIP_TAGS.has(node.tagName)) {
+              stack.pop();
+              continue;
+            }
+
+            frame.boundary = node.nodeType === Node.ELEMENT_NODE && !frame.isRoot && isRunBoundaryElement(node);
+            if (frame.boundary) {
+              const runBeforeBoundary = flushRun();
+              if (runBeforeBoundary) {
+                return runBeforeBoundary;
+              }
+            }
+          }
+
+          if (frame.childIndex + 1 < node.childNodes.length) {
+            frame.childIndex += 1;
+            stack.push({
+              node: node.childNodes[frame.childIndex],
+              childIndex: -1,
+              entered: false,
+              isRoot: false,
+              boundary: false
+            });
+            continue;
+          }
+
+          stack.pop();
+          if (frame.boundary) {
+            const runAfterBoundary = flushRun();
+            if (runAfterBoundary) {
+              return runAfterBoundary;
+            }
+          }
         }
-        return;
-      }
 
-      if (node.nodeType === Node.DOCUMENT_NODE) {
-        walk(node.body, true);
-        return;
-      }
-
-      if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
-        return;
-      }
-
-      if (node.nodeType === Node.ELEMENT_NODE && SKIP_TAGS.has(node.tagName)) {
-        return;
-      }
-
-      const boundary = node.nodeType === Node.ELEMENT_NODE && !isRoot && isRunBoundaryElement(node);
-      if (boundary) {
-        flushRun();
-      }
-
-      for (const child of node.childNodes) {
-        walk(child);
-      }
-
-      if (boundary) {
-        flushRun();
+        return flushRun();
       }
     };
-
-    walk(root, true);
-    flushRun();
-    return runs;
   };
 
   const getRootAnchorElement = (root) => {
@@ -1823,26 +1557,6 @@
     return json5ResourcePromiseCache.get(path);
   };
 
-  const loadBundleOverrides = async () => {
-    if (!chrome?.storage?.local) {
-      return {};
-    }
-
-    const storedValue = await new Promise((resolve, reject) => {
-      chrome.storage.local.get([BUNDLE_OVERRIDE_STORAGE_KEY], (result) => {
-        const runtimeError = chrome.runtime.lastError;
-        if (runtimeError) {
-          reject(new Error(runtimeError.message));
-          return;
-        }
-
-        resolve(result?.[BUNDLE_OVERRIDE_STORAGE_KEY] ?? null);
-      });
-    });
-
-    return TransformEngine.normalizeBundleOverridesPayload(storedValue);
-  };
-
   const loadStoredSettingsPayload = async () => {
     if (!chrome?.storage?.local) {
       return {};
@@ -1861,9 +1575,7 @@
     });
   };
 
-  const loadRuntimeConfiguration = async () => {
-    const storedValue = await loadStoredSettingsPayload();
-
+  const loadRuntimeConfiguration = (storedValue = {}) => {
     return {
       runtimeSettings: normalizeRuntimeSettings(storedValue?.runtime_settings),
       disabledSites: normalizeDisabledSites(storedValue?.disabled_sites),
@@ -1924,9 +1636,9 @@
     return cachedOrderedRuleResourcesPromise;
   };
 
-  const loadOrderedRules = async () => {
-    const { bundleManifest, bundleFiles, manifestBundleIds } = await loadOrderedRuleResources();
-    const bundleOverrides = await loadBundleOverrides();
+  const loadOrderedRules = (resources, storedValue = {}) => {
+    const { bundleManifest, bundleFiles, manifestBundleIds } = resources;
+    const bundleOverrides = TransformEngine.normalizeBundleOverridesPayload(storedValue);
 
     const loaded = TransformEngine.loadStagesFromDefinitions(bundleManifest, bundleFiles, bundleOverrides);
     log("隱ｭ霎ｼ ordered bundles", loaded.bundles);
@@ -2085,7 +1797,12 @@
     const transformed = `${result.transformedText ?? ""}`;
     originalTextByRunAnchor.set(runAnchor, state.sourceText);
     workerStats.completedRuns += 1;
-    return applyTransformedRunResult(textNodes, currentParts, state.sourceText, transformed, revision);
+    mergeRuntimeMetrics(result?.metrics);
+    const changed = applyTransformedRunResult(textNodes, currentParts, state.sourceText, transformed, revision);
+    if (changed) {
+      mergeRuntimeMetrics({ changedRuns: 1 });
+    }
+    return changed;
   };
 
   const handleTransformWorkerMessage = (event) => {
@@ -2242,17 +1959,35 @@
 
   const transformTextWithStages = (text) => {
     const effectiveStages = getEffectiveTransformStages();
+    const effectivePlan = effectiveStages === activeTransformStages
+      ? activeCompiledPlan
+      : TransformEngine.compileRuntimePlan(effectiveStages, { revision: runtimeRevision });
     if (!DEBUG && !hasDebugTargets()) {
-      return TransformEngine.transformTextWithStages(text, effectiveStages, activeTokenizer);
+      return effectivePlan
+        ? TransformEngine.transformTextWithPlan(text, effectivePlan, activeTokenizer, { metrics: runtimeMetrics })
+        : TransformEngine.transformTextWithStages(text, effectiveStages, activeTokenizer, { metrics: runtimeMetrics });
     }
 
     const events = [];
-    const transformed = TransformEngine.transformTextWithStages(
-      text,
-      effectiveStages,
-      activeTokenizer,
-      (event) => events.push(event)
-    );
+    const transformed = effectivePlan
+      ? TransformEngine.transformTextWithPlan(
+        text,
+        effectivePlan,
+        activeTokenizer,
+        {
+          debugCollector: (event) => events.push(event),
+          metrics: runtimeMetrics
+        }
+      )
+      : TransformEngine.transformTextWithStages(
+        text,
+        effectiveStages,
+        activeTokenizer,
+        {
+          debugCollector: (event) => events.push(event),
+          metrics: runtimeMetrics
+        }
+      );
     publishTransformDebug({
       timestamp: new Date().toISOString(),
       sourceText: text,
@@ -2300,21 +2035,23 @@
     const currentParts = textNodes.map((node) => readNodeValueSafely(node));
     const current = currentParts.join("");
     if (current === original) {
-      processedTextByRunAnchor.delete(runAnchor);
-      processedRevisionByRunAnchor.delete(runAnchor);
+      clearRunState(runAnchor);
       return false;
     }
 
     redistributeTransformedText(textNodes, currentParts, original);
-    processedTextByRunAnchor.delete(runAnchor);
-    processedRevisionByRunAnchor.delete(runAnchor);
+    markRecentWriteForRun(textNodes);
+    clearRunState(runAnchor);
     return true;
   };
 
   const restoreDocumentRuns = (root) => {
     restoreManagedRubyContainers(root);
-    for (const run of collectProcessableTextRuns(root)) {
+    const runWalker = createRunWalker(root);
+    let run = runWalker?.nextRun() ?? null;
+    while (run) {
       restoreTextRun(run);
+      run = runWalker.nextRun();
     }
   };
 
@@ -2337,8 +2074,9 @@
     }
 
     const runAnchor = textNodes[0];
-    const lastProcessed = processedTextByRunAnchor.get(runAnchor);
-    if (processedRevisionByRunAnchor.get(runAnchor) === runtimeRevision && current === lastProcessed) {
+    const runState = getRunState(runAnchor);
+    const lastProcessed = runState?.transformedText;
+    if (runState?.revision === runtimeRevision && current === lastProcessed) {
       return false;
     }
     const storedOriginal = originalTextByRunAnchor.get(runAnchor);
@@ -2353,6 +2091,9 @@
 
     const transformed = transformTextWithStages(sourceText);
     const changed = applyTransformedRunResult(textNodes, currentParts, sourceText, transformed, runtimeRevision);
+    if (changed) {
+      mergeRuntimeMetrics({ changedRuns: 1 });
+    }
 
     if (DEBUG) {
       log("textRun 更新", {
@@ -2381,6 +2122,60 @@
           (Array.isArray(stage.rules) && stage.rules.length > 0) ||
           (typeof stage.runtime_mode === "string" && stage.runtime_mode.trim() !== "")
         );
+    });
+  };
+
+  const shouldWarmMainThreadTokenizer = () => {
+    return runtimeRequiresTokenizer() && (
+      DEBUG ||
+      hasDebugTargets() ||
+      !transformWorkerReady ||
+      transformWorkerFailed
+    );
+  };
+
+  const recompileActiveRuntimePlan = () => {
+    runtimeRevision += 1;
+    activeCompiledPlan = TransformEngine.compileRuntimePlan(activeTransformStages, {
+      revision: runtimeRevision
+    });
+    resetRuntimeMetrics(activeCompiledPlan?.planVersion ?? null);
+  };
+
+  const resetRuntimeProcessingState = () => {
+    nodeStateCache = new WeakMap();
+    recentWriteRoots = new WeakMap();
+    pendingRootQueue.clear();
+    pendingMutationRoots.clear();
+    cancelMutationFlush();
+    cancelRootFlushes();
+  };
+
+  const warmMainThreadTokenizer = ({ reapply = false } = {}) => {
+    if (!shouldWarmMainThreadTokenizer()) {
+      activeTokenizer = null;
+      return;
+    }
+
+    const tokenizerRevision = ++tokenizerWarmupRevision;
+    getTokenizer().then((tokenizer) => {
+      if (tokenizerRevision !== tokenizerWarmupRevision) {
+        return;
+      }
+
+      activeTokenizer = tokenizer;
+      publishRuntimeDebugSnapshot(getDebugTargetsFromDocument());
+      if (reapply && isRuntimeEnabled()) {
+        recompileActiveRuntimePlan();
+        resetRuntimeProcessingState();
+        queueProcessableRoots(collectDocumentProcessingRoots(), { priority: "visible", restoreFirst: true });
+      }
+    }).catch((error) => {
+      if (tokenizerRevision !== tokenizerWarmupRevision) {
+        return;
+      }
+
+      console.error("tokenizer warmup failed", error);
     });
   };
 
@@ -2427,6 +2222,14 @@
     cancelBackgroundRootFlush();
   };
 
+  const cancelMutationFlush = () => {
+    if (mutationFlushHandle === null) {
+      return;
+    }
+    window.clearTimeout(mutationFlushHandle);
+    mutationFlushHandle = null;
+  };
+
   const reclassifyPendingRoots = () => {
     for (const [root, entry] of pendingRootQueue) {
       entry.priority = isRootNearViewport(root) ? 0 : 1;
@@ -2447,87 +2250,31 @@
     return false;
   };
 
-  const hasDirectProcessableText = (root) => {
-    if (!root || !root.childNodes) {
-      return false;
-    }
-    for (const child of root.childNodes) {
-      if (child.nodeType === Node.TEXT_NODE && !isSkippableTextNode(child)) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  const createTextNodeWalker = (root) => {
-    if (!root) {
-      return null;
-    }
-
-    if (root.nodeType === Node.TEXT_NODE) {
-      return {
-        done: false,
-        nextNode() {
-          if (this.done) {
-            return null;
-          }
-          this.done = true;
-          return root;
-        }
-      };
-    }
-
-    if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_FRAGMENT_NODE && root.nodeType !== Node.DOCUMENT_NODE) {
-      return null;
-    }
-
-    return document.createTreeWalker(
-      root,
-      NodeFilter.SHOW_TEXT,
-      {
-        acceptNode(node) {
-          return isSkippableTextNode(node)
-            ? NodeFilter.FILTER_REJECT
-            : NodeFilter.FILTER_ACCEPT;
-        }
-      }
-    );
-  };
-
   const processTextRoot = (root, options = {}) => {
     const entry = options.entry ?? {};
     const restoreRuns = entry.restoreFirst === true || options.restoreFirst === true;
     const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
-    const maxTextNodes = Number.isFinite(options.maxTextNodes)
-      ? options.maxTextNodes
-      : MAX_TEXT_NODES_PER_ROOT_BATCH;
+    const maxRuns = Number.isFinite(options.maxRuns)
+      ? options.maxRuns
+      : MAX_RUNS_PER_ROOT_BATCH;
     if (restoreRuns && entry.managedRubyRestored !== true) {
       restoreManagedRubyContainers(root);
-      entry.walker = null;
+      entry.runWalker = null;
       entry.done = false;
       entry.managedRubyRestored = true;
     }
-    const walker = entry.walker ?? createTextNodeWalker(root);
-    entry.walker = walker;
+    const runWalker = entry.runWalker ?? createRunWalker(root);
+    entry.runWalker = runWalker;
     let changedCount = 0;
-    const processedNodes = new Set();
     let processedCount = 0;
 
-    while (walker && processedCount < maxTextNodes && performance.now() < deadline) {
-      const node = walker.nextNode();
-      if (!node) {
+    while (runWalker && processedCount < maxRuns && performance.now() < deadline) {
+      const textRun = runWalker.nextRun();
+      if (!textRun) {
         entry.done = true;
         break;
       }
-
-      const textRun = node?.isConnected && !isSkippableTextNode(node)
-        ? [node]
-        : [];
       if (textRun.length === 0) {
-        continue;
-      }
-
-      if (textRun.some((node) => processedNodes.has(node))) {
         continue;
       }
 
@@ -2538,16 +2285,12 @@
       if (processTextRun(textRun)) {
         changedCount++;
       }
-
-      for (const node of textRun) {
-        processedNodes.add(node);
-      }
       processedCount += 1;
     }
 
     return {
       changedCount,
-      done: entry.done === true || !walker
+      done: entry.done === true || !runWalker
     };
   };
 
@@ -2577,7 +2320,7 @@
       const result = processTextRoot(root, {
         entry,
         deadline,
-        maxTextNodes: MAX_TEXT_NODES_PER_ROOT_BATCH
+        maxRuns: MAX_RUNS_PER_ROOT_BATCH
       });
       changedCount += result.changedCount;
       if (!result.done && root.isConnected) {
@@ -2668,16 +2411,17 @@
           restoreFirst: restoreFirst === true,
           managedRubyRestored: false,
           revision: runtimeRevision,
-          walker: null,
+          runWalker: null,
           done: false
         });
       } else if (restoreFirst === true) {
         existing.restoreFirst = true;
         existing.managedRubyRestored = false;
-        existing.walker = null;
+        existing.runWalker = null;
         existing.done = false;
       }
     }
+    mergeRuntimeMetrics({ queuedRoots: pendingRootQueue.size });
 
     if (immediate) {
       cancelRootFlushes();
@@ -2739,28 +2483,97 @@
     }, true);
   };
 
+  const nodeContains = (parent, child) => {
+    if (!parent || !child) {
+      return false;
+    }
+    if (parent === child) {
+      return true;
+    }
+    if (parent.nodeType === Node.TEXT_NODE) {
+      return false;
+    }
+    if (typeof parent.contains === "function") {
+      const target = child.nodeType === Node.TEXT_NODE ? child.parentNode : child;
+      return Boolean(target) && parent.contains(target);
+    }
+    return false;
+  };
+
+  const collapseRoots = (roots) => {
+    const collapsed = [];
+    for (const root of roots) {
+      if (!root || !root.isConnected) {
+        continue;
+      }
+      let skip = false;
+      for (let index = collapsed.length - 1; index >= 0; index -= 1) {
+        const existing = collapsed[index];
+        if (nodeContains(existing, root)) {
+          skip = true;
+          break;
+        }
+        if (nodeContains(root, existing)) {
+          collapsed.splice(index, 1);
+        }
+      }
+      if (!skip) {
+        collapsed.push(root);
+      }
+    }
+    return collapsed;
+  };
+
+  const scheduleMutationRootFlush = () => {
+    if (mutationFlushHandle !== null) {
+      return;
+    }
+    mutationFlushHandle = window.setTimeout(() => {
+      mutationFlushHandle = null;
+      if (!isRuntimeEnabled() || pendingMutationRoots.size === 0) {
+        pendingMutationRoots.clear();
+        return;
+      }
+
+      const roots = [];
+      for (const candidate of pendingMutationRoots) {
+        roots.push(...collectProcessableRoots(candidate));
+      }
+      pendingMutationRoots.clear();
+      const collapsed = collapseRoots(roots);
+      if (collapsed.length === 0) {
+        return;
+      }
+      mergeRuntimeMetrics({
+        mutationBatches: 1,
+        queuedRoots: collapsed.length
+      });
+      queueProcessableRoots(collapsed);
+    }, MUTATION_DEBOUNCE_MS);
+  };
+
   const observeDynamicContent = () => {
     const observer = new MutationObserver((mutations) => {
       if (!isRuntimeEnabled()) {
         return;
       }
 
-      const queuedRoots = [];
-
       for (const mutation of mutations) {
+        if (wasRecentlyWritten(mutation.target)) {
+          continue;
+        }
         if (mutation.type === "characterData") {
-          queuedRoots.push(mutation.target);
+          pendingMutationRoots.add(mutation.target);
           continue;
         }
 
         for (const addedNode of mutation.addedNodes) {
-          queuedRoots.push(addedNode);
+          if (!wasRecentlyWritten(addedNode)) {
+            pendingMutationRoots.add(addedNode);
+          }
         }
       }
-
-      if (queuedRoots.length > 0) {
-        queueProcessableRoots(queuedRoots);
-      }
+      scheduleMutationRootFlush();
     });
 
     observer.observe(document.body, {
@@ -2809,6 +2622,7 @@
         if (mutation.type === "attributes" && mutation.attributeName === DEBUG_TARGETS_ATTRIBUTE) {
           const targets = getDebugTargetsFromDocument();
           if (targets.length > 0) {
+            warmMainThreadTokenizer();
             publishRuntimeDebugSnapshot(targets, { force: true });
           } else {
             clearPublishedDebugState();
@@ -2826,11 +2640,13 @@
 
   const refreshRuntimeState = async (options = {}) => {
     const { reapply = true } = options;
-    const [runtimeConfiguration, loaded, tabState] = await Promise.all([
-      loadRuntimeConfiguration(),
-      loadOrderedRules(),
+    const [storedValue, ruleResources, tabState] = await Promise.all([
+      loadStoredSettingsPayload(),
+      loadOrderedRuleResources(),
       loadTabRuntimeState()
     ]);
+    const runtimeConfiguration = loadRuntimeConfiguration(storedValue);
+    const loaded = loadOrderedRules(ruleResources, storedValue);
     activeRuntimeSettings = runtimeConfiguration.runtimeSettings;
     activeDisabledSites = runtimeConfiguration.disabledSites;
     activePageRubySettings = runtimeConfiguration.pageRubySettings;
@@ -2854,30 +2670,18 @@
       .flatMap((stage) => stage.rules);
     activeTabDisabled = tabState.tabDisabled === true;
     runtimeRevision += 1;
+    activeCompiledPlan = TransformEngine.compileRuntimePlan(activeTransformStages, {
+      revision: runtimeRevision
+    });
+    nodeStateCache = new WeakMap();
+    recentWriteRoots = new WeakMap();
+    pendingMutationRoots.clear();
+    cancelMutationFlush();
+    resetRuntimeMetrics(activeCompiledPlan?.planVersion ?? null);
     const workerConfigured = await configureTransformWorker();
-    const tokenizerRevision = ++tokenizerWarmupRevision;
     activeTokenizer = null;
-    if (!workerConfigured && runtimeRequiresTokenizer()) {
-      getTokenizer().then((tokenizer) => {
-        if (tokenizerRevision !== tokenizerWarmupRevision) {
-          return;
-        }
-
-        activeTokenizer = tokenizer;
-        publishRuntimeDebugSnapshot(getDebugTargetsFromDocument());
-        if (isRuntimeEnabled()) {
-          runtimeRevision += 1;
-          pendingRootQueue.clear();
-          cancelRootFlushes();
-          queueProcessableRoots(collectDocumentProcessingRoots(), { priority: "visible", restoreFirst: true });
-        }
-      }).catch((error) => {
-        if (tokenizerRevision !== tokenizerWarmupRevision) {
-          return;
-        }
-
-        console.error("tokenizer warmup failed", error);
-      });
+    if ((!workerConfigured && runtimeRequiresTokenizer()) || shouldWarmMainThreadTokenizer()) {
+      warmMainThreadTokenizer({ reapply });
     }
     publishRuntimeDebugSnapshot(getDebugTargetsFromDocument());
 
@@ -2887,12 +2691,16 @@
 
     if (!isRuntimeEnabled()) {
       pendingRootQueue.clear();
+      pendingMutationRoots.clear();
+      cancelMutationFlush();
       cancelRootFlushes();
       restoreDocumentRuns(document.body);
       return;
     }
 
     pendingRootQueue.clear();
+    pendingMutationRoots.clear();
+    cancelMutationFlush();
     cancelRootFlushes();
     queueProcessableRoots(collectDocumentProcessingRoots(), { restoreFirst: true });
   };

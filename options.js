@@ -15,10 +15,22 @@
   };
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
     skipEditableInputs: false,
-    globalEnabled: true
+    globalEnabled: true,
+    ruby: Object.freeze({
+      enabled: true,
+      hidden: false,
+      default_markers: Object.freeze({
+        open: "《",
+        close: "》"
+      })
+    })
   });
   const DEFAULT_DISABLED_SITES = Object.freeze({
     domains: []
+  });
+  const DEFAULT_PAGE_RUBY_SETTINGS = Object.freeze({
+    url_overrides: {},
+    domain_defaults: {}
   });
   const UiStrings = globalThis.ExtensionUiStrings;
   const TransformShared = globalThis.TransformShared;
@@ -30,6 +42,7 @@
     baseRoots: [],
     runtimeSettings: { ...DEFAULT_RUNTIME_SETTINGS },
     disabledSites: { ...DEFAULT_DISABLED_SITES },
+    pageRubySettings: { ...DEFAULT_PAGE_RUBY_SETTINGS },
     popupBundleId: DEFAULT_POPUP_BUNDLE_ID,
     nodeSerial: 0,
     entrySerial: 0,
@@ -58,6 +71,7 @@
   const hotkeysRoot = document.getElementById("hotkeys-root");
   const sitesRoot = document.getElementById("sites-root");
   const panelBundles = document.getElementById("panel-bundles");
+  const panelRuby = document.getElementById("panel-ruby");
   const panelKatakanaLongVowel = document.getElementById("panel-katakana-long-vowel");
   const panelStage4 = document.getElementById("panel-stage4");
   const panelDiagnostics = document.getElementById("panel-diagnostics");
@@ -65,6 +79,7 @@
   const panelHotkeys = document.getElementById("panel-hotkeys");
   const panelSites = document.getElementById("panel-sites");
   const tabBundlesButton = document.getElementById("tab-bundles");
+  const tabRubyButton = document.getElementById("tab-ruby");
   const tabKatakanaLongVowelButton = document.getElementById("tab-katakana-long-vowel");
   const tabStage4Button = document.getElementById("tab-stage4");
   const tabDiagnosticsButton = document.getElementById("tab-diagnostics");
@@ -72,6 +87,7 @@
   const tabHotkeysButton = document.getElementById("tab-hotkeys");
   const tabSitesButton = document.getElementById("tab-sites");
   const statusNode = document.getElementById("status");
+  const rubyRoot = document.getElementById("ruby-root");
   const katakanaLongVowelRoot = document.getElementById("katakana-long-vowel-root");
   const stage4Root = document.getElementById("stage4-root");
   const saveAllButton = document.getElementById("save-all");
@@ -427,7 +443,8 @@
   const normalizeRuntimeSettings = (value) => {
     return {
       skipEditableInputs: value?.skipEditableInputs === true,
-      globalEnabled: value?.globalEnabled !== false
+      globalEnabled: value?.globalEnabled !== false,
+      ruby: TransformShared.normalizeRubyRuntimeSettings(value?.ruby)
     };
   };
 
@@ -460,6 +477,16 @@
 
     return normalizeDisabledSites(
       payload.disabled_sites ?? payload?.[STORAGE_KEY]?.disabled_sites
+    );
+  };
+
+  const extractPageRubySettings = (payload) => {
+    if (!payload || typeof payload !== "object") {
+      return cloneValue(DEFAULT_PAGE_RUBY_SETTINGS);
+    }
+
+    return TransformShared.normalizePageRubySettings(
+      payload.page_ruby_settings ?? payload?.[STORAGE_KEY]?.page_ruby_settings
     );
   };
 
@@ -2056,10 +2083,15 @@
       serialized.match_target = "basic_form";
     }
 
+    const serializedMatchOptions = {};
     if (entry.match_options?.kana_insensitive === true) {
-      serialized.match_options = {
-        kana_insensitive: true
-      };
+      serializedMatchOptions.kana_insensitive = true;
+    }
+    if (entry.match_options?.ruby_from_source === true) {
+      serializedMatchOptions.ruby_from_source = true;
+    }
+    if (Object.keys(serializedMatchOptions).length > 0) {
+      serialized.match_options = serializedMatchOptions;
     }
 
     if (entry.conditions && (
@@ -2117,6 +2149,7 @@
       schema_version: 3,
       runtime_settings: cloneValue(state.runtimeSettings),
       disabled_sites: cloneValue(state.disabledSites),
+      page_ruby_settings: cloneValue(state.pageRubySettings),
       popup_bundle_id: state.popupBundleId,
       roots: state.roots.map((root, index) => serializeNode(root, index + 1))
     };
@@ -2131,6 +2164,7 @@
     state.roots = importedRoots;
     state.runtimeSettings = extractRuntimeSettings(payload);
     state.disabledSites = extractDisabledSites(payload);
+    state.pageRubySettings = extractPageRubySettings(payload);
     state.popupBundleId = extractPopupBundleId(payload);
     ensureRuntimeSpecialRoots(state.roots);
     ensurePopupBundleRoot(state.roots);
@@ -2156,6 +2190,7 @@
     state.roots = cloneValue(state.baseRoots);
     state.runtimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
     state.disabledSites = { ...DEFAULT_DISABLED_SITES };
+    state.pageRubySettings = cloneValue(DEFAULT_PAGE_RUBY_SETTINGS);
     ensureRuntimeSpecialRoots(state.roots);
     ensurePopupBundleRoot(state.roots);
   };
@@ -3737,6 +3772,8 @@
         return entry.regex === true ? 1 : 0;
       case "basic_match":
         return entry.match_target === "basic_form" ? 1 : 0;
+      case "ruby_from_source":
+        return entry.match_options?.ruby_from_source === true ? 1 : 0;
       case "from":
         return `${entry.from ?? ""}`.trim().toLocaleLowerCase("ja");
       case "to":
@@ -4345,6 +4382,8 @@
     appendHeaderCell(createSortHeaderButton(node.id, "current.ctype", "現.ctype"), "condition-col");
     appendHeaderCell("操作");
     thead.appendChild(headerRow);
+    const rubyFromSourceHeader = appendHeaderCell(createSortHeaderButton(node.id, "ruby_from_source", "前ルビ"), "check-col");
+    headerRow.insertBefore(rubyFromSourceHeader, headerRow.children[6] ?? null);
 
     const tbody = document.createElement("tbody");
     sortedEntries.forEach((entry) => {
@@ -4451,6 +4490,21 @@
       kanaCell.checkbox.title = entry.regex === true
         ? "regex ではかな同一視を使いません"
         : "平仮名とカタカナを双方向に同一視します";
+
+      const rubyFromSourceCell = createBooleanCell(entry.match_options?.ruby_from_source === true, () => {
+        entry.match_options = {
+          ...(entry.match_options ?? {}),
+          ruby_from_source: rubyFromSourceCell.checkbox.checked
+        };
+        if (!rubyFromSourceCell.checkbox.checked) {
+          delete entry.match_options.ruby_from_source;
+          if (Object.keys(entry.match_options).length === 0) {
+            entry.match_options = null;
+          }
+        }
+        renderDiagnostics();
+      });
+      rubyFromSourceCell.checkbox.title = "変換後にルビが無い場合、変換前を自動で《...》として付与します";
 
       const createTextCell = (value, options, onInput, sortKey = null) => {
         const td = document.createElement("td");
@@ -4559,12 +4613,13 @@
         currentFieldCell("ctype", "現.ctype"),
         actionTd
       );
+      row.insertBefore(rubyFromSourceCell.td, fromTd);
       tbody.appendChild(row);
 
       if (effectiveKind === "token-rules" && entry.metaOpen) {
         const detailRow = document.createElement("tr");
         const detailCell = document.createElement("td");
-        detailCell.colSpan = 16;
+        detailCell.colSpan = 17;
 
         const detailWrap = document.createElement("div");
         detailWrap.className = "panel-block";
@@ -4861,20 +4916,26 @@
         if (!entry.from) {
           continue;
         }
-        const entryKey = `${entry.regex === true ? "regex" : "plain"}:${entry.from}`;
-        if (!duplicateFromMap.has(entryKey)) {
-          duplicateFromMap.set(entryKey, []);
+        const diagnosticCandidates = entry.regex === true
+          ? [`${entry.from}`]
+          : normalizeFromOptions(entry.from_options ?? entry.from, entry.from);
+        for (const candidate of new Set(diagnosticCandidates.filter(Boolean))) {
+          const entryKey = `${entry.regex === true ? "regex" : "plain"}:${candidate}`;
+          if (!duplicateFromMap.has(entryKey)) {
+            duplicateFromMap.set(entryKey, []);
+          }
+          duplicateFromMap.get(entryKey).push({
+            rootId: trail[0]?.id ?? null,
+            nodeId: node.id,
+            entryId: entry.id,
+            from: candidate,
+            sourceFrom: entry.from,
+            pathText,
+            to: entry.to,
+            priority: entry.priority,
+            regex: entry.regex === true
+          });
         }
-        duplicateFromMap.get(entryKey).push({
-          rootId: trail[0]?.id ?? null,
-          nodeId: node.id,
-          entryId: entry.id,
-          from: entry.from,
-          pathText,
-          to: entry.to,
-          priority: entry.priority,
-          regex: entry.regex === true
-        });
 
         const regexIssue = getEntryRegexDiagnostic(entry, pathText);
         if (regexIssue) {
@@ -5317,6 +5378,7 @@
 
   const renderTabState = () => {
     const bundlesActive = state.activeTab === "bundles";
+    const rubyActive = state.activeTab === "ruby";
     const katakanaLongVowelActive = state.activeTab === "katakana-long-vowel";
     const stage4Active = state.activeTab === "stage4";
     const diagnosticsActive = state.activeTab === "diagnostics";
@@ -5324,6 +5386,7 @@
     const hotkeysActive = state.activeTab === "hotkeys";
     const sitesActive = state.activeTab === "sites";
     panelBundles.hidden = !bundlesActive;
+    panelRuby.hidden = !rubyActive;
     panelKatakanaLongVowel.hidden = !katakanaLongVowelActive;
     panelStage4.hidden = !stage4Active;
     panelDiagnostics.hidden = !diagnosticsActive;
@@ -5331,6 +5394,7 @@
     panelHotkeys.hidden = !hotkeysActive;
     panelSites.hidden = !sitesActive;
     tabBundlesButton.setAttribute("aria-selected", bundlesActive ? "true" : "false");
+    tabRubyButton.setAttribute("aria-selected", rubyActive ? "true" : "false");
     tabKatakanaLongVowelButton.setAttribute("aria-selected", katakanaLongVowelActive ? "true" : "false");
     tabStage4Button.setAttribute("aria-selected", stage4Active ? "true" : "false");
     tabDiagnosticsButton.setAttribute("aria-selected", diagnosticsActive ? "true" : "false");
@@ -5338,6 +5402,7 @@
     tabHotkeysButton.setAttribute("aria-selected", hotkeysActive ? "true" : "false");
     tabSitesButton.setAttribute("aria-selected", sitesActive ? "true" : "false");
     tabBundlesButton.className = bundlesActive ? "tab-button secondary" : "tab-button ghost";
+    tabRubyButton.className = rubyActive ? "tab-button secondary" : "tab-button ghost";
     tabKatakanaLongVowelButton.className = katakanaLongVowelActive ? "tab-button secondary" : "tab-button ghost";
     tabStage4Button.className = stage4Active ? "tab-button secondary" : "tab-button ghost";
     tabDiagnosticsButton.className = diagnosticsActive ? "tab-button secondary" : "tab-button ghost";
@@ -5760,6 +5825,132 @@
     katakanaLongVowelRoot.appendChild(card);
   };
 
+  const renderRubyPanel = () => {
+    if (!rubyRoot) {
+      return;
+    }
+
+    rubyRoot.textContent = "";
+    state.runtimeSettings.ruby = TransformShared.normalizeRubyRuntimeSettings(state.runtimeSettings.ruby);
+    const rubySettings = state.runtimeSettings.ruby;
+
+    const card = document.createElement("section");
+    card.className = "diagnostics-card";
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h2");
+    title.textContent = "ルビ";
+    head.appendChild(title);
+
+    const body = document.createElement("div");
+    body.className = "bundle-body";
+
+    const summary = document.createElement("p");
+    summary.className = "diag-summary";
+    summary.textContent = "辞書の変換後は常に なろう形式として扱います。ページ側の記号設定は本文解釈用で、popup から URL ごとに切り替えられます。";
+    body.appendChild(summary);
+
+    const enabledLabel = document.createElement("label");
+    enabledLabel.className = "toggle";
+    const enabledInput = document.createElement("input");
+    enabledInput.type = "checkbox";
+    enabledInput.checked = rubySettings.enabled !== false;
+    enabledInput.addEventListener("change", () => {
+      state.runtimeSettings.ruby.enabled = enabledInput.checked;
+      setStatus("ルビ設定を更新しました。保存すると runtime に反映されます。", "info");
+    });
+    enabledLabel.append(enabledInput, document.createTextNode("標準でなろう形式ルビを有効にする"));
+    body.appendChild(enabledLabel);
+
+    const hiddenLabel = document.createElement("label");
+    hiddenLabel.className = "toggle";
+    const hiddenInput = document.createElement("input");
+    hiddenInput.type = "checkbox";
+    hiddenInput.checked = rubySettings.hidden === true;
+    hiddenInput.addEventListener("change", () => {
+      state.runtimeSettings.ruby.hidden = hiddenInput.checked;
+      setStatus("ルビ設定を更新しました。保存すると runtime に反映されます。", "info");
+    });
+    hiddenLabel.append(hiddenInput, document.createTextNode("ルビを非表示にする"));
+    body.appendChild(hiddenLabel);
+
+    const markerRow = document.createElement("div");
+    markerRow.className = "simple-row";
+    const markerTitle = document.createElement("strong");
+    markerTitle.textContent = "既定のページ記号";
+    const openInput = document.createElement("input");
+    openInput.type = "text";
+    openInput.className = "compact";
+    openInput.value = rubySettings.default_markers?.open ?? "《";
+    openInput.placeholder = "《";
+    const closeInput = document.createElement("input");
+    closeInput.type = "text";
+    closeInput.className = "compact";
+    closeInput.value = rubySettings.default_markers?.close ?? "》";
+    closeInput.placeholder = "》";
+    const applyMarkers = () => {
+      state.runtimeSettings.ruby.default_markers = TransformShared.normalizeRubyMarkers({
+        open: openInput.value,
+        close: closeInput.value
+      });
+      openInput.value = state.runtimeSettings.ruby.default_markers.open;
+      closeInput.value = state.runtimeSettings.ruby.default_markers.close;
+      setStatus("ルビ記号を更新しました。保存すると runtime に反映されます。", "info");
+    };
+    openInput.addEventListener("change", applyMarkers);
+    closeInput.addEventListener("change", applyMarkers);
+    markerRow.append(markerTitle, openInput, closeInput);
+    body.appendChild(markerRow);
+
+    const maxLengthRow = document.createElement("div");
+    maxLengthRow.className = "simple-row";
+    const baseLengthLabel = document.createElement("label");
+    baseLengthLabel.className = "toggle";
+    baseLengthLabel.append("本文最大文字数", document.createTextNode(" "));
+    const baseLengthInput = document.createElement("input");
+    baseLengthInput.type = "number";
+    baseLengthInput.min = "1";
+    baseLengthInput.step = "1";
+    baseLengthInput.className = "cell-input compact";
+    baseLengthInput.value = String(Number(rubySettings.max_base_length) > 0 ? Math.floor(Number(rubySettings.max_base_length)) : 24);
+    baseLengthInput.addEventListener("change", () => {
+      const nextValue = Math.max(1, Math.floor(Number(baseLengthInput.value) || 24));
+      state.runtimeSettings.ruby.max_base_length = nextValue;
+      baseLengthInput.value = String(nextValue);
+      setStatus("ルビ最大文字数を更新しました。保存すると runtime に反映されます。", "info");
+    });
+    baseLengthLabel.append(baseLengthInput);
+
+    const rubyLengthLabel = document.createElement("label");
+    rubyLengthLabel.className = "toggle";
+    rubyLengthLabel.append("ルビ最大文字数", document.createTextNode(" "));
+    const rubyLengthInput = document.createElement("input");
+    rubyLengthInput.type = "number";
+    rubyLengthInput.min = "1";
+    rubyLengthInput.step = "1";
+    rubyLengthInput.className = "cell-input compact";
+    rubyLengthInput.value = String(Number(rubySettings.max_ruby_length) > 0 ? Math.floor(Number(rubySettings.max_ruby_length)) : 24);
+    rubyLengthInput.addEventListener("change", () => {
+      const nextValue = Math.max(1, Math.floor(Number(rubyLengthInput.value) || 24));
+      state.runtimeSettings.ruby.max_ruby_length = nextValue;
+      rubyLengthInput.value = String(nextValue);
+      setStatus("ルビ最大文字数を更新しました。保存すると runtime に反映されます。", "info");
+    });
+    rubyLengthLabel.append(rubyLengthInput);
+
+    maxLengthRow.append(baseLengthLabel, rubyLengthLabel);
+    body.appendChild(maxLengthRow);
+
+    const hint = document.createElement("p");
+    hint.className = "diag-summary";
+    hint.textContent = "変換後に《ルビ》を含み ｜ が無い場合は、変換後文字列の先頭へ ｜ を補完して実ルビ表示します。本文とルビの最大文字数を超えた組はルビ化しません。";
+    body.appendChild(hint);
+
+    card.append(head, body);
+    rubyRoot.appendChild(card);
+  };
+
   const renderStage4Panel = () => {
     if (!stage4Root) {
       return;
@@ -5932,6 +6123,7 @@
   const renderApp = () => {
     renderRuntimeSettings();
     renderBundles();
+    renderRubyPanel();
     renderKatakanaLongVowelPanel();
     renderStage4Panel();
     renderDiagnostics();
@@ -6006,6 +6198,7 @@
     state.roots = currentRoots;
     state.runtimeSettings = extractRuntimeSettings(storedPayload);
     state.disabledSites = extractDisabledSites(storedPayload);
+    state.pageRubySettings = extractPageRubySettings(storedPayload);
     state.popupBundleId = extractPopupBundleId(storedPayload);
     ensureRuntimeSpecialRoots(state.roots);
     ensurePopupBundleRoot(state.roots);
@@ -6027,6 +6220,11 @@
 
   tabBundlesButton.addEventListener("click", () => {
     state.activeTab = "bundles";
+    renderTabState();
+  });
+
+  tabRubyButton.addEventListener("click", () => {
+    state.activeTab = "ruby";
     renderTabState();
   });
 

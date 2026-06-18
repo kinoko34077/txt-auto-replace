@@ -6,6 +6,7 @@ const path = require("path");
 const ROOT_DIR = path.resolve(__dirname, "..");
 const JSON5 = require(path.join(ROOT_DIR, "lib", "json5.min.js"));
 const kuromoji = require(path.join(ROOT_DIR, "lib", "kuromoji.js"));
+const TransformShared = require(path.join(ROOT_DIR, "transform-shared.js"));
 const TransformEngine = require(path.join(ROOT_DIR, "transform-engine.js"));
 
 class LocalFileXMLHttpRequest {
@@ -1804,6 +1805,297 @@ const verifyDictionaryCompiledBehavior = () => {
   };
 };
 
+const verifyRubyTransformBehavior = () => {
+  const autoRubyStages = [{
+    id: "ruby-auto-source",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "Bluetooth",
+      from_options: ["Bluetooth"],
+      to: "\u9752\u6b6f",
+      candidates: ["\u9752\u6b6f"],
+      regex: false,
+      enabled: true,
+      priority: 100,
+      match_options: {
+        ruby_from_source: true
+      }
+    }]
+  }];
+  const explicitRubyStages = [{
+    id: "ruby-explicit",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "Bluetooth",
+      from_options: ["Bluetooth"],
+      to: "\uff5c\u9752\u6b6f\u300aBluetooth\u300b",
+      candidates: ["\uff5c\u9752\u6b6f\u300aBluetooth\u300b"],
+      regex: false,
+      enabled: true,
+      priority: 100,
+      match_options: {
+        ruby_from_source: true
+      }
+    }]
+  }];
+  const chainedRubyStages = [{
+    id: "ruby-chain-1",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "Bluetooth",
+      from_options: ["Bluetooth"],
+      to: "\u9752\u6b6f\u300aBluetooth\u300b",
+      candidates: ["\u9752\u6b6f\u300aBluetooth\u300b"],
+      regex: false,
+      enabled: true,
+      priority: 100
+    }]
+  }, {
+    id: "ruby-chain-2",
+    kind: "dictionary-rules",
+    order: 2,
+    rules: [{
+      from: "\u9752\u6b6f",
+      from_options: ["\u9752\u6b6f"],
+      to: "\u9751\u9f52",
+      candidates: ["\u9751\u9f52"],
+      regex: false,
+      enabled: true,
+      priority: 90
+    }]
+  }, {
+    id: "ruby-chain-source-candidate",
+    kind: "dictionary-rules",
+    order: 3,
+    rules: [{
+      from: "A",
+      from_options: ["A", "B"],
+      to: "X",
+      candidates: ["X"],
+      regex: false,
+      enabled: true,
+      priority: 80,
+      match_options: {
+        ruby_from_source: true
+      }
+    }]
+  }];
+
+  const autoRuby = TransformEngine.transformTextWithStages("Bluetooth", autoRubyStages, null);
+  const explicitRuby = TransformEngine.transformTextWithStages("Bluetooth", explicitRubyStages, null);
+  const chainedRuby = TransformEngine.transformTextWithStages("Bluetooth", chainedRubyStages, null);
+  const trailingTextRuby = TransformEngine.transformTextWithStages("Bluetooth", [{
+    id: "ruby-bar-at-replacement-head",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "Bluetooth",
+      from_options: ["Bluetooth"],
+      to: "\u9752\u6b6f\u300aBluetooth\u300b\u3068\u8868\u8a18",
+      candidates: ["\u9752\u6b6f\u300aBluetooth\u300b\u3068\u8868\u8a18"],
+      regex: false,
+      enabled: true,
+      priority: 100
+    }]
+  }], null);
+  const matchedSourceRuby = TransformEngine.transformTextWithStages("B", [{
+    id: "ruby-source-candidate",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "A",
+      from_options: ["A", "B"],
+      to: "X",
+      candidates: ["X"],
+      regex: false,
+      enabled: true,
+      priority: 100,
+      match_options: {
+        ruby_from_source: true
+      }
+    }]
+  }], null);
+  const staleCandidateRuby = TransformEngine.transformTextWithStages("Bluetooth", [{
+    id: "ruby-stale-candidate",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "Bluetooth",
+      from_options: ["Bluetooth"],
+      to: "\u9752\u6b6f\u300aBluetooth\u300b",
+      candidates: ["\u9752\u6b6f"],
+      regex: false,
+      enabled: true,
+      priority: 100
+    }]
+  }], null);
+  const shadowedRuby = TransformEngine.transformTextWithStages("Bluetooth", [{
+    id: "ruby-shadow-earlier",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "Bluetooth",
+      from_options: ["Bluetooth"],
+      to: "\u9751\u9f52",
+      enabled: true,
+      regex: false,
+      priority: 90
+    }]
+  }, {
+    id: "ruby-shadow-later",
+    kind: "dictionary-rules",
+    order: 2,
+    rules: [{
+      from: "Bluetooth",
+      from_options: ["Bluetooth"],
+      to: "\u9751\u9f52\u300aBluetooth\u300b",
+      enabled: true,
+      regex: false,
+      priority: 90
+    }]
+  }], null);
+  const partialShadowRuby = TransformEngine.transformTextWithStages("ブルートゥース Bluetooth", [{
+    id: "ruby-shadow-multi-earlier",
+    kind: "dictionary-rules",
+    order: 1,
+    rules: [{
+      from: "ブルートゥース",
+      from_options: ["ブルートゥース", "Bluetooth"],
+      to: "\u9751\u9f52",
+      enabled: true,
+      regex: false,
+      priority: 90
+    }]
+  }, {
+    id: "ruby-shadow-specific-later",
+    kind: "dictionary-rules",
+    order: 2,
+    rules: [{
+      from: "Bluetooth",
+      from_options: ["Bluetooth"],
+      to: "\u9751\u9f52\u300aBluetooth\u300b",
+      enabled: true,
+      regex: false,
+      priority: 90
+    }]
+  }], null);
+
+  return {
+    passed:
+      autoRuby === "\uff5c\u9752\u6b6f\u300aBluetooth\u300b" &&
+      explicitRuby === "\uff5c\u9752\u6b6f\u300aBluetooth\u300b" &&
+      chainedRuby === "\uff5c\u9751\u9f52\u300aBluetooth\u300b" &&
+      trailingTextRuby === "\uff5c\u9752\u6b6f\u300aBluetooth\u300b\u3068\u8868\u8a18" &&
+      matchedSourceRuby === "\uff5cX\u300aB\u300b" &&
+      staleCandidateRuby === "\uff5c\u9752\u6b6f\u300aBluetooth\u300b" &&
+      shadowedRuby === "\uff5c\u9751\u9f52\u300aBluetooth\u300b" &&
+      partialShadowRuby === "\u9751\u9f52 \uff5c\u9751\u9f52\u300aBluetooth\u300b",
+    details: {
+      autoRuby,
+      explicitRuby,
+      chainedRuby,
+      trailingTextRuby,
+      matchedSourceRuby,
+      staleCandidateRuby,
+      shadowedRuby,
+      partialShadowRuby
+    }
+  };
+};
+
+const verifyRubySharedBehavior = () => {
+  const implicitNarou = TransformShared.parseRenderableRubySegments("山田太郎《やまだたろう》");
+  const explicitNarou = TransformShared.parseRenderableRubySegments("｜山田太郎《やまだたろう》");
+  const pageMarkers = TransformShared.parseRenderableRubySegments("漢字(かんじ)", { open: "(", close: ")" });
+  const looseNarou = TransformShared.parseRenderableRubySegments("かな交じり《かなまじり》", undefined, {
+    allowLooseNarouImplicitBase: true
+  });
+  const unmarkedLatinRuby = TransformShared.parseRenderableRubySegments("青歯《Bluetooth》", undefined, {
+    allowLooseNarouImplicitBase: true
+  });
+  const latinRubyLimit10 = TransformShared.parseRenderableRubySegments("｜青歯《Bluetooth》", undefined, {
+    maxBaseLength: 10,
+    maxRubyLength: 10
+  });
+  const latinRubyLimit8 = TransformShared.parseRenderableRubySegments("｜青歯《Bluetooth》", undefined, {
+    maxBaseLength: 10,
+    maxRubyLength: 8
+  });
+  const latinRubyLengths = TransformShared.inspectRubyPairLimits("青歯", "Bluetooth", {
+    maxBaseLength: 10,
+    maxRubyLength: 10
+  });
+  const limitedNarou = TransformShared.parseRenderableRubySegments("かな交じり《かなまじり》", undefined, {
+    allowLooseNarouImplicitBase: true,
+    maxBaseLength: 2,
+    maxRubyLength: 24
+  });
+  const effectiveRuby = TransformShared.resolveEffectiveRubySettings(
+    {
+      url_overrides: {
+        "https://example.com/article": { open: "(", close: ")" }
+      },
+      domain_defaults: {
+        "example.com": { open: "[", close: "]" }
+      }
+    },
+    {
+      enabled: true,
+      hidden: false,
+      default_markers: { open: "《", close: "》" }
+    },
+    "https://example.com/article",
+    "example.com"
+  );
+
+  return {
+    passed:
+      implicitNarou.length === 1 &&
+      implicitNarou[0].type === "ruby" &&
+      implicitNarou[0].base === "山田太郎" &&
+      implicitNarou[0].ruby === "やまだたろう" &&
+      explicitNarou.length === 1 &&
+      explicitNarou[0].type === "ruby" &&
+      explicitNarou[0].base === "山田太郎" &&
+      pageMarkers.length === 1 &&
+      pageMarkers[0].type === "ruby" &&
+      pageMarkers[0].base === "漢字" &&
+      pageMarkers[0].ruby === "かんじ" &&
+      looseNarou.length === 1 &&
+      looseNarou[0].type === "ruby" &&
+      looseNarou[0].base === "かな交じり" &&
+      unmarkedLatinRuby.length === 1 &&
+      unmarkedLatinRuby[0].type === "text" &&
+      latinRubyLimit10.length === 1 &&
+      latinRubyLimit10[0].type === "ruby" &&
+      latinRubyLimit8.length === 1 &&
+      latinRubyLimit8[0].type === "text" &&
+      latinRubyLengths.baseLength === 2 &&
+      latinRubyLengths.rubyLength === 9 &&
+      latinRubyLengths.accepted === true &&
+      limitedNarou.length === 1 &&
+      limitedNarou[0].type === "text" &&
+      effectiveRuby.source === "url" &&
+      effectiveRuby.markers.open === "(" &&
+      effectiveRuby.markers.close === ")",
+    details: {
+      implicitNarou,
+      explicitNarou,
+      pageMarkers,
+      looseNarou,
+      unmarkedLatinRuby,
+      latinRubyLimit10,
+      latinRubyLimit8,
+      latinRubyLengths,
+      limitedNarou,
+      effectiveRuby
+    }
+  };
+};
+
 const main = async () => {
   const { caseId } = parseArgs();
   const tokenizer = await buildTokenizer();
@@ -1888,6 +2180,16 @@ const main = async () => {
     ? `PASS [dictionary-compiled] non-cascade / priority / performance (${dictionaryCompiledCheck.details.elapsedMs}ms)`
     : `FAIL [dictionary-compiled] ${JSON.stringify(dictionaryCompiledCheck.details)}`);
 
+  const rubyTransformCheck = verifyRubyTransformBehavior();
+  console.log(rubyTransformCheck.passed
+    ? "PASS [ruby-transform] source ruby / explicit bar / chained stages"
+    : `FAIL [ruby-transform] ${JSON.stringify(rubyTransformCheck.details)}`);
+
+  const rubySharedCheck = verifyRubySharedBehavior();
+  console.log(rubySharedCheck.passed
+    ? "PASS [ruby-shared] narou / page markers / url override"
+    : `FAIL [ruby-shared] ${JSON.stringify(rubySharedCheck.details)}`);
+
   const defaultResults = runFixtureSet("default", defaultLoaded.stages, FIXTURES, tokenizer, caseId);
   const overrideResults = runFixtureSet("override", overrideLoaded.stages, OVERRIDE_FIXTURES, tokenizer, caseId);
 
@@ -1908,6 +2210,8 @@ const main = async () => {
     katakanaLongVowelSettingsCheck.passed &&
     sequenceConditionCheck.passed &&
     dictionaryCompiledCheck.passed &&
+    rubyTransformCheck.passed &&
+    rubySharedCheck.passed &&
     [...defaultResults, ...overrideResults].every((result) => result.passed);
 
   if (!allPassed) {

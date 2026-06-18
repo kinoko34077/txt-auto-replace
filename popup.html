@@ -115,6 +115,18 @@
 
     <section class="card">
       <div class="head">
+        <h2>ページ別ルビ記号</h2>
+      </div>
+      <div id="ruby-context" class="muted"></div>
+      <div class="row">
+        <input id="ruby-open" class="compact" type="text" placeholder="《">
+        <input id="ruby-close" class="compact" type="text" placeholder="》">
+        <button id="save-ruby-markers" class="primary" type="button">適用</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="head">
         <h2>Popup追加語彙</h2>
       </div>
       <div class="muted" id="selection-preview"></div>
@@ -146,6 +158,7 @@
     <div id="status" class="status" aria-live="polite"></div>
   </div>
 
+  <script src="transform-shared.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -248,9 +248,421 @@
         if (firstDigitIndex > 0 && firstDigitIndex <= captures.length) {
           return `${captures[firstDigitIndex - 1] ?? ""}${marker[1]}`;
         }
+    }
+    return token;
+  });
+  };
+
+  const DEFAULT_RUBY_MARKERS = Object.freeze({
+    open: "《",
+    close: "》"
+  });
+
+  const normalizeRubyMarkers = (value, fallback = DEFAULT_RUBY_MARKERS) => {
+    const fallbackOpen = `${fallback?.open ?? DEFAULT_RUBY_MARKERS.open}`.trim() || DEFAULT_RUBY_MARKERS.open;
+    const fallbackClose = `${fallback?.close ?? DEFAULT_RUBY_MARKERS.close}`.trim() || DEFAULT_RUBY_MARKERS.close;
+    const open = `${value?.open ?? fallbackOpen}`.trim() || fallbackOpen;
+    const close = `${value?.close ?? fallbackClose}`.trim() || fallbackClose;
+    return { open, close };
+  };
+
+  const normalizeRubyRuntimeSettings = (value) => {
+    return {
+      enabled: value?.enabled !== false,
+      hidden: value?.hidden === true,
+      default_markers: normalizeRubyMarkers(value?.default_markers),
+      max_base_length: Number.isFinite(Number(value?.max_base_length))
+        ? Math.max(1, Math.floor(Number(value.max_base_length)))
+        : 24,
+      max_ruby_length: Number.isFinite(Number(value?.max_ruby_length))
+        ? Math.max(1, Math.floor(Number(value.max_ruby_length)))
+        : 24
+    };
+  };
+
+  const normalizeRubyMarkerMap = (value, options = {}) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return {};
+    }
+
+    const { lowerCaseKeys = false } = options;
+    const entries = [];
+    for (const [rawKey, rawMarkers] of Object.entries(value)) {
+      const key = lowerCaseKeys
+        ? `${rawKey ?? ""}`.trim().toLowerCase()
+        : `${rawKey ?? ""}`.trim();
+      if (!key) {
+        continue;
       }
-      return token;
+      entries.push([key, normalizeRubyMarkers(rawMarkers)]);
+    }
+
+    return Object.fromEntries(entries);
+  };
+
+  const normalizePageRubySettings = (value) => {
+    return {
+      url_overrides: normalizeRubyMarkerMap(value?.url_overrides),
+      domain_defaults: normalizeRubyMarkerMap(value?.domain_defaults, { lowerCaseKeys: true })
+    };
+  };
+
+  const areRubyMarkersEqual = (left, right) => {
+    const normalizedLeft = normalizeRubyMarkers(left);
+    const normalizedRight = normalizeRubyMarkers(right);
+    return normalizedLeft.open === normalizedRight.open && normalizedLeft.close === normalizedRight.close;
+  };
+
+  const resolveEffectiveRubySettings = (pageRubySettings, runtimeRubySettings, url = "", hostname = "") => {
+    const normalizedRuntimeSettings = normalizeRubyRuntimeSettings(runtimeRubySettings);
+    const normalizedPageRubySettings = normalizePageRubySettings(pageRubySettings);
+    const normalizedUrl = `${url ?? ""}`.trim();
+    const normalizedHostname = `${hostname ?? ""}`.trim().toLowerCase();
+
+    if (normalizedUrl && normalizedPageRubySettings.url_overrides[normalizedUrl]) {
+      return {
+        markers: normalizeRubyMarkers(
+          normalizedPageRubySettings.url_overrides[normalizedUrl],
+          normalizedRuntimeSettings.default_markers
+        ),
+        source: "url"
+      };
+    }
+
+    if (normalizedHostname && normalizedPageRubySettings.domain_defaults[normalizedHostname]) {
+      return {
+        markers: normalizeRubyMarkers(
+          normalizedPageRubySettings.domain_defaults[normalizedHostname],
+          normalizedRuntimeSettings.default_markers
+        ),
+        source: "domain"
+      };
+    }
+
+    return {
+      markers: normalizeRubyMarkers(normalizedRuntimeSettings.default_markers),
+      source: "default"
+    };
+  };
+
+  const isRubyReadingCharacter = (char) => {
+    return isKanaChar(char) || char === "ー" || char === "・";
+  };
+
+  const isRubyReadingText = (value) => {
+    const characters = Array.from(`${value ?? ""}`.trim());
+    return characters.length > 0 && characters.every((char) => isRubyReadingCharacter(char));
+  };
+
+  const isRubyBaseCharacter = (char) => {
+    return isKanjiChar(char) || char === "々" || char === "〆" || char === "ヶ";
+  };
+
+  const extractTrailingRubyBase = (value) => {
+    const characters = Array.from(`${value ?? ""}`);
+    let end = characters.length;
+    let start = end;
+
+    while (start > 0 && isRubyBaseCharacter(characters[start - 1])) {
+      start -= 1;
+    }
+
+    if (start === end) {
+      return null;
+    }
+
+    return {
+      start,
+      base: characters.slice(start, end).join("")
+    };
+  };
+
+  const RUBY_LOOSE_BASE_BOUNDARY = /[\s\r\n\t\u3000。、，．,.!！?？:：;；\/／\\|｜「」『』（）()［］\[\]【】〈〉《》<>]/u;
+
+  const extractTrailingLooseRubyBase = (value) => {
+    const characters = Array.from(`${value ?? ""}`);
+    let end = characters.length;
+    let start = end;
+
+    while (start > 0 && !RUBY_LOOSE_BASE_BOUNDARY.test(characters[start - 1])) {
+      start -= 1;
+    }
+
+    if (start === end) {
+      return null;
+    }
+
+    return {
+      start,
+      base: characters.slice(start, end).join("")
+    };
+  };
+
+  const withinRubyLengthLimit = (value, maxLength) => {
+    if (!value) {
+      return false;
+    }
+    if (!Number.isFinite(maxLength) || maxLength <= 0) {
+      return true;
+    }
+    return Array.from(`${value ?? ""}`).length <= maxLength;
+  };
+
+  const canUseRubyPair = (base, ruby, options = {}) => {
+    return withinRubyLengthLimit(base, options.maxBaseLength) &&
+      withinRubyLengthLimit(ruby, options.maxRubyLength);
+  };
+
+  const inspectRubyPairLimits = (base, ruby, options = {}) => {
+    const baseLength = Array.from(`${base ?? ""}`).length;
+    const rubyLength = Array.from(`${ruby ?? ""}`).length;
+    const maxBaseLength = Number.isFinite(options.maxBaseLength) && options.maxBaseLength > 0
+      ? options.maxBaseLength
+      : null;
+    const maxRubyLength = Number.isFinite(options.maxRubyLength) && options.maxRubyLength > 0
+      ? options.maxRubyLength
+      : null;
+    return {
+      baseLength,
+      rubyLength,
+      maxBaseLength,
+      maxRubyLength,
+      baseWithinLimit: maxBaseLength === null || baseLength <= maxBaseLength,
+      rubyWithinLimit: maxRubyLength === null || rubyLength <= maxRubyLength,
+      accepted:
+        (maxBaseLength === null || baseLength <= maxBaseLength) &&
+        (maxRubyLength === null || rubyLength <= maxRubyLength)
+    };
+  };
+
+  const detectImplicitRubyBase = (plainBuffer, rubyText, options = {}) => {
+    const implicitBase = extractTrailingRubyBase(plainBuffer);
+    if (implicitBase?.base && canUseRubyPair(implicitBase.base, rubyText, options)) {
+      return implicitBase;
+    }
+
+    if (options.allowLooseImplicitBase === true) {
+      const looseBase = extractTrailingLooseRubyBase(plainBuffer);
+      if (looseBase?.base && canUseRubyPair(looseBase.base, rubyText, options)) {
+        return looseBase;
+      }
+    }
+
+    return null;
+  };
+
+  const normalizeNarouRubyText = (value, options = {}) => {
+    const sourceText = `${value ?? ""}`;
+    if (!sourceText) {
+      return "";
+    }
+
+    let cursor = 0;
+    let plainBuffer = "";
+    let output = "";
+
+    while (cursor < sourceText.length) {
+      const openIndex = sourceText.indexOf(DEFAULT_RUBY_MARKERS.open, cursor);
+      if (openIndex < 0) {
+        output += plainBuffer + sourceText.slice(cursor);
+        plainBuffer = "";
+        break;
+      }
+
+      plainBuffer += sourceText.slice(cursor, openIndex);
+      const closeIndex = sourceText.indexOf(DEFAULT_RUBY_MARKERS.close, openIndex + DEFAULT_RUBY_MARKERS.open.length);
+      if (closeIndex < 0) {
+        output += plainBuffer + sourceText.slice(openIndex);
+        plainBuffer = "";
+        break;
+      }
+
+      const rubyText = sourceText.slice(openIndex + DEFAULT_RUBY_MARKERS.open.length, closeIndex);
+      const explicitBarIndex = Math.max(plainBuffer.lastIndexOf("｜"), plainBuffer.lastIndexOf("|"));
+      if (explicitBarIndex >= 0) {
+        output += plainBuffer;
+        output += sourceText.slice(openIndex, closeIndex + DEFAULT_RUBY_MARKERS.close.length);
+        plainBuffer = "";
+        cursor = closeIndex + DEFAULT_RUBY_MARKERS.close.length;
+        continue;
+      }
+
+      if (isRubyReadingText(rubyText)) {
+        const implicitBase = detectImplicitRubyBase(plainBuffer, rubyText, options);
+        if (implicitBase?.base) {
+          output += plainBuffer.slice(0, implicitBase.start);
+          output += `｜${implicitBase.base}${sourceText.slice(openIndex, closeIndex + DEFAULT_RUBY_MARKERS.close.length)}`;
+          plainBuffer = "";
+          cursor = closeIndex + DEFAULT_RUBY_MARKERS.close.length;
+          continue;
+        }
+      }
+
+      output += plainBuffer;
+      output += sourceText.slice(openIndex, closeIndex + DEFAULT_RUBY_MARKERS.close.length);
+      plainBuffer = "";
+      cursor = closeIndex + DEFAULT_RUBY_MARKERS.close.length;
+    }
+
+    if (plainBuffer) {
+      output += plainBuffer;
+    }
+
+    return output || sourceText;
+  };
+
+  const pushRubyTextSegment = (segments, text) => {
+    if (!text) {
+      return;
+    }
+
+    const lastSegment = segments[segments.length - 1];
+    if (lastSegment?.type === "text") {
+      lastSegment.text += text;
+      return;
+    }
+
+    segments.push({
+      type: "text",
+      text
     });
+  };
+
+  const parseRubySegments = (value, markers = DEFAULT_RUBY_MARKERS, options = {}) => {
+    const sourceText = `${value ?? ""}`;
+    if (!sourceText) {
+      return [];
+    }
+
+    const normalizedMarkers = normalizeRubyMarkers(markers);
+    if (!normalizedMarkers.open || !normalizedMarkers.close) {
+      return [{ type: "text", text: sourceText }];
+    }
+
+    const segments = [];
+    let cursor = 0;
+    let plainBuffer = "";
+
+    while (cursor < sourceText.length) {
+      const openIndex = sourceText.indexOf(normalizedMarkers.open, cursor);
+      if (openIndex < 0) {
+        plainBuffer += sourceText.slice(cursor);
+        break;
+      }
+
+      plainBuffer += sourceText.slice(cursor, openIndex);
+      const closeIndex = sourceText.indexOf(normalizedMarkers.close, openIndex + normalizedMarkers.open.length);
+      if (closeIndex < 0) {
+        plainBuffer += sourceText.slice(openIndex);
+        break;
+      }
+
+      const rubyText = sourceText.slice(openIndex + normalizedMarkers.open.length, closeIndex);
+      const explicitBarIndex = Math.max(plainBuffer.lastIndexOf("｜"), plainBuffer.lastIndexOf("|"));
+      const explicitBase = explicitBarIndex >= 0
+        ? plainBuffer.slice(explicitBarIndex + 1)
+        : "";
+
+      if (explicitBarIndex >= 0 && explicitBase && canUseRubyPair(explicitBase, rubyText, options)) {
+        pushRubyTextSegment(segments, plainBuffer.slice(0, explicitBarIndex));
+        segments.push({
+          type: "ruby",
+          text: `${explicitBase}${normalizedMarkers.open}${rubyText}${normalizedMarkers.close}`,
+          base: explicitBase,
+          ruby: rubyText
+        });
+        plainBuffer = "";
+        cursor = closeIndex + normalizedMarkers.close.length;
+        continue;
+      }
+
+      if (isRubyReadingText(rubyText)) {
+        const implicitBase = extractTrailingRubyBase(plainBuffer);
+        if (implicitBase?.base && canUseRubyPair(implicitBase.base, rubyText, options)) {
+          pushRubyTextSegment(segments, plainBuffer.slice(0, implicitBase.start));
+          segments.push({
+            type: "ruby",
+            text: `${implicitBase.base}${normalizedMarkers.open}${rubyText}${normalizedMarkers.close}`,
+            base: implicitBase.base,
+            ruby: rubyText
+          });
+          plainBuffer = "";
+          cursor = closeIndex + normalizedMarkers.close.length;
+          continue;
+        }
+
+        if (options.allowLooseImplicitBase === true) {
+          const looseBase = extractTrailingLooseRubyBase(plainBuffer);
+          if (looseBase?.base && canUseRubyPair(looseBase.base, rubyText, options)) {
+            pushRubyTextSegment(segments, plainBuffer.slice(0, looseBase.start));
+            segments.push({
+              type: "ruby",
+              text: `${looseBase.base}${normalizedMarkers.open}${rubyText}${normalizedMarkers.close}`,
+              base: looseBase.base,
+              ruby: rubyText
+            });
+            plainBuffer = "";
+            cursor = closeIndex + normalizedMarkers.close.length;
+            continue;
+          }
+        }
+      }
+
+      plainBuffer += sourceText.slice(openIndex, closeIndex + normalizedMarkers.close.length);
+      cursor = closeIndex + normalizedMarkers.close.length;
+    }
+
+    pushRubyTextSegment(segments, plainBuffer);
+    return segments.length > 0 ? segments : [{ type: "text", text: sourceText }];
+  };
+
+  const parseRenderableRubySegments = (value, pageMarkers = DEFAULT_RUBY_MARKERS, options = {}) => {
+    const normalizedNarouText = normalizeNarouRubyText(value, {
+      maxBaseLength: options.maxBaseLength,
+      maxRubyLength: options.maxRubyLength,
+      allowLooseImplicitBase: options.allowLooseNarouImplicitBase === true
+    });
+    const narouSegments = parseRubySegments(normalizedNarouText, DEFAULT_RUBY_MARKERS, {
+      maxBaseLength: options.maxBaseLength,
+      maxRubyLength: options.maxRubyLength,
+      allowLooseImplicitBase: false
+    });
+    const normalizedPageMarkers = normalizeRubyMarkers(pageMarkers);
+    if (areRubyMarkersEqual(normalizedPageMarkers, DEFAULT_RUBY_MARKERS)) {
+      return narouSegments;
+    }
+
+    const segments = [];
+    for (const segment of narouSegments) {
+      if (segment.type !== "text") {
+        segments.push(segment);
+        continue;
+      }
+
+      const pageSegments = parseRubySegments(segment.text, normalizedPageMarkers, {
+        maxBaseLength: options.maxBaseLength,
+        maxRubyLength: options.maxRubyLength,
+        allowLooseImplicitBase: options.allowLoosePageImplicitBase === true
+      });
+      if (pageSegments.length === 0) {
+        pushRubyTextSegment(segments, segment.text);
+        continue;
+      }
+
+      for (const pageSegment of pageSegments) {
+        if (pageSegment.type === "text") {
+          pushRubyTextSegment(segments, pageSegment.text);
+        } else {
+          segments.push(pageSegment);
+        }
+      }
+    }
+
+    return segments;
+  };
+
+  const hasRubySegments = (segments) => {
+    return Array.isArray(segments) && segments.some((segment) => segment?.type === "ruby");
   };
 
   const isNegativeMatchCandidate = (value) => {
@@ -603,7 +1015,7 @@
         from_options: fromOptions,
         to,
         raw: { ...entry },
-        candidates: normalizeReplacementCandidates(entry.candidates ?? to, isRegexRule, to),
+        candidates: normalizeReplacementCandidates(to, isRegexRule, to),
         regex: entry.regex === true || entry.is_regex === true,
         priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || fallbackPriority,
         enabled: entry.enabled !== false,
@@ -933,6 +1345,17 @@
     splitMatchCandidates,
     splitReplacementCandidates,
     normalizeReplacementCandidates,
+    DEFAULT_RUBY_MARKERS,
+    normalizeRubyMarkers,
+    normalizeRubyRuntimeSettings,
+    normalizePageRubySettings,
+    resolveEffectiveRubySettings,
+    areRubyMarkersEqual,
+    normalizeNarouRubyText,
+    parseRubySegments,
+    parseRenderableRubySegments,
+    hasRubySegments,
+    inspectRubyPairLimits,
     splitPositiveNegativeCandidates,
     isNegativeMatchCandidate,
     normalizeMatcherCandidateLiteral,

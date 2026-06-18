@@ -11,8 +11,33 @@ const MESSAGE_TYPES = {
 
 const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
   skipEditableInputs: false,
-  globalEnabled: true
+  globalEnabled: true,
+  ruby: Object.freeze({
+    enabled: true,
+    hidden: false,
+    default_markers: Object.freeze({
+      open: "《",
+      close: "》"
+    })
+  })
 });
+
+const normalizeRubyRuntimeSettings = (value) => {
+  return {
+    enabled: value?.enabled !== false,
+    hidden: value?.hidden === true,
+    default_markers: {
+      open: `${value?.default_markers?.open ?? "《"}`.trim() || "《",
+      close: `${value?.default_markers?.close ?? "》"}`.trim() || "》"
+    },
+    max_base_length: Number.isFinite(Number(value?.max_base_length))
+      ? Math.max(1, Math.floor(Number(value.max_base_length)))
+      : 24,
+    max_ruby_length: Number.isFinite(Number(value?.max_ruby_length))
+      ? Math.max(1, Math.floor(Number(value.max_ruby_length)))
+      : 24
+  };
+};
 
 const storageLocalGet = async (key) => {
   return new Promise((resolve, reject) => {
@@ -91,7 +116,8 @@ const sendMessageToTab = async (tabId, message) => {
 const normalizeRuntimeSettings = (value) => {
   return {
     skipEditableInputs: value?.skipEditableInputs === true,
-    globalEnabled: value?.globalEnabled !== false
+    globalEnabled: value?.globalEnabled !== false,
+    ruby: normalizeRubyRuntimeSettings(value?.ruby)
   };
 };
 

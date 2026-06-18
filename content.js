@@ -1,4 +1,4 @@
-﻿// content.js
+// content.js
 // Manifest で lib/json5.min.js → lib/kuromoji.js → content.js の順に読み込む前提。
 // そのため、このファイルでは import / script 注入 / top-level await を使わない。
 
@@ -29,11 +29,25 @@
   };
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
     skipEditableInputs: false,
-    globalEnabled: true
+    globalEnabled: true,
+    ruby: Object.freeze({
+      enabled: true,
+      hidden: false,
+      default_markers: Object.freeze({
+        open: "《",
+        close: "》"
+      })
+    })
   });
   const DEFAULT_DISABLED_SITES = Object.freeze({
     domains: []
   });
+  const DEFAULT_PAGE_RUBY_SETTINGS = Object.freeze({
+    url_overrides: {},
+    domain_defaults: {}
+  });
+  const RUBY_RUN_ATTRIBUTE = "data-jpn-transform-ruby-run";
+  const RUBY_SOURCE_ATTRIBUTE = "data-jpn-transform-ruby-source";
   const TransformShared = globalThis.TransformShared;
   const TransformEngine = globalThis.TransformEngine;
   const SKIP_TAGS = new Set([
@@ -116,9 +130,11 @@
   let activeTokenizer = null;
   let activeRuntimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
   let activeDisabledSites = { ...DEFAULT_DISABLED_SITES };
+  let activePageRubySettings = { ...DEFAULT_PAGE_RUBY_SETTINGS };
   let activePopupBundleId = DEFAULT_POPUP_BUNDLE_ID;
   let activeTabDisabled = false;
   let lastTransformDebug = null;
+  let lastRubyDebug = null;
   let activeLoadedBundles = [];
   let activeManifestBundleIds = [];
   let cachedOrderedRuleResourcesPromise = null;
@@ -257,7 +273,11 @@
     for (const stage of activeTransformStages) {
       const stageRules = Array.isArray(stage?.rules) ? stage.rules : [];
       for (const rule of stageRules) {
-        if (!targetSet.has(`${rule?.from ?? ""}`.trim())) {
+        const fromCandidates = [
+          `${rule?.from ?? ""}`.trim(),
+          ...(Array.isArray(rule?.from_options) ? rule.from_options.map((value) => `${value ?? ""}`.trim()) : [])
+        ].filter(Boolean);
+        if (!fromCandidates.some((candidate) => targetSet.has(candidate))) {
           continue;
         }
 
@@ -302,12 +322,65 @@
     return matches;
   };
 
+  const collectShadowedRuntimeRules = (targets) => {
+    const targetSet = new Set(normalizeDebugTargetList(targets));
+    const seen = new Map();
+    const conflicts = [];
+
+    for (const stage of activeTransformStages) {
+      const stageRules = Array.isArray(stage?.rules) ? stage.rules : [];
+      for (const rule of stageRules) {
+        if (!rule || rule.enabled === false || rule.regex === true) {
+          continue;
+        }
+        const candidates = [
+          `${rule.from ?? ""}`.trim(),
+          ...(Array.isArray(rule.from_options) ? rule.from_options.map((value) => `${value ?? ""}`.trim()) : [])
+        ].filter(Boolean);
+        for (const candidate of new Set(candidates)) {
+          if (targetSet.size > 0 && !targetSet.has(candidate)) {
+            continue;
+          }
+          const current = {
+            stageId: stage.id,
+            stageLabel: stage.label,
+            stageOrder: stage.order ?? 0,
+            ruleId: rule.id ?? null,
+            from: candidate,
+            to: rule.to ?? "",
+            priority: Number(rule.priority) || 0,
+            matchOptions: cloneDebugValue(rule.match_options ?? null)
+          };
+          const earlier = seen.get(candidate);
+          if (earlier) {
+            conflicts.push({
+              from: candidate,
+              earlier,
+              later: current,
+              reason: "先行stageで変更前文字列が消費されるため、後続ruleは通常到達しません。"
+            });
+          } else {
+            seen.set(candidate, current);
+          }
+        }
+      }
+    }
+
+    return conflicts;
+  };
+
   const buildRuntimeDebugSnapshot = (targets) => {
     const manifestIdSet = new Set(activeManifestBundleIds);
     const loadedBundles = Array.isArray(activeLoadedBundles) ? activeLoadedBundles : [];
     const virtualBundleIds = loadedBundles
       .filter((bundle) => bundle?.id && !manifestIdSet.has(bundle.id))
       .map((bundle) => bundle.id);
+    const effectiveRuby = TransformShared.resolveEffectiveRubySettings(
+      activePageRubySettings,
+      activeRuntimeSettings.ruby,
+      location.href,
+      location.hostname
+    );
 
     return {
       generatedAt: new Date().toISOString(),
@@ -316,6 +389,8 @@
       tabDisabled: activeTabDisabled === true,
       runtimeSettings: cloneDebugValue(activeRuntimeSettings),
       disabledSites: cloneDebugValue(activeDisabledSites),
+      pageRubySettings: cloneDebugValue(activePageRubySettings),
+      effectiveRuby,
       manifestBundleIds: [...activeManifestBundleIds],
       loadedBundles: cloneDebugValue(activeLoadedBundles),
       virtualBundleIds,
@@ -328,8 +403,10 @@
       })),
       worker: cloneDebugValue(workerStats),
       matchingRules: collectMatchingRuntimeRules(targets),
+      shadowedRules: collectShadowedRuntimeRules(targets),
       regexRules: collectActiveRegexRuntimeRules(),
-      lastTransformDebug: cloneDebugValue(lastTransformDebug)
+      lastTransformDebug: cloneDebugValue(lastTransformDebug),
+      lastRubyDebug: cloneDebugValue(lastRubyDebug)
     };
   };
 
@@ -378,7 +455,8 @@
   const normalizeRuntimeSettings = (value) => {
     return {
       skipEditableInputs: value?.skipEditableInputs === true,
-      globalEnabled: value?.globalEnabled !== false
+      globalEnabled: value?.globalEnabled !== false,
+      ruby: TransformShared.normalizeRubyRuntimeSettings(value?.ruby)
     };
   };
 
@@ -392,6 +470,19 @@
     return {
       domains: [...new Set(domains)]
     };
+  };
+
+  const normalizePageRubySettings = (value) => {
+    return TransformShared.normalizePageRubySettings(value);
+  };
+
+  const getEffectiveRubyConfiguration = () => {
+    return TransformShared.resolveEffectiveRubySettings(
+      activePageRubySettings,
+      activeRuntimeSettings.ruby,
+      location.href,
+      location.hostname
+    );
   };
 
   const getCurrentSelectionText = () => {
@@ -559,6 +650,365 @@
     ].join("|");
     const selectedIndex = hashString(seedSource) % candidates.length;
     return candidates[selectedIndex];
+  };
+
+  const isManagedRubyContainer = (node) => {
+    return node?.nodeType === Node.ELEMENT_NODE &&
+      node.hasAttribute(RUBY_RUN_ATTRIBUTE);
+  };
+
+  const collectManagedRubyContainers = (root) => {
+    const containers = new Set();
+    if (!root) {
+      return [];
+    }
+
+    if (root.nodeType === Node.TEXT_NODE) {
+      const parent = root.parentElement?.closest?.(`[${RUBY_RUN_ATTRIBUTE}]`);
+      if (parent) {
+        containers.add(parent);
+      }
+      return [...containers];
+    }
+
+    if (isManagedRubyContainer(root)) {
+      containers.add(root);
+    }
+
+    if (typeof root.querySelectorAll === "function") {
+      root.querySelectorAll(`[${RUBY_RUN_ATTRIBUTE}]`).forEach((element) => {
+        containers.add(element);
+      });
+    }
+
+    return [...containers];
+  };
+
+  const restoreManagedRubyContainers = (root) => {
+    const containers = collectManagedRubyContainers(root);
+    for (const container of containers) {
+      const sourceText = container.getAttribute(RUBY_SOURCE_ATTRIBUTE) ?? container.textContent ?? "";
+      container.replaceWith(document.createTextNode(sourceText));
+    }
+    return containers.length;
+  };
+
+  const buildRubyRunWrapper = (sourceText, segments, options = {}) => {
+    const wrapper = document.createElement("span");
+    wrapper.setAttribute(RUBY_RUN_ATTRIBUTE, "1");
+    wrapper.setAttribute(RUBY_SOURCE_ATTRIBUTE, sourceText);
+    wrapper.style.setProperty("display", "contents", "important");
+
+    const hidden = options.hidden === true;
+    for (const segment of segments) {
+      if (!segment) {
+        continue;
+      }
+
+      if (segment.type === "ruby") {
+        const ruby = document.createElement("ruby");
+        ruby.setAttribute("data-jpn-transform-ruby", "1");
+        ruby.style.setProperty("display", "ruby", "important");
+        ruby.style.setProperty("ruby-position", "over", "important");
+        ruby.style.setProperty("visibility", "visible", "important");
+        ruby.style.setProperty("opacity", "1", "important");
+        ruby.style.setProperty("font-size", "inherit", "important");
+        ruby.style.setProperty("line-height", "inherit", "important");
+        const rb = document.createElement("rb");
+        rb.textContent = `${segment.base ?? ""}`;
+        rb.style.setProperty("display", "ruby-base", "important");
+        rb.style.setProperty("visibility", "visible", "important");
+        rb.style.setProperty("opacity", "1", "important");
+        rb.style.setProperty("font-size", "inherit", "important");
+        rb.style.setProperty("line-height", "inherit", "important");
+        const rt = document.createElement("rt");
+        rt.textContent = `${segment.ruby ?? ""}`;
+        if (hidden) {
+          rt.style.setProperty("display", "none", "important");
+        } else {
+          rt.style.setProperty("display", "ruby-text", "important");
+          rt.style.setProperty("visibility", "visible", "important");
+          rt.style.setProperty("opacity", "1", "important");
+          rt.style.setProperty("position", "static", "important");
+          rt.style.setProperty("font-size", "0.5em", "important");
+          rt.style.setProperty("line-height", "1", "important");
+          rt.style.setProperty("width", "auto", "important");
+          rt.style.setProperty("height", "auto", "important");
+          rt.style.setProperty("overflow", "visible", "important");
+          rt.style.setProperty("clip", "auto", "important");
+          rt.style.setProperty("clip-path", "none", "important");
+          rt.style.setProperty("transform", "none", "important");
+        }
+        ruby.append(rb, rt);
+        wrapper.appendChild(ruby);
+        continue;
+      }
+
+      wrapper.appendChild(document.createTextNode(`${segment.text ?? ""}`));
+    }
+
+    return wrapper;
+  };
+
+  const inspectRenderedRubyStyles = (wrapper) => {
+    const ruby = wrapper?.querySelector?.("ruby[data-jpn-transform-ruby]");
+    const rt = ruby?.querySelector?.("rt");
+    if (!ruby || !rt || !ruby.isConnected) {
+      return null;
+    }
+    const rubyStyle = window.getComputedStyle(ruby);
+    const rtStyle = window.getComputedStyle(rt);
+    return {
+      hiddenSetting: activeRuntimeSettings.ruby?.hidden === true,
+      ruby: {
+        display: rubyStyle.display,
+        visibility: rubyStyle.visibility,
+        opacity: rubyStyle.opacity
+      },
+      rt: {
+        text: rt.textContent ?? "",
+        display: rtStyle.display,
+        visibility: rtStyle.visibility,
+        opacity: rtStyle.opacity,
+        fontSize: rtStyle.fontSize,
+        lineHeight: rtStyle.lineHeight
+      }
+    };
+  };
+
+  const getSafeRubyReplacementParent = (textNodes) => {
+    if (!Array.isArray(textNodes) || textNodes.length === 0) {
+      return null;
+    }
+
+    const firstNode = textNodes[0];
+    const parent = firstNode?.parentNode;
+    if (!parent || textNodes.some((node) => node?.parentNode !== parent)) {
+      return null;
+    }
+
+    const childNodes = Array.from(parent.childNodes ?? []);
+    const indexes = textNodes.map((node) => childNodes.indexOf(node));
+    if (indexes.some((index) => index < 0)) {
+      return null;
+    }
+
+    const start = Math.min(...indexes);
+    const end = Math.max(...indexes);
+    const nodesInRange = childNodes.slice(start, end + 1);
+    if (nodesInRange.length !== textNodes.length) {
+      return null;
+    }
+
+    for (let index = 0; index < nodesInRange.length; index += 1) {
+      if (nodesInRange[index] !== textNodes[index] || nodesInRange[index].nodeType !== Node.TEXT_NODE) {
+        return null;
+      }
+    }
+
+    return parent;
+  };
+
+  const replaceTextRunWithRubyWrapper = (textNodes, wrapper) => {
+    const parent = getSafeRubyReplacementParent(textNodes);
+    if (!parent) {
+      return false;
+    }
+
+    const firstNode = textNodes[0];
+    parent.insertBefore(wrapper, firstNode);
+    for (const node of textNodes) {
+      node.remove();
+    }
+    return true;
+  };
+
+  const getSafeRubyReplacementRange = (textNodes, expectedText) => {
+    if (!Array.isArray(textNodes) || textNodes.length === 0) {
+      return null;
+    }
+
+    const firstNode = textNodes[0];
+    const lastNode = textNodes[textNodes.length - 1];
+    if (!firstNode?.isConnected || !lastNode?.isConnected) {
+      return null;
+    }
+
+    const range = document.createRange();
+    range.setStart(firstNode, 0);
+    range.setEnd(lastNode, readNodeValueSafely(lastNode).length);
+    const fragment = range.cloneContents();
+    if ((fragment.textContent ?? "") !== `${expectedText ?? ""}`) {
+      return null;
+    }
+
+    const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_ELEMENT);
+    while (walker.nextNode()) {
+      const element = walker.currentNode;
+      if (!element || element.nodeType !== Node.ELEMENT_NODE) {
+        continue;
+      }
+      if (
+        SKIP_TAGS.has(element.tagName) ||
+        DECORATION_BOUNDARY_TAGS.has(element.tagName) ||
+        element.hasAttribute?.("style") ||
+        element.hasAttribute?.("class")
+      ) {
+        return null;
+      }
+    }
+
+    return range;
+  };
+
+  const replaceTextRunRangeWithRubyWrapper = (textNodes, wrapper, expectedText) => {
+    const range = getSafeRubyReplacementRange(textNodes, expectedText);
+    if (!range) {
+      return false;
+    }
+
+    range.deleteContents();
+    range.insertNode(wrapper);
+    return true;
+  };
+
+  const inspectFirstNarouRubyPair = (text) => {
+    const sourceText = `${text ?? ""}`;
+    const openIndex = sourceText.indexOf("《");
+    const closeIndex = openIndex >= 0 ? sourceText.indexOf("》", openIndex + 1) : -1;
+    if (openIndex < 0 || closeIndex < 0) {
+      return null;
+    }
+    const beforeOpen = sourceText.slice(0, openIndex);
+    const barIndex = Math.max(beforeOpen.lastIndexOf("｜"), beforeOpen.lastIndexOf("|"));
+    const base = barIndex >= 0 ? beforeOpen.slice(barIndex + 1) : "";
+    const ruby = sourceText.slice(openIndex + 1, closeIndex);
+    return {
+      hasExplicitBar: barIndex >= 0,
+      barIndex,
+      base,
+      ruby,
+      limits: TransformShared.inspectRubyPairLimits(base, ruby, {
+        maxBaseLength: activeRuntimeSettings.ruby?.max_base_length,
+        maxRubyLength: activeRuntimeSettings.ruby?.max_ruby_length
+      })
+    };
+  };
+
+  const recordRubyDebug = (payload) => {
+    if (!hasDebugTargets()) {
+      return;
+    }
+    lastRubyDebug = {
+      timestamp: new Date().toISOString(),
+      revision: runtimeRevision,
+      ...payload
+    };
+  };
+
+  const resolveRubySegmentsForText = (text) => {
+    if (activeRuntimeSettings.ruby?.enabled === false) {
+      recordRubyDebug({
+        decision: "ruby-disabled",
+        transformedText: `${text ?? ""}`,
+        pair: inspectFirstNarouRubyPair(text)
+      });
+      return null;
+    }
+
+    const effectiveRuby = getEffectiveRubyConfiguration();
+    const segments = TransformShared.parseRenderableRubySegments(text, effectiveRuby.markers, {
+      maxBaseLength: activeRuntimeSettings.ruby?.max_base_length,
+      maxRubyLength: activeRuntimeSettings.ruby?.max_ruby_length,
+      allowLooseNarouImplicitBase: true,
+      allowLoosePageImplicitBase: false
+    });
+    const accepted = TransformShared.hasRubySegments(segments);
+    if (`${text ?? ""}`.includes("《") || accepted) {
+      recordRubyDebug({
+        decision: accepted ? "segments-accepted" : "segments-rejected",
+        transformedText: `${text ?? ""}`,
+        pair: inspectFirstNarouRubyPair(text),
+        effectiveMarkers: cloneDebugValue(effectiveRuby.markers),
+        markerSource: effectiveRuby.source,
+        maxBaseLength: activeRuntimeSettings.ruby?.max_base_length,
+        maxRubyLength: activeRuntimeSettings.ruby?.max_ruby_length,
+        segments: cloneDebugValue(segments)
+      });
+    }
+    return accepted ? segments : null;
+  };
+
+  const applyTransformedRunResult = (textNodes, currentParts, sourceText, transformed, revision) => {
+    const firstNode = textNodes[0];
+    if (!firstNode?.isConnected) {
+      return false;
+    }
+
+    const rubySegments = resolveRubySegmentsForText(transformed);
+    if (rubySegments) {
+      const wrapper = buildRubyRunWrapper(sourceText, rubySegments, {
+        hidden: activeRuntimeSettings.ruby?.hidden === true
+      });
+      if (textNodes.length === 1) {
+        firstNode.replaceWith(wrapper);
+        recordRubyDebug({
+          ...(lastRubyDebug ?? {}),
+          decision: "dom-applied-single-node",
+          sourceText,
+          transformedText: transformed,
+          textNodeCount: 1,
+          renderedStyles: inspectRenderedRubyStyles(wrapper)
+        });
+        processedTextByRunAnchor.set(firstNode, transformed);
+        processedRevisionByRunAnchor.set(firstNode, revision);
+        return true;
+      }
+      if (replaceTextRunWithRubyWrapper(textNodes, wrapper)) {
+        recordRubyDebug({
+          ...(lastRubyDebug ?? {}),
+          decision: "dom-applied-shared-parent",
+          sourceText,
+          transformedText: transformed,
+          textNodeCount: textNodes.length,
+          renderedStyles: inspectRenderedRubyStyles(wrapper)
+        });
+        processedTextByRunAnchor.set(firstNode, transformed);
+        processedRevisionByRunAnchor.set(firstNode, revision);
+        return true;
+      }
+      if (replaceTextRunRangeWithRubyWrapper(textNodes, wrapper, currentParts.join(""))) {
+        recordRubyDebug({
+          ...(lastRubyDebug ?? {}),
+          decision: "dom-applied-range",
+          sourceText,
+          transformedText: transformed,
+          textNodeCount: textNodes.length,
+          renderedStyles: inspectRenderedRubyStyles(wrapper)
+        });
+        processedTextByRunAnchor.set(firstNode, transformed);
+        processedRevisionByRunAnchor.set(firstNode, revision);
+        return true;
+      }
+      recordRubyDebug({
+        ...(lastRubyDebug ?? {}),
+        decision: "dom-replacement-rejected",
+        sourceText,
+        transformedText: transformed,
+        textNodeCount: textNodes.length
+      });
+    }
+
+    if (transformed === currentParts.join("")) {
+      processedTextByRunAnchor.set(firstNode, transformed);
+      processedRevisionByRunAnchor.set(firstNode, revision);
+      return false;
+    }
+
+    redistributeTransformedText(textNodes, currentParts, transformed);
+    processedTextByRunAnchor.set(firstNode, transformed);
+    processedRevisionByRunAnchor.set(firstNode, revision);
+    return true;
   };
 
   const escapeRegex = (value) => {
@@ -1022,6 +1472,14 @@
       return true;
     }
 
+    if (parent.closest?.(`[${RUBY_RUN_ATTRIBUTE}]`)) {
+      return true;
+    }
+
+    if (parent.closest?.("ruby")) {
+      return true;
+    }
+
     if (SKIP_TAGS.has(parent.tagName)) {
       return true;
     }
@@ -1409,7 +1867,8 @@
     return {
       runtimeSettings: normalizeRuntimeSettings(storedValue?.runtime_settings),
       disabledSites: normalizeDisabledSites(storedValue?.disabled_sites),
-      popupBundleId: `${storedValue?.popup_bundle_id ?? DEFAULT_POPUP_BUNDLE_ID}`.trim() || DEFAULT_POPUP_BUNDLE_ID
+      popupBundleId: `${storedValue?.popup_bundle_id ?? DEFAULT_POPUP_BUNDLE_ID}`.trim() || DEFAULT_POPUP_BUNDLE_ID,
+      pageRubySettings: normalizePageRubySettings(storedValue?.page_ruby_settings)
     };
   };
 
@@ -1592,11 +2051,21 @@
     workerStats.pendingRuns = Math.max(workerStats.pendingRuns - 1, 0);
 
     if (state.revision !== revision || revision !== runtimeRevision) {
+      recordRubyDebug({
+        decision: "worker-result-stale",
+        workerRevision: revision,
+        stateRevision: state.revision,
+        runtimeRevision
+      });
       return false;
     }
 
     const textNodes = state.textNodes.filter((node) => node?.isConnected && !isSkippableTextNode(node));
     if (textNodes.length === 0) {
+      recordRubyDebug({
+        decision: "worker-target-disconnected",
+        workerRevision: revision
+      });
       return false;
     }
 
@@ -1604,21 +2073,19 @@
     const currentParts = textNodes.map((node) => readNodeValueSafely(node));
     const current = currentParts.join("");
     if (current !== state.sourceText) {
+      recordRubyDebug({
+        decision: "worker-source-changed",
+        sourceText: state.sourceText,
+        currentText: current,
+        workerRevision: revision
+      });
       return false;
     }
 
     const transformed = `${result.transformedText ?? ""}`;
     originalTextByRunAnchor.set(runAnchor, state.sourceText);
-    processedTextByRunAnchor.set(runAnchor, transformed);
-    processedRevisionByRunAnchor.set(runAnchor, revision);
     workerStats.completedRuns += 1;
-
-    if (transformed === current) {
-      return false;
-    }
-
-    redistributeTransformedText(textNodes, currentParts, transformed);
-    return true;
+    return applyTransformedRunResult(textNodes, currentParts, state.sourceText, transformed, revision);
   };
 
   const handleTransformWorkerMessage = (event) => {
@@ -1845,6 +2312,7 @@
   };
 
   const restoreDocumentRuns = (root) => {
+    restoreManagedRubyContainers(root);
     for (const run of collectProcessableTextRuns(root)) {
       restoreTextRun(run);
     }
@@ -1884,14 +2352,7 @@
     }
 
     const transformed = transformTextWithStages(sourceText);
-    processedTextByRunAnchor.set(runAnchor, transformed);
-    processedRevisionByRunAnchor.set(runAnchor, runtimeRevision);
-
-    if (transformed === current) {
-      return false;
-    }
-
-    redistributeTransformedText(textNodes, currentParts, transformed);
+    const changed = applyTransformedRunResult(textNodes, currentParts, sourceText, transformed, runtimeRevision);
 
     if (DEBUG) {
       log("textRun 更新", {
@@ -1902,7 +2363,7 @@
       });
     }
 
-    return true;
+    return changed;
   };
 
   const hasAnyActiveRules = () => {
@@ -2035,11 +2496,17 @@
 
   const processTextRoot = (root, options = {}) => {
     const entry = options.entry ?? {};
-    const restoreFirst = entry.restoreFirst === true || options.restoreFirst === true;
+    const restoreRuns = entry.restoreFirst === true || options.restoreFirst === true;
     const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
     const maxTextNodes = Number.isFinite(options.maxTextNodes)
       ? options.maxTextNodes
       : MAX_TEXT_NODES_PER_ROOT_BATCH;
+    if (restoreRuns && entry.managedRubyRestored !== true) {
+      restoreManagedRubyContainers(root);
+      entry.walker = null;
+      entry.done = false;
+      entry.managedRubyRestored = true;
+    }
     const walker = entry.walker ?? createTextNodeWalker(root);
     entry.walker = walker;
     let changedCount = 0;
@@ -2064,7 +2531,7 @@
         continue;
       }
 
-      if (restoreFirst) {
+      if (restoreRuns) {
         restoreTextRun(textRun);
       }
 
@@ -2199,12 +2666,16 @@
         pendingRootQueue.set(root, {
           priority: nextPriority,
           restoreFirst: restoreFirst === true,
+          managedRubyRestored: false,
           revision: runtimeRevision,
           walker: null,
           done: false
         });
       } else if (restoreFirst === true) {
         existing.restoreFirst = true;
+        existing.managedRubyRestored = false;
+        existing.walker = null;
+        existing.done = false;
       }
     }
 
@@ -2362,6 +2833,7 @@
     ]);
     activeRuntimeSettings = runtimeConfiguration.runtimeSettings;
     activeDisabledSites = runtimeConfiguration.disabledSites;
+    activePageRubySettings = runtimeConfiguration.pageRubySettings;
     activePopupBundleId = runtimeConfiguration.popupBundleId;
     activeLoadedBundles = Array.isArray(loaded?.bundles) ? loaded.bundles.map((bundle) => ({
       id: bundle.id,
@@ -2431,6 +2903,7 @@
     }
 
     if (message.type === MESSAGE_TYPES.GET_PAGE_CONTEXT) {
+      const effectiveRuby = getEffectiveRubyConfiguration();
       sendResponse({
         ok: true,
         url: location.href,
@@ -2440,7 +2913,15 @@
         siteDisabled: isCurrentSiteDisabled(),
         tabDisabled: activeTabDisabled === true,
         effectiveEnabled: isRuntimeEnabled(),
-        popupBundleId: activePopupBundleId
+        popupBundleId: activePopupBundleId,
+        ruby: {
+          enabled: activeRuntimeSettings.ruby?.enabled !== false,
+          hidden: activeRuntimeSettings.ruby?.hidden === true,
+          markers: effectiveRuby.markers,
+          source: effectiveRuby.source,
+          maxBaseLength: activeRuntimeSettings.ruby?.max_base_length,
+          maxRubyLength: activeRuntimeSettings.ruby?.max_ruby_length
+        }
       });
       return false;
     }

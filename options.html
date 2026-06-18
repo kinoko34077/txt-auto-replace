@@ -358,6 +358,7 @@
 
     <nav class="tabbar" aria-label="設定タブ">
       <button id="tab-bundles" class="tab-button secondary" type="button" aria-selected="true">Bundle編集</button>
+      <button id="tab-ruby" class="tab-button ghost" type="button" aria-selected="false">ルビ</button>
       <button id="tab-katakana-long-vowel" class="tab-button ghost" type="button" aria-selected="false">カタカナ長音</button>
       <button id="tab-stage4" class="tab-button ghost" type="button" aria-selected="false">Stage4</button>
       <button id="tab-diagnostics" class="tab-button ghost" type="button" aria-selected="false">診断</button>
@@ -368,6 +369,10 @@
 
     <section id="panel-bundles" class="tab-panel">
       <main id="bundle-root" class="bundle-grid" aria-live="polite"></main>
+    </section>
+
+    <section id="panel-ruby" class="tab-panel" hidden>
+      <div id="ruby-root" class="diagnostics-grid" aria-live="polite"></div>
     </section>
 
     <section id="panel-katakana-long-vowel" class="tab-panel" hidden>

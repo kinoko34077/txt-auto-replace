@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ruby DOM Fixture</title>
+  <style>
+    ruby,
+    rb,
+    rt {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      font-size: 0 !important;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Ruby DOM Fixture</h1>
+    <p id="status">実行中</p>
+    <div id="result"></div>
+  </main>
+  <script src="../transform-shared.js"></script>
+  <script src="../transform-engine.js"></script>
+  <script>
+    (() => {
+      const stages = [{
+        id: "ruby-fixture",
+        kind: "dictionary-rules",
+        order: 1,
+        rules: [{
+          from: "Bluetooth",
+          from_options: ["Bluetooth"],
+          to: "青歯《Bluetooth》",
+          candidates: ["青歯《Bluetooth》"],
+          enabled: true,
+          regex: false,
+          priority: 100
+        }]
+      }];
+      const transformed = TransformEngine.transformTextWithStages("Bluetooth", stages, null);
+      const limitStatus = TransformShared.inspectRubyPairLimits("青歯", "Bluetooth", {
+        maxBaseLength: 10,
+        maxRubyLength: 10
+      });
+      const segments = TransformShared.parseRenderableRubySegments(transformed, {
+        open: "《",
+        close: "》"
+      }, {
+        maxBaseLength: 10,
+        maxRubyLength: 10,
+        allowLooseNarouImplicitBase: true
+      });
+      const result = document.getElementById("result");
+      for (const segment of segments) {
+        if (segment.type !== "ruby") {
+          result.append(document.createTextNode(segment.text || ""));
+          continue;
+        }
+        const ruby = document.createElement("ruby");
+        ruby.dataset.fixtureRuby = "1";
+        ruby.style.setProperty("display", "ruby", "important");
+        ruby.style.setProperty("visibility", "visible", "important");
+        ruby.style.setProperty("opacity", "1", "important");
+        ruby.style.setProperty("font-size", "inherit", "important");
+        ruby.style.setProperty("line-height", "inherit", "important");
+        const rb = document.createElement("rb");
+        rb.textContent = segment.base;
+        rb.style.setProperty("display", "ruby-base", "important");
+        rb.style.setProperty("visibility", "visible", "important");
+        rb.style.setProperty("opacity", "1", "important");
+        rb.style.setProperty("font-size", "inherit", "important");
+        rb.style.setProperty("line-height", "inherit", "important");
+        const rt = document.createElement("rt");
+        rt.textContent = segment.ruby;
+        rt.style.setProperty("display", "ruby-text", "important");
+        rt.style.setProperty("visibility", "visible", "important");
+        rt.style.setProperty("opacity", "1", "important");
+        rt.style.setProperty("font-size", "0.5em", "important");
+        ruby.append(rb, rt);
+        result.append(ruby);
+      }
+      const ruby = result.querySelector("ruby[data-fixture-ruby]");
+      const passed =
+        transformed === "｜青歯《Bluetooth》" &&
+        limitStatus.baseLength === 2 &&
+        limitStatus.rubyLength === 9 &&
+        limitStatus.accepted === true &&
+        ruby?.querySelector("rb")?.textContent === "青歯" &&
+        ruby?.querySelector("rt")?.textContent === "Bluetooth" &&
+        getComputedStyle(ruby).visibility === "visible" &&
+        getComputedStyle(ruby.querySelector("rt")).visibility === "visible" &&
+        getComputedStyle(ruby.querySelector("rt")).fontSize !== "0px";
+      const status = document.getElementById("status");
+      status.textContent = passed ? "PASS" : `FAIL: ${transformed}`;
+      status.dataset.passed = passed ? "true" : "false";
+    })();
+  </script>
+</body>
+</html>

@@ -5,13 +5,26 @@
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
     skipEditableInputs: false,
-    globalEnabled: true
+    globalEnabled: true,
+    ruby: Object.freeze({
+      enabled: true,
+      hidden: false,
+      default_markers: Object.freeze({
+        open: "《",
+        close: "》"
+      })
+    })
+  });
+  const DEFAULT_PAGE_RUBY_SETTINGS = Object.freeze({
+    url_overrides: {},
+    domain_defaults: {}
   });
   const MESSAGE_TYPES = {
     APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
     GET_PAGE_CONTEXT: "GET_PAGE_CONTEXT",
     TOGGLE_CURRENT_TAB: "TOGGLE_CURRENT_TAB"
   };
+  const TransformShared = globalThis.TransformShared;
 
   const state = {
     payload: {},
@@ -26,6 +39,10 @@
   const toggleSiteButton = document.getElementById("toggle-site");
   const toggleTabButton = document.getElementById("toggle-tab");
   const openOptionsButton = document.getElementById("open-options");
+  const rubyContextNode = document.getElementById("ruby-context");
+  const rubyOpenInput = document.getElementById("ruby-open");
+  const rubyCloseInput = document.getElementById("ruby-close");
+  const saveRubyMarkersButton = document.getElementById("save-ruby-markers");
   const entryFromInput = document.getElementById("entry-from");
   const entryToInput = document.getElementById("entry-to");
   const entryPriorityInput = document.getElementById("entry-priority");
@@ -113,8 +130,13 @@
   const normalizeRuntimeSettings = (value) => {
     return {
       skipEditableInputs: value?.skipEditableInputs === true,
-      globalEnabled: value?.globalEnabled !== false
+      globalEnabled: value?.globalEnabled !== false,
+      ruby: TransformShared.normalizeRubyRuntimeSettings(value?.ruby)
     };
+  };
+
+  const normalizePageRubySettings = (value) => {
+    return TransformShared.normalizePageRubySettings(value);
   };
 
   const normalizeDisabledSites = (value) => {
@@ -146,6 +168,7 @@
     nextPayload.schema_version = 3;
     nextPayload.runtime_settings = normalizeRuntimeSettings(nextPayload.runtime_settings);
     nextPayload.disabled_sites = normalizeDisabledSites(nextPayload.disabled_sites);
+    nextPayload.page_ruby_settings = normalizePageRubySettings(nextPayload.page_ruby_settings);
     nextPayload.popup_bundle_id = `${nextPayload.popup_bundle_id ?? DEFAULT_POPUP_BUNDLE_ID}`.trim() || DEFAULT_POPUP_BUNDLE_ID;
     nextPayload.roots = Array.isArray(nextPayload.roots) ? nextPayload.roots : [];
 
@@ -208,6 +231,15 @@
     });
   };
 
+  const getEffectivePageRubyContext = () => {
+    return TransformShared.resolveEffectiveRubySettings(
+      state.payload.page_ruby_settings ?? DEFAULT_PAGE_RUBY_SETTINGS,
+      state.payload.runtime_settings?.ruby ?? DEFAULT_RUNTIME_SETTINGS.ruby,
+      `${state.pageContext?.url ?? state.activeTab?.url ?? ""}`,
+      `${state.pageContext?.hostname ?? ""}`
+    );
+  };
+
   const renderPageContext = () => {
     const hostname = state.pageContext?.hostname || "unknown";
     const url = state.pageContext?.url || state.activeTab?.url || "";
@@ -221,6 +253,35 @@
     if (state.pageContext?.selectionText && !entryFromInput.value) {
       entryFromInput.value = state.pageContext.selectionText;
     }
+
+    const ruby = getEffectivePageRubyContext();
+    rubyOpenInput.value = ruby.markers?.open ?? "《";
+    rubyCloseInput.value = ruby.markers?.close ?? "》";
+    rubyContextNode.textContent = `現在: ${rubyOpenInput.value}${rubyCloseInput.value} / 継承元: ${ruby.source ?? "default"}`;
+  };
+
+  const saveCurrentPageRubyMarkers = async () => {
+    const url = `${state.pageContext?.url ?? state.activeTab?.url ?? ""}`.trim();
+    const hostname = `${state.pageContext?.hostname ?? ""}`.trim().toLowerCase();
+    if (!url || !hostname) {
+      setStatus("現在ページの URL を取得できません。", "error");
+      return;
+    }
+
+    const markers = TransformShared.normalizeRubyMarkers({
+      open: rubyOpenInput.value,
+      close: rubyCloseInput.value
+    });
+    rubyOpenInput.value = markers.open;
+    rubyCloseInput.value = markers.close;
+
+    state.payload.page_ruby_settings = normalizePageRubySettings(state.payload.page_ruby_settings);
+    state.payload.page_ruby_settings.url_overrides[url] = { ...markers };
+    state.payload.page_ruby_settings.domain_defaults[hostname] = { ...markers };
+
+    await savePayload();
+    setStatus("ページ別ルビ記号を保存しました。", "success");
+    await reloadState();
   };
 
   const renderEntries = () => {
@@ -411,6 +472,15 @@
 
   openOptionsButton.addEventListener("click", () => {
     chrome.runtime.openOptionsPage();
+  });
+
+  saveRubyMarkersButton.addEventListener("click", async () => {
+    try {
+      await saveCurrentPageRubyMarkers();
+    } catch (error) {
+      console.error(error);
+      setStatus(`ルビ記号の保存に失敗しました: ${error.message}`, "error");
+    }
   });
 
   bindStorageSync();

@@ -249,12 +249,20 @@
             </ul>
         </section>
 
+        <section id="ruby-fixtures">
+            <h2>8. ルビ変換テスト</h2>
+            <p class="note"><code>Bluetooth → 青歯《Bluetooth》</code> のルールと、動的追加後のルビ保持を確認します。</p>
+            <div class="test-text" id="rubyBluetoothFixture">Bluetooth</div>
+            <div id="rubyDynamicFixture"></div>
+            <button id="addRubyFixtureBtn" type="button">Bluetoothを動的追加</button>
+        </section>
+
         <section>
-            <h2>8. Runtime Debug Viewer</h2>
+            <h2>9. Runtime Debug Viewer</h2>
             <p class="note">content script が document 属性へ書き出した runtime snapshot と transform debug を、このページ上で直接確認します。</p>
             <div class="debug-toolbar">
                 <label for="debugTargetInput">確認する from</label>
-                <input id="debugTargetInput" type="text" value="ない, よい, いま" />
+                <input id="debugTargetInput" type="text" value="Bluetooth, ない, よい, いま" />
                 <label><input id="debugAutoRefreshInput" type="checkbox" /> 自動更新</label>
                 <button id="applyDebugTargetsBtn" type="button">対象を更新</button>
                 <button id="refreshDebugViewBtn" type="button">再読込</button>
@@ -300,6 +308,13 @@
 
         document.getElementById("clearDynamicBtn").addEventListener("click", () => {
             dynamicArea.textContent = "";
+        });
+
+        document.getElementById("addRubyFixtureBtn").addEventListener("click", () => {
+            const fixture = document.createElement("p");
+            fixture.className = "test-text";
+            fixture.textContent = "Bluetooth";
+            document.getElementById("rubyDynamicFixture").appendChild(fixture);
         });
 
         const safeParseJsonAttribute = (attributeName) => {
@@ -387,6 +402,9 @@
                     });
                     runtimeCard.appendChild(virtualList);
                 }
+
+                runtimeCard.appendChild(createJsonDetails("直近のルビ判定", runtimeSnapshot.lastRubyDebug ?? null));
+                runtimeCard.appendChild(createJsonDetails("先行ルールに遮蔽される重複", runtimeSnapshot.shadowedRules ?? []));
 
                 const matchingRules = Array.isArray(runtimeSnapshot.matchingRules) ? runtimeSnapshot.matchingRules : [];
                 const matchTitle = document.createElement("h4");

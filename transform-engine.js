@@ -24,11 +24,15 @@
   const splitNodeEntries = TransformShared.splitNodeEntries;
   const normalizeDictionaryNode = TransformShared.normalizeDictionaryNode;
   const hasWildcard = TransformShared.hasWildcard;
+  const compileWildcardPattern = TransformShared.compileWildcardPattern;
   const matchWildcardPattern = TransformShared.matchWildcardPattern;
   const applyWildcardReplacement = TransformShared.applyWildcardReplacement;
-  const replaceWildcardPattern = TransformShared.replaceWildcardPattern;
   const expandRegexReplacementTemplate = TransformShared.expandRegexReplacementTemplate;
   const normalizeKanaForMatch = TransformShared.normalizeKanaForMatch;
+  const DEFAULT_RUBY_MARKERS = TransformShared.DEFAULT_RUBY_MARKERS;
+  const normalizeNarouRubyText = TransformShared.normalizeNarouRubyText;
+  const parseRubySegments = TransformShared.parseRubySegments;
+  const hasRubySegments = TransformShared.hasRubySegments;
   const hasTrailingKatakanaLongVowel = TransformShared.hasTrailingKatakanaLongVowel;
   const isKatakanaChar = TransformShared.isKatakanaChar;
   const containsKanji = TransformShared.containsKanji;
@@ -46,6 +50,7 @@
   const KATAKANA_LONG_VOWEL_BUNDLE_ID = "katakana-long-vowel-abbreviation";
   const dictionaryStageCompileCache = new WeakMap();
   const tokenStageCompileCache = new WeakMap();
+  const crossStageConflictCache = new WeakMap();
 
   const emitDebugEvent = (debugCollector, event) => {
     if (typeof debugCollector === "function" && event && typeof event === "object") {
@@ -235,7 +240,8 @@
   const normalizeRule = (rule) => {
     const conditions = rule.conditions || {};
     const isRegexRule = rule.regex === true || rule.is_regex === true;
-    const candidates = normalizeReplacementCandidates(rule.candidates ?? rule.to, isRegexRule, rule.to);
+    const replacementSource = rule.to ?? rule.candidates;
+    const candidates = normalizeReplacementCandidates(replacementSource, isRegexRule, rule.to);
     const fromOptions = isRegexRule
       ? [`${rule.from ?? ""}`.trim()].filter(Boolean)
       : splitMatchCandidates(rule.from_options ?? rule.from);
@@ -344,9 +350,11 @@
   };
 
   const chooseReplacementTemplate = (rule, matchedText) => {
-    const candidates = Array.isArray(rule.candidates) && rule.candidates.length > 0
-      ? rule.candidates
-      : normalizeReplacementCandidates(rule.to, rule?.regex === true, rule.to);
+    const candidates = normalizeReplacementCandidates(
+      rule.to ?? rule.candidates,
+      rule?.regex === true,
+      rule.to
+    );
 
     if (!candidates.length) {
       return rule.to;
@@ -366,10 +374,43 @@
     return candidates[selectedIndex];
   };
 
+  const normalizeReplacementRubyMarkup = (value) => {
+    const sourceText = `${value ?? ""}`;
+    if (!sourceText.includes(DEFAULT_RUBY_MARKERS.open) || !sourceText.includes(DEFAULT_RUBY_MARKERS.close)) {
+      return sourceText;
+    }
+
+    if (sourceText.includes("｜") || sourceText.includes("|")) {
+      return sourceText;
+    }
+
+    return `｜${sourceText}`;
+  };
+
   const chooseReplacement = (rule, matchedText, wildcardCaptures = []) => {
-    return applyWildcardReplacement(
+    return normalizeReplacementRubyMarkup(applyWildcardReplacement(
       chooseReplacementTemplate(rule, matchedText),
       wildcardCaptures
+    ));
+  };
+
+  const appendSourceRubyAnnotation = (rule, replacement, sourceText) => {
+    if (rule?.match_options?.ruby_from_source !== true) {
+      return normalizeReplacementRubyMarkup(replacement);
+    }
+
+    const baseText = `${replacement ?? ""}`;
+    const rubySource = `${sourceText ?? ""}`;
+    if (!baseText || !rubySource) {
+      return baseText;
+    }
+
+    if (baseText.includes(DEFAULT_RUBY_MARKERS.open) || baseText.includes(DEFAULT_RUBY_MARKERS.close)) {
+      return normalizeReplacementRubyMarkup(baseText);
+    }
+
+    return normalizeReplacementRubyMarkup(
+      `${baseText}${DEFAULT_RUBY_MARKERS.open}${rubySource}${DEFAULT_RUBY_MARKERS.close}`
     );
   };
 
@@ -908,7 +949,8 @@
     const matchedFrom = ruleUsesBasicFormMatch(rule)
       ? (matchedFromOverride ?? token?.basic_form)
       : (matchedFromOverride ?? token?.surface_form);
-    return applyBasicFormReplacement(token, rule, replacement, matchedFrom);
+    const replacementBase = applyBasicFormReplacement(token, rule, replacement, matchedFrom);
+    return appendSourceRubyAnnotation(rule, replacementBase, matchedText);
   };
 
   const surroundingConditionsMatch = (tokens, index, length, rule) => {
@@ -1158,7 +1200,11 @@
       }
 
       const matchedText = sourceText.slice(cursor, cursor + record.length);
-      const replacement = chooseReplacement(record.rule, matchedText);
+      const replacement = appendSourceRubyAnnotation(
+        record.rule,
+        chooseReplacement(record.rule, matchedText),
+        matchedText
+      );
       emitDebugEvent(debugCollector, {
         phase: "dictionary-match",
         stageId,
@@ -1173,6 +1219,70 @@
     }
 
     return output;
+  };
+
+  const replaceWildcardPatternWithResolver = (text, pattern, replacementTemplate, options = {}, resolveReplacement = null) => {
+    const sourceText = `${text ?? ""}`;
+    const sourcePattern = `${pattern ?? ""}`;
+    const decodeLiteralPattern = (value) => {
+      return `${value ?? ""}`.replace(/\\([\[\],*\\-])/g, "$1");
+    };
+    const replacementFor = typeof resolveReplacement === "function"
+      ? resolveReplacement
+      : (replacement, _matchedText) => replacement;
+    const normalizedText = options.kanaInsensitive
+      ? normalizeKanaForMatch(sourceText)
+      : sourceText;
+    const normalizedPattern = options.kanaInsensitive
+      ? normalizeKanaForMatch(sourcePattern)
+      : sourcePattern;
+
+    if (!hasWildcard(sourcePattern)) {
+      const literalPattern = decodeLiteralPattern(normalizedPattern);
+      let output = "";
+      let cursor = 0;
+      let matchIndex = normalizedText.indexOf(literalPattern);
+      while (matchIndex >= 0) {
+        const matchedText = sourceText.slice(matchIndex, matchIndex + literalPattern.length);
+        const replacement = replacementFor(
+          applyWildcardReplacement(replacementTemplate, []),
+          matchedText
+        );
+        output += sourceText.slice(cursor, matchIndex);
+        output += replacement;
+        cursor = matchIndex + literalPattern.length;
+        matchIndex = normalizedText.indexOf(literalPattern, cursor);
+      }
+      return output + sourceText.slice(cursor);
+    }
+
+    const compiled = compileWildcardPattern(normalizedPattern, { anchored: false, flags: "gdu" });
+    let output = "";
+    let cursor = 0;
+    for (const match of normalizedText.matchAll(compiled.regex)) {
+      const range = match.indices?.[0];
+      if (!range || range[0] < cursor) {
+        continue;
+      }
+      const captures = match.indices.slice(1, 1 + compiled.captureCount).map((captureRange) => {
+        if (!captureRange) {
+          return "";
+        }
+        return sourceText.slice(captureRange[0], captureRange[1]);
+      });
+      const matchedText = sourceText.slice(range[0], range[1]);
+      const replacement = replacementFor(
+        applyWildcardReplacement(replacementTemplate, captures),
+        matchedText
+      );
+      output += sourceText.slice(cursor, range[0]);
+      output += replacement;
+      cursor = range[1];
+      if (range[0] === range[1]) {
+        cursor += 1;
+      }
+    }
+    return output + sourceText.slice(cursor);
   };
 
   const applySlowDictionaryRules = (text, slowRules, debugCollector, stageId) => {
@@ -1195,7 +1305,11 @@
             const offset = hasGroups ? args[args.length - 3] : args[args.length - 2];
             const captures = args.slice(1, hasGroups ? -3 : -2);
             const replacementTemplate = chooseReplacementTemplate(rule, matchedText);
-            const replacement = expandRegexReplacementTemplate(replacementTemplate, matchedText, captures, groups, sourceText, offset);
+            const replacement = appendSourceRubyAnnotation(
+              rule,
+              expandRegexReplacementTemplate(replacementTemplate, matchedText, captures, groups, sourceText, offset),
+              matchedText
+            );
             emitDebugEvent(debugCollector, {
               phase: "dictionary-match",
               stageId,
@@ -1227,9 +1341,15 @@
           makeCandidateRule(rule, fromCandidate),
           fromCandidate
         );
-        result = replaceWildcardPattern(result, fromCandidate, replacementTemplate, {
-          kanaInsensitive: ruleUsesKanaInsensitiveMatch(rule)
-        });
+        result = replaceWildcardPatternWithResolver(
+          result,
+          fromCandidate,
+          replacementTemplate,
+          {
+            kanaInsensitive: ruleUsesKanaInsensitiveMatch(rule)
+          },
+          (replacement, matchedText) => appendSourceRubyAnnotation(rule, replacement, matchedText)
+        );
       }
     }
 
@@ -1240,6 +1360,87 @@
     const compiled = compileDictionaryStage(dictionaryRules);
     const exactResult = applyCompiledDictionaryExactRules(text, compiled, debugCollector, stageId);
     return applySlowDictionaryRules(exactResult, compiled.slowRules, debugCollector, stageId);
+  };
+
+  const canPreserveNarouRubyAnnotations = (text) => {
+    if (typeof text !== "string" || !text) {
+      return false;
+    }
+
+    return text.includes(DEFAULT_RUBY_MARKERS.open) && text.includes(DEFAULT_RUBY_MARKERS.close);
+  };
+
+  const rebuildRubyAnnotatedText = (segments) => {
+    return segments.map((segment) => {
+      if (!segment) {
+        return "";
+      }
+      if (segment.type === "ruby") {
+        const base = `${segment.base ?? ""}`;
+        const ruby = `${segment.ruby ?? ""}`;
+        return `｜${base}${DEFAULT_RUBY_MARKERS.open}${ruby}${DEFAULT_RUBY_MARKERS.close}`;
+      }
+      return `${segment.text ?? ""}`;
+    }).join("");
+  };
+
+  const applyStageTransformRaw = (text, stage, tokenizer, debugCollector) => {
+    if (stage.kind === "dictionary-rules") {
+      return applyDictionaryRules(text, stage.rules, debugCollector, stage.id);
+    }
+
+    if (stage.kind === "token-rules") {
+      if (stage.runtime_mode === "verb-okurigana-stage4") {
+        return applyVerbOkuriganaStage4(text, tokenizer, debugCollector, stage.id);
+      }
+      if (stage.runtime_mode === "katakana-long-vowel-abbreviation") {
+        return applyKatakanaLongVowelAbbreviation(text, stage.rules, debugCollector, stage.id, stage.settings);
+      }
+      return tokenizeAndApplyTokenRules(
+        text,
+        stage.rules,
+        tokenizer,
+        debugCollector,
+        stage.id
+      );
+    }
+
+    return text;
+  };
+
+  const applyStageTransformPreservingRuby = (text, stage, tokenizer, debugCollector) => {
+    if (!canPreserveNarouRubyAnnotations(text)) {
+      return applyStageTransformRaw(text, stage, tokenizer, debugCollector);
+    }
+
+    const normalizedText = normalizeNarouRubyText(text, {
+      allowLooseImplicitBase: true
+    });
+    const segments = parseRubySegments(normalizedText, DEFAULT_RUBY_MARKERS, {
+      allowLooseImplicitBase: false
+    });
+    if (!hasRubySegments(segments)) {
+      return applyStageTransformRaw(text, stage, tokenizer, debugCollector);
+    }
+
+    const transformedSegments = segments.map((segment) => {
+      if (!segment) {
+        return segment;
+      }
+      if (segment.type === "ruby") {
+        const transformedBase = applyStageTransformRaw(`${segment.base ?? ""}`, stage, tokenizer, debugCollector);
+        return {
+          ...segment,
+          base: transformedBase || segment.base
+        };
+      }
+      return {
+        ...segment,
+        text: applyStageTransformRaw(`${segment.text ?? ""}`, stage, tokenizer, debugCollector)
+      };
+    });
+
+    return rebuildRubyAnnotatedText(transformedSegments);
   };
 
   const addRuleToMap = (map, key, rule) => {
@@ -2096,6 +2297,90 @@
     });
   };
 
+  const isCrossStageExactConflictCandidate = (rule, candidate) => {
+    if (!rule || rule.enabled === false || rule.regex === true || rule.character_map) {
+      return false;
+    }
+    if (!candidate || candidate.includes("\\") || hasWildcard(candidate)) {
+      return false;
+    }
+    if (Array.isArray(rule.sequence) && rule.sequence.length > 0) {
+      return false;
+    }
+    const conditions = rule.conditions ?? {};
+    return !conditions.prev && !conditions.current && !conditions.next;
+  };
+
+  const compareCrossStageConflictRecords = (left, right) => {
+    return (Number(left.rule.priority) || 0) - (Number(right.rule.priority) || 0) ||
+      (Number(left.stage.order) || 0) - (Number(right.stage.order) || 0) ||
+      left.stageIndex - right.stageIndex ||
+      left.ruleIndex - right.ruleIndex;
+  };
+
+  const resolveCrossStageExactRuleConflicts = (stages) => {
+    const safeStages = Array.isArray(stages) ? stages : [];
+    const cached = crossStageConflictCache.get(safeStages);
+    if (cached) {
+      return cached;
+    }
+
+    const recordsByCandidate = new Map();
+    safeStages.forEach((stage, stageIndex) => {
+      (Array.isArray(stage?.rules) ? stage.rules : []).forEach((rule, ruleIndex) => {
+        for (const candidate of new Set(getPositiveRuleFromCandidates(rule))) {
+          if (!isCrossStageExactConflictCandidate(rule, candidate)) {
+            continue;
+          }
+          const records = recordsByCandidate.get(candidate) ?? [];
+          records.push({ stage, stageIndex, rule, ruleIndex, candidate });
+          recordsByCandidate.set(candidate, records);
+        }
+      });
+    });
+
+    const winners = new Map();
+    for (const [candidate, records] of recordsByCandidate) {
+      if (new Set(records.map((record) => record.stageIndex)).size < 2) {
+        continue;
+      }
+      winners.set(candidate, records.reduce((best, current) => {
+        return compareCrossStageConflictRecords(current, best) > 0 ? current : best;
+      }));
+    }
+    if (winners.size === 0) {
+      crossStageConflictCache.set(safeStages, safeStages);
+      return safeStages;
+    }
+
+    const resolved = safeStages.map((stage, stageIndex) => {
+      const rules = (Array.isArray(stage?.rules) ? stage.rules : []).map((rule, ruleIndex) => {
+        const candidates = getPositiveRuleFromCandidates(rule);
+        if (candidates.length === 0) {
+          return rule;
+        }
+        const retained = candidates.filter((candidate) => {
+          const winner = winners.get(candidate);
+          return !winner || (winner.stageIndex === stageIndex && winner.ruleIndex === ruleIndex);
+        });
+        if (retained.length === candidates.length) {
+          return rule;
+        }
+        if (retained.length === 0) {
+          return { ...rule, enabled: false, from_options: [] };
+        }
+        return {
+          ...rule,
+          from: retained[0],
+          from_options: retained
+        };
+      });
+      return { ...stage, rules };
+    });
+    crossStageConflictCache.set(safeStages, resolved);
+    return resolved;
+  };
+
   const transformTextWithStages = (text, stages, tokenizer, options = {}) => {
     if (!text || !text.trim()) {
       return text;
@@ -2106,7 +2391,7 @@
       : options?.debugCollector;
     let transformedText = text;
 
-    for (const stage of Array.isArray(stages) ? stages : []) {
+    for (const stage of resolveCrossStageExactRuleConflicts(stages)) {
       if (!stage) {
         continue;
       }
@@ -2118,44 +2403,20 @@
       }
 
       const beforeStage = transformedText;
-
-      if (stage.kind === "dictionary-rules") {
-        transformedText = applyDictionaryRules(transformedText, stage.rules, debugCollector, stage.id);
-        if (beforeStage !== transformedText) {
-          emitDebugEvent(debugCollector, {
-            phase: "stage-result",
-            stageId: stage.id,
-            stageKind: stage.kind,
-            before: beforeStage,
-            after: transformedText
-          });
-        }
-        continue;
-      }
-
-      if (stage.kind === "token-rules") {
-        if (stage.runtime_mode === "verb-okurigana-stage4") {
-          transformedText = applyVerbOkuriganaStage4(transformedText, tokenizer, debugCollector, stage.id);
-        } else if (stage.runtime_mode === "katakana-long-vowel-abbreviation") {
-          transformedText = applyKatakanaLongVowelAbbreviation(transformedText, stage.rules, debugCollector, stage.id, stage.settings);
-        } else {
-          transformedText = tokenizeAndApplyTokenRules(
-            transformedText,
-            stage.rules,
-            tokenizer,
-            debugCollector,
-            stage.id
-          );
-        }
-        if (beforeStage !== transformedText) {
-          emitDebugEvent(debugCollector, {
-            phase: "stage-result",
-            stageId: stage.id,
-            stageKind: stage.kind,
-            before: beforeStage,
-            after: transformedText
-          });
-        }
+      transformedText = applyStageTransformPreservingRuby(
+        transformedText,
+        stage,
+        tokenizer,
+        debugCollector
+      );
+      if (beforeStage !== transformedText) {
+        emitDebugEvent(debugCollector, {
+          phase: "stage-result",
+          stageId: stage.id,
+          stageKind: stage.kind,
+          before: beforeStage,
+          after: transformedText
+        });
       }
     }
 
@@ -2518,6 +2779,7 @@
     applyVerbFallbackTransformations,
     loadStagesFromDefinitions,
     normalizeBundleOverridesPayload,
+    resolveCrossStageExactRuleConflicts,
     splitCommaSeparatedValues,
     splitMatchCandidates,
     splitReplacementCandidates,

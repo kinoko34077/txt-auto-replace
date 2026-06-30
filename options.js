@@ -440,6 +440,272 @@
     return null;
   };
 
+  const getEntryRegexIssue = (entry) => {
+    if (!entry || entry.regex !== true) {
+      return null;
+    }
+    return detectRegexEntryIssue(entry, `${entry.from ?? ""}`.trim(), `${entry.to ?? ""}`.trim());
+  };
+
+  const getEntryResolvedRulePath = (entry) => {
+    if (!entry || !`${entry.from ?? ""}`.trim() || !`${entry.to ?? ""}`.trim()) {
+      return "review";
+    }
+    if (getEntryRegexIssue(entry)) {
+      return "review";
+    }
+    return ruleRequiresTokenMatching(entry) ? "token" : "dictionary";
+  };
+
+  const getEntryResolvedRuleLabel = (path) => {
+    if (path === "token") {
+      return "token行き";
+    }
+    if (path === "dictionary") {
+      return "dictionary行き";
+    }
+    return "要確認";
+  };
+
+  const summarizeEntriesByResolvedPath = (entries) => {
+    const summary = {
+      total: 0,
+      dictionary: 0,
+      token: 0,
+      review: 0
+    };
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      summary.total += 1;
+      const path = getEntryResolvedRulePath(entry);
+      summary[path] += 1;
+    }
+    return summary;
+  };
+
+  const summarizeNodeTree = (node) => {
+    const ownSummary = summarizeEntriesByResolvedPath(node?.entries ?? []);
+    const summary = {
+      total: ownSummary.total,
+      dictionary: ownSummary.dictionary,
+      token: ownSummary.token,
+      review: ownSummary.review,
+      childCount: Array.isArray(node?.children) ? node.children.length : 0
+    };
+    for (const child of Array.isArray(node?.children) ? node.children : []) {
+      const childSummary = summarizeNodeTree(child);
+      summary.total += childSummary.total;
+      summary.dictionary += childSummary.dictionary;
+      summary.token += childSummary.token;
+      summary.review += childSummary.review;
+    }
+    return summary;
+  };
+
+  const stableStringify = (value) => {
+    if (Array.isArray(value)) {
+      return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+    }
+    if (value && typeof value === "object") {
+      return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+    }
+    return JSON.stringify(value ?? null);
+  };
+
+  const cloneEntryForMergePreview = (entry) => {
+    return {
+      ...cloneValue(entry),
+      id: createEntryId(),
+      selected: false,
+      metaOpen: false
+    };
+  };
+
+  const normalizeConditionBranchList = (branch) => {
+    if (Array.isArray(branch)) {
+      return branch.map((item) => cloneValue(item));
+    }
+    if (branch && typeof branch === "object") {
+      return [cloneValue(branch)];
+    }
+    return [];
+  };
+
+  const getEntryCurrentConditionSignature = (entry) => {
+    return stableStringify(normalizeConditionBranchList(entry?.conditions?.current));
+  };
+
+  const getEntryAutoMergeSignature = (entry) => {
+    if (!entry || entry.regex === true) {
+      return null;
+    }
+    return stableStringify({
+      to: `${entry.to ?? ""}`.trim(),
+      priority: Number.isFinite(Number(entry.priority)) ? Number(entry.priority) : 0,
+      enabled: entry.enabled !== false,
+      type: `${entry.type ?? ""}`.trim() || null,
+      regex: entry.regex === true,
+      match_target: getEffectiveEntryMatchTarget(entry, inferEntryType(entry)),
+      match_options: cloneValue(entry.match_options ?? null),
+      conditions: cloneValue(entry.conditions ?? null),
+      sequence: cloneValue(entry.sequence ?? null)
+    });
+  };
+
+  const getEntryConditionalMergeSignature = (entry) => {
+    if (!entry || entry.regex === true) {
+      return null;
+    }
+    if (normalizeConditionBranchList(entry.conditions?.current).length === 0) {
+      return null;
+    }
+    return stableStringify({
+      to: `${entry.to ?? ""}`.trim(),
+      priority: Number.isFinite(Number(entry.priority)) ? Number(entry.priority) : 0,
+      enabled: entry.enabled !== false,
+      type: `${entry.type ?? ""}`.trim() || null,
+      regex: entry.regex === true,
+      match_target: getEffectiveEntryMatchTarget(entry, inferEntryType(entry)),
+      match_options: cloneValue(entry.match_options ?? null),
+      prev: cloneValue(entry.conditions?.prev ?? null),
+      next: cloneValue(entry.conditions?.next ?? null),
+      sequence: cloneValue(entry.sequence ?? null)
+    });
+  };
+
+  const buildMergedEntryPreview = (entries, mergeCurrentConditions = false) => {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return null;
+    }
+    const preview = cloneEntryForMergePreview(entries[0]);
+    const mergedFromOptions = [];
+    const seenFromOptions = new Set();
+    for (const entry of entries) {
+      for (const option of normalizeFromOptions(entry.from_options ?? entry.from, entry.from)) {
+        if (option && !seenFromOptions.has(option)) {
+          seenFromOptions.add(option);
+          mergedFromOptions.push(option);
+        }
+      }
+    }
+    preview.from_options = mergedFromOptions;
+    preview.from = stringifyFromOptions(mergedFromOptions, entries[0].from);
+    if (mergeCurrentConditions) {
+      const mergedCurrent = [];
+      const seenCurrent = new Set();
+      for (const entry of entries) {
+        for (const condition of normalizeConditionBranchList(entry.conditions?.current)) {
+          const signature = stableStringify(condition);
+          if (!seenCurrent.has(signature)) {
+            seenCurrent.add(signature);
+            mergedCurrent.push(cloneValue(condition));
+          }
+        }
+      }
+      preview.conditions = {
+        ...(preview.conditions ?? {})
+      };
+      preview.conditions.current = mergedCurrent;
+    }
+    return preview;
+  };
+
+  const collectSafeAutoMergeGroups = (node) => {
+    const groups = new Map();
+    (Array.isArray(node?.entries) ? node.entries : []).forEach((entry, index) => {
+      const signature = getEntryAutoMergeSignature(entry);
+      if (!signature) {
+        return;
+      }
+      if (!groups.has(signature)) {
+        groups.set(signature, []);
+      }
+      groups.get(signature).push({ entry, index });
+    });
+
+    return [...groups.values()]
+      .map((items) => {
+        const mergedFrom = new Set();
+        items.forEach(({ entry }) => {
+          normalizeFromOptions(entry.from_options ?? entry.from, entry.from).forEach((option) => mergedFrom.add(option));
+        });
+        if (items.length < 2 || mergedFrom.size < 2) {
+          return null;
+        }
+        return {
+          type: "safe",
+          indexes: items.map(({ index }) => index),
+          entryIds: items.map(({ entry }) => entry.id),
+          beforeCount: items.length,
+          preview: buildMergedEntryPreview(items.map(({ entry }) => entry), false)
+        };
+      })
+      .filter(Boolean);
+  };
+
+  const collectConditionalMergeCandidates = (node) => {
+    const groups = new Map();
+    (Array.isArray(node?.entries) ? node.entries : []).forEach((entry, index) => {
+      const signature = getEntryConditionalMergeSignature(entry);
+      if (!signature) {
+        return;
+      }
+      if (!groups.has(signature)) {
+        groups.set(signature, []);
+      }
+      groups.get(signature).push({ entry, index });
+    });
+
+    return [...groups.values()]
+      .map((items) => {
+        const conditionVariants = new Set(items.map(({ entry }) => getEntryCurrentConditionSignature(entry)));
+        if (items.length < 2 || conditionVariants.size < 2) {
+          return null;
+        }
+        return {
+          type: "candidate",
+          indexes: items.map(({ index }) => index),
+          entryIds: items.map(({ entry }) => entry.id),
+          beforeCount: items.length,
+          preview: buildMergedEntryPreview(items.map(({ entry }) => entry), true)
+        };
+      })
+      .filter(Boolean);
+  };
+
+  const replaceNodeEntriesWithMergePreview = (node, mergeGroup) => {
+    if (!node || !mergeGroup?.preview || !Array.isArray(mergeGroup.indexes) || mergeGroup.indexes.length === 0) {
+      return false;
+    }
+    const targetIndexes = new Set(mergeGroup.indexes);
+    const firstIndex = Math.min(...mergeGroup.indexes);
+    const nextEntries = [];
+    node.entries.forEach((entry, index) => {
+      if (!targetIndexes.has(index)) {
+        nextEntries.push(entry);
+        return;
+      }
+      if (index === firstIndex) {
+        nextEntries.push(cloneEntryForMergePreview(mergeGroup.preview));
+      }
+    });
+    node.entries = nextEntries;
+    return true;
+  };
+
+  const applySafeAutoMergesToNode = (node) => {
+    const groups = collectSafeAutoMergeGroups(node).sort((left, right) => Math.max(...right.indexes) - Math.max(...left.indexes));
+    if (groups.length === 0) {
+      return 0;
+    }
+    let applied = 0;
+    for (const group of groups) {
+      if (replaceNodeEntriesWithMergePreview(node, group)) {
+        applied += 1;
+      }
+    }
+    return applied;
+  };
+
   const normalizeRuntimeSettings = (value) => {
     return {
       skipEditableInputs: value?.skipEditableInputs === true,
@@ -574,6 +840,45 @@
   };
 
   const CURRENT_CONDITION_FIELDS = ["surface", "basic", "pos", "pos1", "cform", "ctype"];
+  const TOKEN_RULE_TYPES = new Set(["verb", "adjective", "literal", "compound", "renyou"]);
+
+  const hasRuleConditionBranch = (branch) => {
+    if (Array.isArray(branch)) {
+      return branch.length > 0;
+    }
+    if (!branch || typeof branch !== "object") {
+      return false;
+    }
+    return Object.values(branch).some((value) => {
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+      return value !== undefined && value !== null && `${value}`.trim() !== "";
+    });
+  };
+
+  const ruleRequiresTokenMatching = typeof TransformEngine?.ruleRequiresTokenMatching === "function"
+    ? TransformEngine.ruleRequiresTokenMatching
+    : (rule) => {
+      if (!rule || typeof rule !== "object") {
+        return false;
+      }
+      if (rule.match_target !== undefined && rule.match_target !== null && `${rule.match_target}`.trim() !== "") {
+        return true;
+      }
+      if (Array.isArray(rule.sequence) && rule.sequence.length > 0) {
+        return true;
+      }
+      if (
+        hasRuleConditionBranch(rule.conditions?.current) ||
+        hasRuleConditionBranch(rule.conditions?.prev) ||
+        hasRuleConditionBranch(rule.conditions?.next)
+      ) {
+        return true;
+      }
+      const normalizedType = `${rule.type ?? ""}`.trim();
+      return TOKEN_RULE_TYPES.has(normalizedType);
+    };
 
   const getStage4Root = () => {
     return state.roots.find((root) => root?.id === STAGE4_BUNDLE_ID) ?? null;
@@ -1335,6 +1640,129 @@
       const finalized = finalizeBulkEntry(entry);
       return finalized ? [finalized] : [];
     });
+  };
+
+  const parseBulkImportSections = (text, effectiveKind, defaultDelimiter = "") => {
+    const rawLines = `${text ?? ""}`.split(/\r?\n/);
+    const sections = [];
+    let sawSectionHeader = false;
+    let currentTitle = null;
+    let currentLines = [];
+
+    const pushSection = () => {
+      const blockText = currentLines.join("\n").trim();
+      if (!blockText) {
+        currentLines = [];
+        return;
+      }
+      sections.push({
+        title: currentTitle,
+        entries: parseBulkImportEntries(blockText, effectiveKind, defaultDelimiter)
+      });
+      currentLines = [];
+    };
+
+    for (const rawLine of rawLines) {
+      const trimmed = `${rawLine ?? ""}`.trim();
+      if (trimmed.startsWith(";")) {
+        sawSectionHeader = true;
+        pushSection();
+        currentTitle = trimmed.slice(1).trim() || "Group";
+        continue;
+      }
+      currentLines.push(rawLine);
+    }
+    pushSection();
+
+    if (!sawSectionHeader) {
+      return {
+        usesSections: false,
+        defaultEntries: parseBulkImportEntries(text, effectiveKind, defaultDelimiter),
+        sections: []
+      };
+    }
+
+    return {
+      usesSections: true,
+      defaultEntries: sections
+        .filter((section) => !section.title)
+        .flatMap((section) => section.entries),
+      sections: sections.filter((section) => section.title)
+    };
+  };
+
+  const findOrCreateChildNodeByLabel = (parentNode, label, effectiveKind) => {
+    const normalizedLabel = `${label ?? ""}`.trim() || "Group";
+    const existing = (Array.isArray(parentNode?.children) ? parentNode.children : []).find((child) => child.label === normalizedLabel);
+    if (existing) {
+      return { node: existing, created: false };
+    }
+    const childId = createNodeId();
+    const childNode = normalizeNode({
+      id: childId,
+      label: normalizedLabel,
+      kind: effectiveKind,
+      enabled: true,
+      entries: [],
+      children: []
+    }, childId, normalizedLabel);
+    parentNode.children.push(childNode);
+    return { node: childNode, created: true };
+  };
+
+  const applyBulkImportToNode = (node, effectiveKind, text, defaultDelimiter = "") => {
+    if (!node) {
+      return { error: "取り込み先の箱が見つかりません。" };
+    }
+    if (state.bundleUi.selectedNodeId === "__all__") {
+      return { error: "__all__ のままでは箱分け先を確定できません。明示的に root か group を選択してください。" };
+    }
+
+    const parsed = parseBulkImportSections(text, effectiveKind, defaultDelimiter);
+    if (!parsed.usesSections) {
+      if (parsed.defaultEntries.length === 0) {
+        return { error: "一括登録できる行がありません。" };
+      }
+      node.entries.push(...parsed.defaultEntries);
+      return {
+        importedCount: parsed.defaultEntries.length,
+        createdChildren: 0,
+        summaries: summarizeEntriesByResolvedPath(parsed.defaultEntries)
+      };
+    }
+
+    let importedCount = 0;
+    let createdChildren = 0;
+    const importedEntries = [];
+
+    if (parsed.defaultEntries.length > 0) {
+      node.entries.push(...parsed.defaultEntries);
+      importedEntries.push(...parsed.defaultEntries);
+      importedCount += parsed.defaultEntries.length;
+    }
+
+    for (const section of parsed.sections) {
+      if (!section.entries.length) {
+        continue;
+      }
+      const childResult = findOrCreateChildNodeByLabel(node, section.title, effectiveKind);
+      if (childResult.created) {
+        createdChildren += 1;
+      }
+      childResult.node.entries.push(...section.entries);
+      importedEntries.push(...section.entries);
+      importedCount += section.entries.length;
+    }
+
+    if (importedCount === 0) {
+      return { error: "一括登録できる行がありません。" };
+    }
+
+    return {
+      importedCount,
+      createdChildren,
+      summaries: summarizeEntriesByResolvedPath(importedEntries)
+    };
   };
 
   const serializeYamlScalar = (value) => {
@@ -3697,6 +4125,10 @@
     delimiterHint.textContent = "未入力なら , / \\t でタブ / @delimiter があればそちらを優先";
     delimiterRow.append(delimiterLabel, delimiterInput, delimiterHint);
 
+    const sectionHint = document.createElement("p");
+    sectionHint.className = "diag-summary";
+    sectionHint.textContent = "先頭が ;タイトル の行を置くと、その後ろの行を同名子箱へ追加します。既存の同名子箱があれば再利用します。";
+
     const textarea = document.createElement("textarea");
     textarea.rows = 8;
     textarea.placeholder = [
@@ -3712,23 +4144,27 @@
     const actions = document.createElement("div");
     actions.className = "panel-actions";
     actions.appendChild(createButton(t("options.buttonAddBulk"), "primary", () => {
-      const importedEntries = parseBulkImportEntries(textarea.value, effectiveKind, tableUi.bulkImportDelimiter);
-      if (importedEntries.length === 0) {
-        setStatus("一括登録できる行がありません。", "error");
+      const result = applyBulkImportToNode(node, effectiveKind, textarea.value, tableUi.bulkImportDelimiter);
+      if (result?.error) {
+        setStatus(result.error, "error");
         return;
       }
-      node.entries.push(...importedEntries);
       node.bulkImportText = "";
       node.bulkImportOpen = false;
       renderApp();
-      setStatus(`${importedEntries.length} 件を一括登録しました。`, "success");
+      const summary = result?.summaries ?? { dictionary: 0, token: 0, review: 0 };
+      const childNote = result.createdChildren > 0 ? ` / 新規箱 ${result.createdChildren}` : "";
+      setStatus(
+        `${result.importedCount} 件を一括登録しました${childNote} / dictionary行き ${summary.dictionary} / token行き ${summary.token} / 要確認 ${summary.review}`,
+        "success"
+      );
     }));
     actions.appendChild(createButton(t("options.buttonClearInput"), "ghost", () => {
       node.bulkImportText = "";
       renderApp();
     }));
 
-    body.append(delimiterRow, textarea, actions);
+    body.append(delimiterRow, sectionHint, textarea, actions);
     panel.append(head, body);
     return panel;
   };
@@ -4332,13 +4768,9 @@
     title.textContent = "項目";
     const count = document.createElement("span");
     count.className = "count";
-    count.textContent = effectiveKind === "token-rules"
-      ? `token ${node.entries.length} 件 / 選択 ${getSelectedCount(node.entries)} 件`
-      : `dictionary ${node.entries.length} 件 / 選択 ${getSelectedCount(node.entries)} 件`;
+    const routeSummary = summarizeEntriesByResolvedPath(sortedEntries);
+    count.textContent = `表示 ${sortedEntries.length} 件 / 選択 ${getSelectedCount(sortedEntries)} 件 / dictionary行き ${routeSummary.dictionary} / token行き ${routeSummary.token} / 要確認 ${routeSummary.review}`;
     head.append(title, count);
-    count.textContent = effectiveKind === "token-rules"
-      ? `token ${sortedEntries.length} 莉ｶ / 驕ｸ謚・${getSelectedCount(sortedEntries)} 莉ｶ`
-      : `dictionary ${sortedEntries.length} 莉ｶ / 驕ｸ謚・${getSelectedCount(sortedEntries)} 莉ｶ`;
     wrapper.appendChild(head);
 
     const selectedBar = renderSelectedCurrentConditionBar(node);
@@ -4375,6 +4807,7 @@
     appendHeaderCell(createSortHeaderButton(node.id, "regex", "正規"), "check-col");
     appendHeaderCell(createSortHeaderButton(node.id, "basic_match", "原形一致"), "check-col");
     appendHeaderCell("かな", "check-col");
+    appendHeaderCell("行先", "check-col");
     appendHeaderCell(createSortHeaderButton(node.id, "from", "変更前"), "text-col");
     appendHeaderCell(createSortHeaderButton(node.id, "to", "変更後"), "text-col");
     appendHeaderCell(createSortHeaderButton(node.id, "priority", "優先"), "priority-col");
@@ -4387,11 +4820,13 @@
     appendHeaderCell("操作");
     thead.appendChild(headerRow);
     const rubyFromSourceHeader = appendHeaderCell(createSortHeaderButton(node.id, "ruby_from_source", "前ルビ"), "check-col");
-    headerRow.insertBefore(rubyFromSourceHeader, headerRow.children[6] ?? null);
+    headerRow.insertBefore(rubyFromSourceHeader, headerRow.children[7] ?? null);
 
     const tbody = document.createElement("tbody");
     sortedEntries.forEach((entry) => {
       const entryIndex = node.entries.indexOf(entry);
+      const resolvedRulePath = getEntryResolvedRulePath(entry);
+      const tokenEditorAvailable = entry.regex !== true;
       const row = document.createElement("tr");
       row.id = `entry-${entry.id}`;
       row.dataset.searchValue = composeEntrySearchValue(entry);
@@ -4466,16 +4901,16 @@
       });
 
       const basicCell = createBooleanCell(
-        effectiveKind === "token-rules" && entry.match_target === "basic_form",
+        entry.match_target === "basic_form",
         () => {
           entry.match_target = basicCell.checkbox.checked ? "basic_form" : null;
           refreshEntryRowEffects(node.id, "basic_match");
         }
       );
-      basicCell.checkbox.disabled = effectiveKind !== "token-rules";
-      basicCell.checkbox.title = effectiveKind === "token-rules"
-        ? "変更前を辞書形 basic_form に対して一致させる"
-        : "dictionary-rules では使用しません";
+      basicCell.checkbox.disabled = entry.regex === true;
+      basicCell.checkbox.title = entry.regex === true
+        ? "regex rule は token matching にできません"
+        : "basic_form 一致にすると runtime は token stage へ流れます";
 
       const kanaCell = createBooleanCell(entry.match_options?.kana_insensitive === true, () => {
         entry.match_options = {
@@ -4509,6 +4944,13 @@
         renderDiagnostics();
       });
       rubyFromSourceCell.checkbox.title = "変換後にルビが無い場合、変換前を自動で《...》として付与します";
+
+      const routeTd = document.createElement("td");
+      routeTd.className = "check-col";
+      const routeChip = document.createElement("span");
+      routeChip.className = "chip";
+      routeChip.textContent = getEntryResolvedRuleLabel(resolvedRulePath);
+      routeTd.appendChild(routeChip);
 
       const createTextCell = (value, options, onInput, sortKey = null) => {
         const td = document.createElement("td");
@@ -4589,9 +5031,9 @@
         renderApp();
       });
       detailButton.title = entry.metaOpen ? "条件を閉じる" : "条件を開く";
-      if (effectiveKind !== "token-rules") {
+      if (!tokenEditorAvailable) {
         detailButton.disabled = true;
-        detailButton.title = "dictionary-rules では条件・sequence を使いません";
+        detailButton.title = "regex rule では条件・sequence を使いません";
       }
       actionTd.appendChild(detailButton);
       actionTd.appendChild(createButton("削除", "danger row-delete", () => {
@@ -4606,6 +5048,7 @@
         regexCell.td,
         basicCell.td,
         kanaCell.td,
+        routeTd,
         fromTd,
         toTd,
         priorityTd,
@@ -4620,10 +5063,10 @@
       row.insertBefore(rubyFromSourceCell.td, fromTd);
       tbody.appendChild(row);
 
-      if (effectiveKind === "token-rules" && entry.metaOpen) {
+      if (tokenEditorAvailable && entry.metaOpen) {
         const detailRow = document.createElement("tr");
         const detailCell = document.createElement("td");
-        detailCell.colSpan = 17;
+        detailCell.colSpan = 18;
 
         const detailWrap = document.createElement("div");
         detailWrap.className = "panel-block";
@@ -4671,6 +5114,7 @@
     card.dataset.focused = state.focusedNodeId === node.id ? "true" : "false";
     card.dataset.enabled = node.enabled !== false ? "true" : "false";
     const effectiveKind = resolveNodeEffectiveKind(node, isRoot ? null : inheritedKind);
+    const trail = getNodeTrailById(node.id) ?? [node];
 
     const header = document.createElement("div");
     header.className = isRoot ? "bundle-head" : "group-head";
@@ -4725,16 +5169,20 @@
     titleWrap.appendChild(collapseToggle);
     titleWrap.appendChild(createEditableTitle(isRoot ? "h2" : "h3", node, isRoot ? "Bundle" : "Group", renderApp));
 
+    const treeSummary = summarizeNodeTree(node);
     const entryChip = document.createElement("span");
     entryChip.className = "chip";
-    entryChip.textContent = `項目 ${node.entries.length}`;
+    entryChip.textContent = `項目 ${treeSummary.total}`;
     const childChip = document.createElement("span");
     childChip.className = "chip";
     childChip.textContent = `子箱 ${node.children.length}`;
     const kindChip = document.createElement("span");
     kindChip.className = "chip";
     kindChip.textContent = effectiveKind;
-    titleWrap.append(entryChip, childChip, kindChip);
+    const dictionaryChip = renderInspectorChip(`dictionary ${treeSummary.dictionary}`);
+    const tokenChip = renderInspectorChip(`token ${treeSummary.token}`);
+    const reviewChip = renderInspectorChip(`review ${treeSummary.review}`);
+    titleWrap.append(entryChip, childChip, kindChip, dictionaryChip, tokenChip, reviewChip);
 
     const actions = document.createElement("div");
     actions.className = isRoot ? "bundle-actions" : "group-actions";
@@ -4763,97 +5211,7 @@
     enabledLabel.append(enabledCheckbox, document.createTextNode(t("options.fieldEnabled")));
     actions.appendChild(enabledLabel);
 
-    actions.appendChild(createButton(node.bulkImportOpen === true ? "一括登録を閉じる" : t("options.bulkImportTitle"), "secondary", () => {
-      node.bulkImportOpen = node.bulkImportOpen !== true;
-      renderApp();
-    }));
-    actions.appendChild(createButton(t("options.buttonCopySelection"), "ghost", () => {
-      copyCurrentSelection(false);
-    }));
-    actions.appendChild(createButton(t("options.buttonCutSelection"), "ghost", () => {
-      copyCurrentSelection(true);
-    }));
-    actions.appendChild(createButton(t("options.buttonPasteHere"), "secondary", () => {
-      pasteClipboardIntoNode(node.id);
-    }));
-
-    if (isRoot) {
-      const kindSelect = document.createElement("select");
-      kindSelect.title = t("options.bundleKindTitle");
-      kindSelect.innerHTML = `
-        <option value="token-rules">token-rules</option>
-        <option value="dictionary-rules">dictionary-rules</option>
-      `;
-      kindSelect.value = effectiveKind;
-      kindSelect.addEventListener("change", () => {
-        node.kind = kindSelect.value;
-        renderApp();
-      });
-      actions.appendChild(kindSelect);
-    }
-
-    actions.appendChild(createButton("↑", "ghost", () => {
-      if (moveItem(parentChildren, index, -1)) {
-        renderApp();
-      }
-    }));
-    actions.appendChild(createButton("↓", "ghost", () => {
-      if (moveItem(parentChildren, index, 1)) {
-        renderApp();
-      }
-    }));
-    actions.appendChild(createButton(t("options.buttonAddGroup"), "secondary", () => {
-      node.children.push(normalizeNode({
-        id: createNodeId(),
-        label: "Group",
-        kind: effectiveKind,
-        enabled: true,
-        entries: [],
-        children: []
-      }, "group", "Group"));
-      renderApp();
-    }));
-    actions.appendChild(createButton(t("options.buttonAddEntry"), "secondary", () => {
-      node.entries.push({
-        id: createEntryId(),
-        from: "",
-        from_options: [],
-        to: "",
-        priority: 90,
-        enabled: true,
-        regex: false,
-        match_target: null,
-        conditions: null,
-        sequence: null,
-        raw: null,
-        metaOpen: false,
-        selected: false
-      });
-      renderApp();
-    }));
-    actions.appendChild(createButton(t("options.buttonDeleteSelection"), "danger", () => {
-      if (!deleteCurrentSelection()) {
-        node.entries = deleteSelectedRows(node.entries);
-        renderApp();
-      }
-    }));
-
-    if (isRoot) {
-      actions.appendChild(createButton(t("options.buttonResetRoot"), "ghost", () => {
-        resetRoot(node.id);
-      }));
-      if (!findBaseRoot(node.id)) {
-        actions.appendChild(createButton(t("options.buttonDeleteBundle"), "warn", () => {
-          parentChildren.splice(index, 1);
-          renderApp();
-        }));
-      }
-    } else {
-      actions.appendChild(createButton(t("options.buttonDeleteGroup"), "warn", () => {
-        parentChildren.splice(index, 1);
-        renderApp();
-      }));
-    }
+    actions.appendChild(renderInspectorChip(`${trail.length - 1} depth`));
 
     header.append(titleWrap, actions);
     card.appendChild(header);
@@ -4862,39 +5220,23 @@
       return card;
     }
 
-    if (node.bulkImportOpen === true) {
-      card.appendChild(renderBulkImportPanel(node, effectiveKind));
-    }
+    card.appendChild(renderNodeOverviewPanel(node, effectiveKind, trail));
+    card.appendChild(renderNodeBulkActionsPanel({ node, parentChildren, index, isRoot, effectiveKind }));
 
     const visibleEntryCount = searchText
       ? node.entries.filter((entry) => entryMatchesSearchText(entry, searchText)).length
       : node.entries.length;
 
+    if (node.bulkImportOpen === true) {
+      card.appendChild(renderBulkImportPanel(node, effectiveKind));
+    }
+
     if (visibleEntryCount > 0 || (node.children.length === 0 && !searchText)) {
       card.appendChild(renderEntryTableV2(node, effectiveKind, searchText));
     }
 
-    if (node.children.length > 0) {
-      const childrenWrap = document.createElement("div");
-      childrenWrap.className = "bundle-body";
-      node.children.forEach((child, childIndex) => {
-        if (searchText && !nodeHasSearchMatch(child, effectiveKind, searchText)) {
-          return;
-        }
-        childrenWrap.appendChild(renderNodeSection({
-          node: child,
-          parentChildren: node.children,
-          index: childIndex,
-          depth: depth + 1,
-          isRoot: false,
-          inheritedKind: effectiveKind,
-          searchText
-        }));
-      });
-      if (childrenWrap.childElementCount > 0) {
-        card.appendChild(childrenWrap);
-      }
-    }
+    card.appendChild(renderNodeMergePanel(node));
+    card.appendChild(renderNodeDiagnosticsPanel(node));
 
     return card;
   };
@@ -4990,6 +5332,370 @@
       duplicateNodeLabelIssues: [...duplicateNodeLabelMap.entries()].filter(([, entries]) => entries.length > 1),
       overlapIssues
     };
+  };
+
+  const renderInspectorChip = (label) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = label;
+    return chip;
+  };
+
+  const collectNodeSubtreeIds = (node) => {
+    const ids = new Set();
+    walkNodes([node], (child) => {
+      ids.add(child.id);
+    });
+    return ids;
+  };
+
+  const collectNodeDiagnosticsSummary = (node) => {
+    const nodeIds = collectNodeSubtreeIds(node);
+    const diagnostics = collectDiagnostics();
+    return {
+      regexIssues: diagnostics.regexIssues.filter((issue) => nodeIds.has(issue.nodeId)),
+      duplicateFromIssues: diagnostics.duplicateFromIssues.filter(([, entries]) => {
+        return entries.some((entry) => nodeIds.has(entry.nodeId));
+      }),
+      overlapIssues: diagnostics.overlapIssues.filter((issue) => {
+        return nodeIds.has(issue.longer.nodeId) || nodeIds.has(issue.shorter.nodeId);
+      })
+    };
+  };
+
+  const renderNodeOverviewPanel = (node, effectiveKind, trail) => {
+    const panel = document.createElement("section");
+    panel.className = "panel-block";
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = "概要";
+    const summary = summarizeNodeTree(node);
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = `${trail.map((item) => item.label).join(" / ")} / 子箱 ${node.children.length}`;
+    head.append(title, count);
+
+    const body = document.createElement("div");
+    body.className = "panel-actions";
+    body.append(
+      renderInspectorChip(`kind ${effectiveKind}`),
+      renderInspectorChip(`entry ${summary.total}`),
+      renderInspectorChip(`dictionary ${summary.dictionary}`),
+      renderInspectorChip(`token ${summary.token}`),
+      renderInspectorChip(`review ${summary.review}`)
+    );
+
+    const note = document.createElement("p");
+    note.className = "diag-summary";
+    if (effectiveKind === "dictionary-rules" && summary.token > 0) {
+      note.textContent = "この箱は dictionary-rules ですが、一部の rule は runtime で token stage へ受け流れます。";
+    } else if (effectiveKind === "token-rules" && summary.dictionary > 0) {
+      note.textContent = "この箱は token-rules ですが、regex など一部の rule は dictionary stage へ残ります。";
+    } else {
+      note.textContent = "node kind は保存上の主種別です。各 rule の最終到達先は表の「行先」で確認できます。";
+    }
+
+    panel.append(head, body, note);
+    return panel;
+  };
+
+  const renderNodeBulkActionsPanel = ({ node, parentChildren, index, isRoot, effectiveKind }) => {
+    const panel = document.createElement("section");
+    panel.className = "panel-block";
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = "一括操作";
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = `選択 node ${collectSelectedNodes().length} / 選択 entry ${collectSelectedEntries().length}`;
+    head.append(title, count);
+
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+
+    const selectedLabel = document.createElement("label");
+    selectedLabel.className = "toggle";
+    const selectedCheckbox = document.createElement("input");
+    selectedCheckbox.type = "checkbox";
+    selectedCheckbox.checked = node.selected === true;
+    selectedCheckbox.addEventListener("change", () => {
+      node.selected = selectedCheckbox.checked;
+      renderApp();
+    });
+    selectedLabel.append(selectedCheckbox, document.createTextNode("node選択"));
+    actions.appendChild(selectedLabel);
+
+    const enabledLabel = document.createElement("label");
+    enabledLabel.className = "toggle";
+    const enabledCheckbox = document.createElement("input");
+    enabledCheckbox.type = "checkbox";
+    enabledCheckbox.checked = node.enabled !== false;
+    enabledCheckbox.addEventListener("change", () => {
+      node.enabled = enabledCheckbox.checked;
+      renderApp();
+    });
+    enabledLabel.append(enabledCheckbox, document.createTextNode(t("options.fieldEnabled")));
+    actions.appendChild(enabledLabel);
+
+    const kindSelect = document.createElement("select");
+    kindSelect.title = "保存上の kind を切り替えます";
+    kindSelect.innerHTML = `
+      <option value="token-rules">token-rules</option>
+      <option value="dictionary-rules">dictionary-rules</option>
+    `;
+    kindSelect.value = effectiveKind;
+    kindSelect.addEventListener("change", () => {
+      node.kind = kindSelect.value;
+      renderApp();
+    });
+    actions.appendChild(kindSelect);
+
+    actions.appendChild(createButton(node.bulkImportOpen === true ? "一括登録を閉じる" : t("options.bulkImportTitle"), "secondary", () => {
+      node.bulkImportOpen = node.bulkImportOpen !== true;
+      renderApp();
+    }));
+    actions.appendChild(createButton(t("options.buttonCopySelection"), "ghost", () => {
+      copyCurrentSelection(false);
+    }));
+    actions.appendChild(createButton(t("options.buttonCutSelection"), "ghost", () => {
+      copyCurrentSelection(true);
+    }));
+    actions.appendChild(createButton(t("options.buttonPasteHere"), "secondary", () => {
+      pasteClipboardIntoNode(node.id);
+    }));
+    actions.appendChild(createButton("↑", "ghost", () => {
+      if (moveItem(parentChildren, index, -1)) {
+        renderApp();
+      }
+    }));
+    actions.appendChild(createButton("↓", "ghost", () => {
+      if (moveItem(parentChildren, index, 1)) {
+        renderApp();
+      }
+    }));
+    actions.appendChild(createButton(t("options.buttonAddGroup"), "secondary", () => {
+      node.children.push(normalizeNode({
+        id: createNodeId(),
+        label: "Group",
+        kind: effectiveKind,
+        enabled: true,
+        entries: [],
+        children: []
+      }, "group", "Group"));
+      renderApp();
+    }));
+    actions.appendChild(createButton(t("options.buttonAddEntry"), "secondary", () => {
+      node.entries.push(createEmptyBulkEntry());
+      renderApp();
+    }));
+    actions.appendChild(createButton(t("options.buttonDeleteSelection"), "danger", () => {
+      if (!deleteCurrentSelection()) {
+        node.entries = deleteSelectedRows(node.entries);
+        renderApp();
+      }
+    }));
+
+    if (isRoot) {
+      actions.appendChild(createButton(t("options.buttonResetRoot"), "ghost", () => {
+        resetRoot(node.id);
+      }));
+      if (!findBaseRoot(node.id)) {
+        actions.appendChild(createButton(t("options.buttonDeleteBundle"), "warn", () => {
+          parentChildren.splice(index, 1);
+          renderApp();
+        }));
+      }
+    } else {
+      actions.appendChild(createButton(t("options.buttonDeleteGroup"), "warn", () => {
+        parentChildren.splice(index, 1);
+        renderApp();
+      }));
+    }
+
+    panel.append(head, actions);
+    return panel;
+  };
+
+  const renderNodeMergePanel = (node) => {
+    const safeMerges = collectSafeAutoMergeGroups(node);
+    const mergeCandidates = collectConditionalMergeCandidates(node);
+    const panel = document.createElement("section");
+    panel.className = "panel-block";
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = "統合候補";
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = `safe ${safeMerges.length} / candidate ${mergeCandidates.length}`;
+    head.append(title, count);
+    panel.appendChild(head);
+
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(createButton("safe統合を適用", "secondary", () => {
+      const applied = applySafeAutoMergesToNode(node);
+      if (applied === 0) {
+        setStatus("safe に統合できる rule はありません。", "info");
+        return;
+      }
+      renderApp();
+      setStatus(`${applied} 件の safe 統合を適用しました。`, "success");
+    }));
+    actions.appendChild(createButton("候補を全適用", "ghost", () => {
+      if (mergeCandidates.length === 0) {
+        setStatus("適用できる統合候補はありません。", "info");
+        return;
+      }
+      [...mergeCandidates]
+        .sort((left, right) => Math.max(...right.indexes) - Math.max(...left.indexes))
+        .forEach((candidate) => {
+        replaceNodeEntriesWithMergePreview(node, candidate);
+        });
+      renderApp();
+      setStatus(`${mergeCandidates.length} 件の統合候補を適用しました。`, "success");
+    }));
+    panel.appendChild(actions);
+
+    const summary = document.createElement("p");
+    summary.className = "diag-summary";
+    summary.textContent = safeMerges.length === 0 && mergeCandidates.length === 0
+      ? "同一 to / 同一条件の自動統合候補はありません。"
+      : "safe は from 群のみを from_options へまとめます。candidate は current 条件の OR 化候補です。";
+    panel.appendChild(summary);
+
+    const list = document.createElement("div");
+    list.className = "diag-list";
+    [...safeMerges, ...mergeCandidates].forEach((candidate) => {
+      const item = document.createElement("div");
+      item.className = "diag-item";
+      const heading = document.createElement("h3");
+      heading.textContent = `${candidate.type === "safe" ? "safe" : "candidate"} / 統合前 ${candidate.beforeCount} 件`;
+      const body = document.createElement("p");
+      body.className = "diag-summary";
+      body.textContent = `${candidate.preview.from} → ${candidate.preview.to} / 失われる情報なし`;
+      const itemActions = document.createElement("div");
+      itemActions.className = "panel-actions";
+      itemActions.appendChild(createButton("この候補を適用", "ghost", () => {
+        replaceNodeEntriesWithMergePreview(node, candidate);
+        renderApp();
+      }));
+      item.append(heading, body, itemActions);
+      list.appendChild(item);
+    });
+    if (list.childElementCount > 0) {
+      panel.appendChild(list);
+    }
+    return panel;
+  };
+
+  const renderNodeDiagnosticsPanel = (node) => {
+    const diagnostics = collectNodeDiagnosticsSummary(node);
+    const panel = document.createElement("section");
+    panel.className = "panel-block";
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = "診断";
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = `regex ${diagnostics.regexIssues.length} / duplicate ${diagnostics.duplicateFromIssues.length} / overlap ${diagnostics.overlapIssues.length}`;
+    head.append(title, count);
+    panel.appendChild(head);
+
+    const lines = [
+      diagnostics.regexIssues.length > 0 ? `regex 問題 ${diagnostics.regexIssues.length} 件` : null,
+      diagnostics.duplicateFromIssues.length > 0 ? `duplicate from ${diagnostics.duplicateFromIssues.length} 件` : null,
+      diagnostics.overlapIssues.length > 0 ? `overlap ${diagnostics.overlapIssues.length} 件` : null
+    ].filter(Boolean);
+
+    const summary = document.createElement("p");
+    summary.className = "diag-summary";
+    summary.textContent = lines.length > 0 ? lines.join(" / ") : "この node 配下で目立つ診断項目はありません。";
+    panel.appendChild(summary);
+    return panel;
+  };
+
+  const renderWorkspaceOverview = (visibleRoots) => {
+    const panel = document.createElement("section");
+    panel.className = "diagnostics-card";
+    const title = document.createElement("h2");
+    title.textContent = "Explorer";
+    const summary = document.createElement("p");
+    summary.className = "diag-summary";
+    const selectedNodes = collectSelectedNodes();
+    summary.textContent = selectedNodes.length > 1
+      ? `${selectedNodes.length} 個の node を複数選択中です。右側では一括 kind 変更・有効切替・統合候補を扱います。`
+      : `${visibleRoots.length} 個の root を表示中です。左の tree から root か group を選ぶと Inspector を表示します。`;
+    panel.append(title, summary);
+    return panel;
+  };
+
+  const renderMultiSelectionInspector = (selectedNodes) => {
+    const panel = document.createElement("section");
+    panel.className = "diagnostics-card";
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h2");
+    title.textContent = "複数選択";
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = `${selectedNodes.length} nodes`;
+    head.append(title, count);
+    panel.appendChild(head);
+
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(createButton("dictionary-rules にする", "secondary", () => {
+      selectedNodes.forEach(({ node }) => {
+        node.kind = "dictionary-rules";
+      });
+      renderApp();
+    }));
+    actions.appendChild(createButton("token-rules にする", "secondary", () => {
+      selectedNodes.forEach(({ node }) => {
+        node.kind = "token-rules";
+      });
+      renderApp();
+    }));
+    actions.appendChild(createButton("有効化", "ghost", () => {
+      selectedNodes.forEach(({ node }) => {
+        node.enabled = true;
+      });
+      renderApp();
+    }));
+    actions.appendChild(createButton("無効化", "ghost", () => {
+      selectedNodes.forEach(({ node }) => {
+        node.enabled = false;
+      });
+      renderApp();
+    }));
+    actions.appendChild(createButton("safe統合を適用", "secondary", () => {
+      const applied = selectedNodes.reduce((sum, { node }) => sum + applySafeAutoMergesToNode(node), 0);
+      renderApp();
+      setStatus(applied > 0 ? `${applied} 件の safe 統合を適用しました。` : "safe に統合できる rule はありません。", applied > 0 ? "success" : "info");
+    }));
+    panel.appendChild(actions);
+
+    const list = document.createElement("div");
+    list.className = "diag-list";
+    selectedNodes.forEach(({ node, trail }) => {
+      const item = document.createElement("div");
+      item.className = "diag-item";
+      const heading = document.createElement("h3");
+      heading.textContent = getNodePathText(trail);
+      const safeMerges = collectSafeAutoMergeGroups(node).length;
+      const candidates = collectConditionalMergeCandidates(node).length;
+      const summary = document.createElement("p");
+      summary.className = "diag-summary";
+      summary.textContent = `kind ${node.kind} / safe ${safeMerges} / candidate ${candidates}`;
+      item.append(heading, summary);
+      list.appendChild(item);
+    });
+    panel.appendChild(list);
+    return panel;
   };
 
   const findEntryById = (entryId) => {
@@ -5434,6 +6140,7 @@
     row.className = "explorer-row";
     row.style.paddingLeft = `${depth * 14 + 8}px`;
     row.dataset.selected = state.bundleUi.selectedNodeId === node.id ? "true" : "false";
+    const nodeSummary = summarizeNodeTree(node);
     row.draggable = true;
     row.addEventListener("dragstart", (event) => {
       state.dragPayload = { type: "node", nodeId: node.id };
@@ -5487,6 +6194,18 @@
     });
     row.appendChild(expandButton);
 
+    const selectedCheckbox = document.createElement("input");
+    selectedCheckbox.type = "checkbox";
+    selectedCheckbox.checked = node.selected === true;
+    selectedCheckbox.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    selectedCheckbox.addEventListener("change", () => {
+      node.selected = selectedCheckbox.checked;
+      renderBundles();
+    });
+    row.appendChild(selectedCheckbox);
+
     const labelButton = document.createElement("button");
     labelButton.type = "button";
     labelButton.className = "tree-label";
@@ -5497,13 +6216,24 @@
       renderBundles();
     });
     row.appendChild(labelButton);
+    row.append(
+      renderInspectorChip(node.kind ?? "dictionary-rules"),
+      renderInspectorChip(`${nodeSummary.total}`),
+      renderInspectorChip(`D ${nodeSummary.dictionary}`),
+      renderInspectorChip(`T ${nodeSummary.token}`),
+      renderInspectorChip(`? ${nodeSummary.review}`)
+    );
 
     const wrap = document.createElement("div");
     wrap.appendChild(row);
     const isExpanded = state.bundleUi.expandedTreeIds?.[node.id] !== false;
+    const searchText = normalizeSearchText(state.bundleUi.searchText);
     if (hasChildren && isExpanded) {
       const childWrap = document.createElement("div");
       node.children.forEach((child) => {
+        if (searchText && !nodeHasSearchMatch(child, node.kind ?? null, searchText)) {
+          return;
+        }
         childWrap.appendChild(renderTreeNode(child, depth + 1));
       });
       wrap.appendChild(childWrap);
@@ -5523,6 +6253,8 @@
 
     bundleRoot.textContent = "";
     const visibleRoots = getBundleEditorRoots();
+    const searchText = normalizeSearchText(state.bundleUi.searchText);
+    const selectedNodes = collectSelectedNodes();
     if (state.bundleUi.selectedNodeId !== "__all__" && !visibleRoots.some((root) => getNodeTrailById(state.bundleUi.selectedNodeId, [root]))) {
       state.bundleUi.selectedNodeId = "__all__";
       saveBundleUiState();
@@ -5552,6 +6284,9 @@
     const tree = document.createElement("div");
     tree.className = "explorer-tree";
     visibleRoots.forEach((root) => {
+      if (searchText && !nodeHasSearchMatch(root, root.kind ?? null, searchText)) {
+        return;
+      }
       tree.appendChild(renderTreeNode(root));
     });
     left.appendChild(tree);
@@ -5592,7 +6327,9 @@
 
       const scopeLabel = document.createElement("span");
       scopeLabel.className = "count";
-      if (state.bundleUi.selectedNodeId === "__all__") {
+      if (selectedNodes.length > 1) {
+        scopeLabel.textContent = `${selectedNodes.length} nodes selected`;
+      } else if (state.bundleUi.selectedNodeId === "__all__") {
         scopeLabel.textContent = `${visibleRoots.length} bundles`;
       } else {
         scopeLabel.textContent = getNodeTrailById(state.bundleUi.selectedNodeId, visibleRoots)?.map((item) => item.label).join(" / ") ?? "";
@@ -5612,41 +6349,21 @@
 
       const content = document.createElement("div");
       content.className = "bundle-sections";
-      const searchText = normalizeSearchText(state.bundleUi.searchText);
 
-      const appendNodeSection = ({ node, parentChildren, index, isRoot = false, inheritedKind = null }) => {
-        const effectiveKind = resolveNodeEffectiveKind(node, isRoot ? null : inheritedKind);
-        if (nodeHasSearchMatch(node, effectiveKind, searchText)) {
-          content.appendChild(renderNodeSection({
-            node,
-            parentChildren,
-            index,
-            isRoot,
-            inheritedKind,
-            searchText
-          }));
-        }
-      };
-
-      if (state.bundleUi.selectedNodeId === "__all__") {
-        visibleRoots.forEach((root, index) => {
-          appendNodeSection({
-            node: root,
-            parentChildren: state.roots,
-            index: state.roots.indexOf(root),
-            isRoot: true
-          });
-        });
+      if (selectedNodes.length > 1) {
+        content.appendChild(renderMultiSelectionInspector(selectedNodes));
+      } else if (state.bundleUi.selectedNodeId === "__all__") {
+        content.appendChild(renderWorkspaceOverview(visibleRoots));
       } else {
         const location = findNodeLocation(state.bundleUi.selectedNodeId);
         if (location) {
-          appendNodeSection({
+          content.appendChild(renderNodeSection({
             node: location.node,
             parentChildren: location.parentChildren,
             index: location.index,
             isRoot: !location.parentNode,
             inheritedKind: location.parentNode?.kind ?? null
-          });
+          }));
         }
       }
 

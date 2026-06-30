@@ -1,0 +1,1897 @@
+{
+  "id": "okurigana-abbreviation",
+  "label": "送り仮名省略",
+  "target_bundle": "okurigana-abbreviation",
+  "kind": "reorganized-stage",
+  "intent": "送り仮名省略の候補から、一般化しやすい敬語接頭辞パターンを seed 化し、残余は Stage4 候補として隔離する。",
+  "groups": [
+    {
+      "id": "honorific-o-prefix",
+      "label": "お + 名詞 系の御化",
+      "status": "active-candidate",
+      "application_path": "okurigana-abbreviation.pattern_seeds",
+      "source_categories": [
+        "05_okurigana_shortening"
+      ],
+      "pattern_seed": {
+        "source_prefix": "お",
+        "target_prefix": "御",
+        "note": "固定熟語の列挙から抽出した seed。将来的には後続語種条件つき規則へ一般化する。"
+      },
+      "entries": [
+        {
+          "from": "お伺い",
+          "to": "御伺",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お名前",
+          "to": "御名前",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お問合せ",
+          "to": "御問合せ",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お客さま",
+          "to": "御客樣",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お客様",
+          "to": "御客樣",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お届け",
+          "to": "御屆",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お引き受け",
+          "to": "御引受",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お引き渡し",
+          "to": "御引渡",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お待ち",
+          "to": "御待",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お手伝い",
+          "to": "御手伝",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お手元",
+          "to": "御手許",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お手数",
+          "to": "御手数",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お手洗い",
+          "to": "御厠",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お手続き",
+          "to": "御手續",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お支払い",
+          "to": "御支拂",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お時間",
+          "to": "御時間",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お申し出",
+          "to": "御申出",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お申し込み",
+          "to": "御申込",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お知らせ",
+          "to": "御報せ",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お知らせメール",
+          "to": "御報せメール",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お礼",
+          "to": "御礼",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お礼状",
+          "to": "御礼状",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お祝い",
+          "to": "御祝",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お約束",
+          "to": "御約束",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お見積り",
+          "to": "御見積",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お詫び",
+          "to": "御詫",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お話",
+          "to": "御話",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お話し合い",
+          "to": "御話合",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お返事",
+          "to": "御返事",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お電話",
+          "to": "御電話",
+          "source_category": "05_okurigana_shortening"
+        }
+      ]
+    },
+    {
+      "id": "honorific-go-prefix",
+      "label": "ご + 名詞 系の御化",
+      "status": "active-candidate",
+      "application_path": "okurigana-abbreviation.pattern_seeds",
+      "source_categories": [
+        "05_okurigana_shortening"
+      ],
+      "pattern_seed": {
+        "source_prefix": "ご",
+        "target_prefix": "御",
+        "note": "固定熟語の列挙から抽出した seed。将来的には漢語接続条件つき規則へ一般化する。"
+      },
+      "entries": [
+        {
+          "from": "ご予約",
+          "to": "御豫約",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご依頼",
+          "to": "御依頼",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご利用",
+          "to": "御利用",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご報告",
+          "to": "御報告",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご契約",
+          "to": "御契約",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご意見",
+          "to": "御意見",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご指摘",
+          "to": "御指摘",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご来店",
+          "to": "御來店",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご案内",
+          "to": "御案內",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご注意",
+          "to": "御注意",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご注文",
+          "to": "御註文",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご相談",
+          "to": "御相談",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご確認",
+          "to": "御確認",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご要望",
+          "to": "御要望",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご説明",
+          "to": "御說明",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご返信",
+          "to": "御返信",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ご連絡",
+          "to": "御連絡",
+          "source_category": "05_okurigana_shortening"
+        }
+      ]
+    },
+    {
+      "id": "mixed-legacy-shortening",
+      "label": "旧版の混在短縮句",
+      "status": "review-needed",
+      "application_path": "okurigana-abbreviation.phrase_candidates",
+      "source_categories": [
+        "05_okurigana_shortening"
+      ],
+      "entries": [
+        {
+          "from": "あっ旋",
+          "to": "斡旋",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "お世話になりました",
+          "to": "世話成",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "くじ引き",
+          "to": "籤引",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "したく思",
+          "to": "仕度思",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "せき止める",
+          "to": "堰き止める",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "そば飯",
+          "to": "蕎麥飯",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "それ以",
+          "to": "其以",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "たる者",
+          "to": "た者",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "てんとう虫",
+          "to": "天道蟲",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "とり方",
+          "to": "取方",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "はさみ込",
+          "to": "挾込",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "はり師",
+          "to": "鍼師",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ばい菌",
+          "to": "黴菌",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ばん回",
+          "to": "挽囘",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "ひょう柄",
+          "to": "豹柄",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "まつ毛",
+          "to": "睫",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "やり方",
+          "to": "遣方",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "トイレに行",
+          "to": "屙",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "トイレ行っ",
+          "to": "屙",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "与え",
+          "to": "與",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "且つ",
+          "to": "且",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "人となり",
+          "to": "爲人",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "今日生まれ",
+          "to": "今日生れ",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "仕舞い",
+          "to": "仕舞",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "仕舞わ",
+          "to": "仕舞",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "付か",
+          "to": "付",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "付け",
+          "to": "附",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "代わ",
+          "to": "代",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "仲よし",
+          "to": "仲良",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "伴りょ",
+          "to": "伴侶",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "作り",
+          "to": "作",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "使い",
+          "to": "使",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "使わ",
+          "to": "使",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "信じ",
+          "to": "信",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "催し物",
+          "to": "催物",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "儲け",
+          "to": "儲",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "入り",
+          "to": "入",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "出来る",
+          "to": "出來",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "分かっ",
+          "to": "分っ",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "分から",
+          "to": "分ら",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "分かり",
+          "to": "分り",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "分け",
+          "to": "分",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "切り",
+          "to": "切",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "判り",
+          "to": "判",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "割り",
+          "to": "割",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "加え",
+          "to": "加",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "加わ",
+          "to": "加",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "占い",
+          "to": "占",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "取り",
+          "to": "取",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "受か",
+          "to": "受",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "受け",
+          "to": "受",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "叫ば",
+          "to": "叫",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "叫び",
+          "to": "叫",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "合い",
+          "to": "合",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "合わ",
+          "to": "合",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "吐き",
+          "to": "吐",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "向き",
+          "to": "向",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "周り",
+          "to": "周",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "問い",
+          "to": "問",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "問う",
+          "to": "問",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "問わ",
+          "to": "問",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "噛み",
+          "to": "噛",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "噛み切",
+          "to": "噛切",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "困り",
+          "to": "困",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "囲い",
+          "to": "圍",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "囲わ",
+          "to": "圍",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "固ま",
+          "to": "固",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "埋ま",
+          "to": "埋",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "基づ",
+          "to": "基",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "売り",
+          "to": "賣",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "変わ",
+          "to": "變",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "大けが",
+          "to": "大怪我",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "天とうむし",
+          "to": "紅娘",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "天ぷら",
+          "to": "天麩羅",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "奏で",
+          "to": "奏",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "学ば",
+          "to": "學",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "学び",
+          "to": "學",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "学ん",
+          "to": "學",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "守ら",
+          "to": "守",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "守り",
+          "to": "守",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "定まらな",
+          "to": "婀",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "寄せ",
+          "to": "寄",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "寄り",
+          "to": "寄",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "少な",
+          "to": "少",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "届け",
+          "to": "届",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "嵌め",
+          "to": "嵌",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "差し",
+          "to": "差",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "巻き",
+          "to": "卷",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "干ばつ",
+          "to": "旱魃",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "年がら",
+          "to": "年柄",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "座り",
+          "to": "坐",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "引か",
+          "to": "引",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "引き",
+          "to": "引",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "引き寄",
+          "to": "引寄",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "引っ",
+          "to": "引",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "引っ越し",
+          "to": "引越",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "引越し",
+          "to": "引越",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "当た",
+          "to": "當",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "当たる",
+          "to": "當る",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "当て",
+          "to": "當",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "待ち",
+          "to": "待",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "御届け",
+          "to": "御屆",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "御手続き",
+          "to": "御手續",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "御支払い",
+          "to": "御支拂",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "御知らせ",
+          "to": "御報せ",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "御祝い",
+          "to": "御祝",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "御見積り",
+          "to": "御見積",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "忘れ",
+          "to": "忘",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "怒り",
+          "to": "怒",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "思い",
+          "to": "思",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "思え",
+          "to": "思",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "思わ",
+          "to": "思",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "恐れ",
+          "to": "虞",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "悩み",
+          "to": "惱",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "想い",
+          "to": "想",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "慣れ",
+          "to": "慣",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "成り",
+          "to": "成",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "手さげ",
+          "to": "手提",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "打た",
+          "to": "打",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "打ち",
+          "to": "打",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "扱い",
+          "to": "扱",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "扱わ",
+          "to": "扱",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "投げ飛",
+          "to": "投飛",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "抱か",
+          "to": "抱",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "抱き",
+          "to": "抱",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "押さ",
+          "to": "押",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "押し",
+          "to": "押",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "押しきれ",
+          "to": "押切れ",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "押しどり",
+          "to": "鴛鴦",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "拾い",
+          "to": "拾",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "拾わ",
+          "to": "拾",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "持ち",
+          "to": "持",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "振ら",
+          "to": "振",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "振り",
+          "to": "振",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "振り返",
+          "to": "振返",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "振れ",
+          "to": "振",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "捨て",
+          "to": "捨",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "授け",
+          "to": "受",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "掘り",
+          "to": "掘",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "探さ",
+          "to": "探",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "探し",
+          "to": "探",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "探しまわ",
+          "to": "探回",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "掴ま",
+          "to": "摑",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "掴み",
+          "to": "摑",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "描き",
+          "to": "描",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "揚げ",
+          "to": "揚",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "換え",
+          "to": "換",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "揺ら",
+          "to": "搖",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "揺れ",
+          "to": "搖",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "損ね",
+          "to": "損",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "救い",
+          "to": "救",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "救わ",
+          "to": "救",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "教え",
+          "to": "敎",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "数え",
+          "to": "數",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "新た",
+          "to": "新",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "日生まれ",
+          "to": "日生",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "明か",
+          "to": "明",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "明ら",
+          "to": "明",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "明りょう",
+          "to": "明瞭",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "晴らし",
+          "to": "晴し",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "晴れ",
+          "to": "晴",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "暮ら",
+          "to": "暮",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "暮れ",
+          "to": "暮",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "書き",
+          "to": "書",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "書きかえ",
+          "to": "書換",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "書き出",
+          "to": "書出",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "月生まれ",
+          "to": "月生",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "望み",
+          "to": "望",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "果て",
+          "to": "果",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "染み",
+          "to": "染",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "止ま",
+          "to": "止",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "止め",
+          "to": "止",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "歩き",
+          "to": "步",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "歩み",
+          "to": "步",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "殺め",
+          "to": "殺",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "気に入り",
+          "to": "氣入",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "気を",
+          "to": "氣",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "汚さ",
+          "to": "汚",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "汚し",
+          "to": "汚",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "汲み",
+          "to": "汲",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "決まらな",
+          "to": "婀",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "決まり",
+          "to": "決り",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "決め",
+          "to": "決",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "泣き",
+          "to": "泣",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "泳ぎ",
+          "to": "泳",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "流しきっ",
+          "to": "流切",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "混ざ",
+          "to": "混",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "混ぜ",
+          "to": "混",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "混みまく",
+          "to": "混捲",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "添え",
+          "to": "添",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "済み",
+          "to": "濟",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "渡り",
+          "to": "渡",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "満ち",
+          "to": "滿",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "漬け",
+          "to": "漬",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "焼き",
+          "to": "燒",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "焼き芋",
+          "to": "焼芋",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "照らし",
+          "to": "照し",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "照り",
+          "to": "照",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "生まれ",
+          "to": "生れ",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "生まれ育",
+          "to": "生育",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "産まれ",
+          "to": "産れ",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "産み",
+          "to": "產",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "申し",
+          "to": "申",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "畏れ",
+          "to": "畏",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "疲れ",
+          "to": "疲",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "盛り",
+          "to": "盛",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "眺め",
+          "to": "眺",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "知らせ",
+          "to": "報せ",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "知り",
+          "to": "知",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "確か",
+          "to": "確",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "示し",
+          "to": "示",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "積み重",
+          "to": "積重",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "突き抜",
+          "to": "突抜",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "立ち",
+          "to": "立",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "立て",
+          "to": "立",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "笑い",
+          "to": "笑",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "笑わ",
+          "to": "笑",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "答え",
+          "to": "答",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "終い",
+          "to": "終",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "終え",
+          "to": "終",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "終り",
+          "to": "終",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "終わ",
+          "to": "終",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "終わり",
+          "to": "終",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "組み",
+          "to": "組",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "締め",
+          "to": "締",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "繋ぎ",
+          "to": "繋",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "繋わ",
+          "to": "繫",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "繰り",
+          "to": "繰",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "考え",
+          "to": "考",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "聞き",
+          "to": "聞",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "胆のう",
+          "to": "膽嚢",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "膿み",
+          "to": "膿",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "良かった",
+          "to": "良か",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "落ち",
+          "to": "落",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "落ち着",
+          "to": "落着",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "虫けら",
+          "to": "蟲螻",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "行き",
+          "to": "行",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "行われ",
+          "to": "行れ",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "表わ",
+          "to": "表",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "補てん",
+          "to": "補填",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "襲い",
+          "to": "襲",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "襲わ",
+          "to": "襲",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "見上げ",
+          "to": "見上",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "覚え",
+          "to": "覺",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "解か",
+          "to": "解",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "解き",
+          "to": "解",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "解きあか",
+          "to": "解明",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "解き明か",
+          "to": "解明",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "触り",
+          "to": "觸",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "触れ",
+          "to": "觸",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "言い",
+          "to": "謂",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "訪ね",
+          "to": "訪",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "訪れ",
+          "to": "訪",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "試さ",
+          "to": "試",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "試し",
+          "to": "試",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "試み",
+          "to": "試",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "詫び",
+          "to": "詫",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "詰ま",
+          "to": "詰",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "詰め",
+          "to": "詰",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "話し",
+          "to": "話",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "話したく",
+          "to": "話度",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "詳し",
+          "to": "詳",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "誓い",
+          "to": "誓",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "誓わ",
+          "to": "誓",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "誘い",
+          "to": "誘",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "誘わ",
+          "to": "誘",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "語ら",
+          "to": "語",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "語り",
+          "to": "語",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "読み",
+          "to": "讀",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "調べ",
+          "to": "調",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "譲ら",
+          "to": "讓",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "譲り",
+          "to": "讓",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "負いかね",
+          "to": "負兼",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "買い",
+          "to": "買",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "赤ちゃん",
+          "to": "孲様",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "走り",
+          "to": "走",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "起き",
+          "to": "起",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "起こ",
+          "to": "起",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "跳ね",
+          "to": "跳",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "辺りは",
+          "to": "邊は",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "込み",
+          "to": "込",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "辿り",
+          "to": "辿",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "迷い",
+          "to": "迷",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "迷わ",
+          "to": "迷",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "追い",
+          "to": "追",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "追わ",
+          "to": "追",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "追われ",
+          "to": "追",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "送り",
+          "to": "送",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "通り",
+          "to": "通",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "進み",
+          "to": "進",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "進め",
+          "to": "進",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "遊び",
+          "to": "遊",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "遊ぶ",
+          "to": "遊",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "運ば",
+          "to": "運",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "運び",
+          "to": "運",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "過ご",
+          "to": "過",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "違い",
+          "to": "違",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "遣い",
+          "to": "遣",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "選ば",
+          "to": "撰",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "選ん",
+          "to": "選",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "醸し",
+          "to": "釀",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "閉ざ",
+          "to": "閉",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "閉じ",
+          "to": "閉",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "閉め",
+          "to": "閉",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "開か",
+          "to": "開",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "開き",
+          "to": "開",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "開き直",
+          "to": "開直",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "開け",
+          "to": "開",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "隠し",
+          "to": "隱",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "隠れ",
+          "to": "隱",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "集い",
+          "to": "集",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "集わ",
+          "to": "集",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "難い",
+          "to": "叵",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "頼ま",
+          "to": "賴",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "頼み",
+          "to": "賴",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "願い",
+          "to": "願",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "願わ",
+          "to": "願",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "飛び",
+          "to": "飛",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "食べ",
+          "to": "食",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "食べ放題",
+          "to": "食放題",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "飲み",
+          "to": "飮",
+          "source_category": "05_okurigana_shortening"
+        },
+        {
+          "from": "鳴き",
+          "to": "鳴",
+          "source_category": "05_okurigana_shortening"
+        }
+      ]
+    }
+  ]
+}

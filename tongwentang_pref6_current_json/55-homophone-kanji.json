@@ -1,0 +1,1067 @@
+{
+  "id": "homophone-kanji",
+  "label": "同音漢字置換",
+  "target_bundle": "homophone-kanji",
+  "kind": "reorganized-stage",
+  "intent": "弁系の語義分岐と、旧版の漢字熟語バリアントを固定熟語辞書として Stage55 へ寄せる。",
+  "groups": [
+    {
+      "id": "ben-disambiguation",
+      "label": "弁系の語義分岐",
+      "status": "active-candidate",
+      "application_path": "homophone-kanji.phrase_rules",
+      "source_categories": [
+        "06_ben_disambiguation"
+      ],
+      "entries": []
+    },
+    {
+      "id": "kanji-phrase-variants",
+      "label": "漢字熟語の表記差",
+      "status": "review-needed",
+      "application_path": "homophone-kanji.phrase_rules",
+      "source_categories": [
+        "08_kanji_phrase_variants"
+      ],
+      "entries": [
+        {
+          "from": "一獲",
+          "to": "一攫",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "三差",
+          "to": "三叉",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "下克",
+          "to": "下剋",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "世論",
+          "to": "輿論",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "乱伐",
+          "to": "濫伐",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "乱作",
+          "to": "濫作",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "乱掘",
+          "to": "濫掘",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "乱獲",
+          "to": "濫獲",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "乱用",
+          "to": "濫用",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "乱発",
+          "to": "濫発",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "乱読",
+          "to": "濫読",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "乱費",
+          "to": "濫費",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "乱造",
+          "to": "濫造",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "了見",
+          "to": "料簡",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "亜鈴",
+          "to": "啞鈴",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "供宴",
+          "to": "饗宴",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "供応",
+          "to": "饗應",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "係争",
+          "to": "繋爭",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "係属",
+          "to": "繋屬",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "俊馬",
+          "to": "駿馬",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "保塁",
+          "to": "堡塁",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "個条",
+          "to": "箇条",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "偏平",
+          "to": "扁平",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "優俊",
+          "to": "優駿",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "先兵",
+          "to": "尖兵",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "先鋭",
+          "to": "尖銳",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "共役",
+          "to": "共軛",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "冗舌",
+          "to": "饒舌",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "凶器",
+          "to": "兇器",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "分留",
+          "to": "分溜",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "制御",
+          "to": "制禦",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "刻画",
+          "to": "刻劃",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "削岩",
+          "to": "鑿岩",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "区画",
+          "to": "區劃",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "友宜",
+          "to": "友誼",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "反乱",
+          "to": "叛亂",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "台頭",
+          "to": "擡頭",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "喜々",
+          "to": "嬉〻",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "喜遊",
+          "to": "嬉遊",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "回虫",
+          "to": "蛔蟲",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "回転",
+          "to": "廻轉",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "回遊",
+          "to": "回游",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "均整",
+          "to": "均斉",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "堅画",
+          "to": "堅劃",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "壊乱",
+          "to": "潰亂",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "奉持",
+          "to": "捧持",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "委縮",
+          "to": "萎縮",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "専断",
+          "to": "擅斷",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "射幸心",
+          "to": "射倖心",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "展転",
+          "to": "輾転",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "希釈",
+          "to": "稀釋",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "幻惑",
+          "to": "眩惑",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "広範",
+          "to": "廣汎",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "座視",
+          "to": "坐視",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "廃虚",
+          "to": "廃墟",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "建坪",
+          "to": "建蔽",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "弦楽",
+          "to": "絃樂",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "強欲",
+          "to": "强慾",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "当選",
+          "to": "當籤",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御予約",
+          "to": "御豫約",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御客様",
+          "to": "御客樣",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御来店",
+          "to": "御來店",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御案内",
+          "to": "御案內",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御注文",
+          "to": "御註文",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御者",
+          "to": "馭者",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御説明",
+          "to": "御說明",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "心拍",
+          "to": "心搏",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "慰謝料",
+          "to": "慰藉料",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "憶断",
+          "to": "臆断",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "憶病",
+          "to": "臆病",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "憶説",
+          "to": "臆說",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "戦々恐々",
+          "to": "戰〻兢〻",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "技量",
+          "to": "伎倆",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "披歴",
+          "to": "披瀝",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "抵触",
+          "to": "觝触",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "抽選",
+          "to": "抽籤",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "拍動",
+          "to": "搏動",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "拘引",
+          "to": "勾引",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "拠出",
+          "to": "醵出",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "拠金",
+          "to": "醵金",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "放物線",
+          "to": "抛物線",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "敬謙",
+          "to": "敬虔",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "敷延",
+          "to": "敷衍",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "断固",
+          "to": "断乎",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "新選",
+          "to": "新撰",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "旧跡",
+          "to": "舊蹟",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "昇叙",
+          "to": "陞敘",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "明美",
+          "to": "明媚",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "暖炉",
+          "to": "煖爐",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "条虫",
+          "to": "絛虫",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "格好",
+          "to": "恰好",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "格幅",
+          "to": "恰幅",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "格闘",
+          "to": "挌鬭",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "棄損",
+          "to": "毀損",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "橋頭保",
+          "to": "橋頭堡",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "欠画",
+          "to": "缺劃",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "死体",
+          "to": "屍體",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "殿部",
+          "to": "臀部",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "母指",
+          "to": "拇指",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "気炎",
+          "to": "氣焰",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "気迫",
+          "to": "気魄",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "油送",
+          "to": "油槽",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "波乱",
+          "to": "波瀾",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "注釈",
+          "to": "註釋",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "消却",
+          "to": "銷卻",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "消沈",
+          "to": "銷鎭",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "混然",
+          "to": "渾然",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "溶鉱",
+          "to": "鎔鑛",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "漂然",
+          "to": "飄然",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "激高",
+          "to": "激昂",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "火炎",
+          "to": "火焰",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "班点",
+          "to": "斑点",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "生息",
+          "to": "棲息",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "画々",
+          "to": "劃〻",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "画一",
+          "to": "劃一",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "画分",
+          "to": "劃分",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "画定",
+          "to": "劃定",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "画期",
+          "to": "劃期",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "画条",
+          "to": "劃條",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "画策",
+          "to": "劃策",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "界画",
+          "to": "界劃",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "留出",
+          "to": "溜出",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "留飲",
+          "to": "溜飲",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "発酵",
+          "to": "醱酵",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "白亜",
+          "to": "白堊",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "皆既食",
+          "to": "皆既蝕",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "真跡",
+          "to": "眞蹟",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "研摩",
+          "to": "硏磨",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "確固",
+          "to": "確乎",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "禁固",
+          "to": "禁錮",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "称賛",
+          "to": "稱讃",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "粉装",
+          "to": "扮装",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "糾弾",
+          "to": "糺彈",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "紋画",
+          "to": "紋劃",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "純朴",
+          "to": "醇朴",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "紫班",
+          "to": "紫斑",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "絶賛",
+          "to": "絕讃",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "義援",
+          "to": "義捐",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "耕運機",
+          "to": "耕耘機",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "肩甲骨",
+          "to": "肩胛骨",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "背徳",
+          "to": "悖德",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "脈拍",
+          "to": "脈搏",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "膨張",
+          "to": "膨脹",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "興奮",
+          "to": "昂奮",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "芳純",
+          "to": "芳醇",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "英才",
+          "to": "穎才",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "落後",
+          "to": "落伍",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "蒸留",
+          "to": "蒸餾",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "薫蒸",
+          "to": "燻蒸",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "装丁",
+          "to": "裝幀",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "裕然",
+          "to": "悠然",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "計画",
+          "to": "計劃",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "貫録",
+          "to": "貫禄",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "賛嘆",
+          "to": "讃嘆",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "賛辞",
+          "to": "讃辭",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "質草",
+          "to": "質種",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "車両",
+          "to": "車輛",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "連係",
+          "to": "連繫",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "選修",
+          "to": "撰修",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "選者",
+          "to": "撰者",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "選集",
+          "to": "撰集",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "里謡",
+          "to": "俚謠",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "間欠",
+          "to": "閒歇",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "関数",
+          "to": "函数",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "防圧",
+          "to": "防遏",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "障害",
+          "to": "障礙",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "隠滅",
+          "to": "湮滅",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "雑踏",
+          "to": "雜沓",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "非才",
+          "to": "菲才",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "順化",
+          "to": "馴化",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "順守",
+          "to": "遵守",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "順法",
+          "to": "遵法",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "風諭",
+          "to": "諷喩",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "食事",
+          "to": "食餌",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "高根",
+          "to": "高嶺",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "高進",
+          "to": "昂進",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "鳥観",
+          "to": "鳥瞰",
+          "source_category": "08_kanji_phrase_variants"
+        }
+      ]
+    },
+    {
+      "id": "compressed-kanji-phrases",
+      "label": "字数圧縮を伴う熟語",
+      "status": "review-needed",
+      "application_path": "homophone-kanji.phrase_rules",
+      "source_categories": [
+        "08_kanji_phrase_variants"
+      ],
+      "entries": [
+        {
+          "from": "三十",
+          "to": "卅",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "不可",
+          "to": "叵",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "中国語",
+          "to": "汉語",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "二俣",
+          "to": "丫",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "二十",
+          "to": "廿",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "二股",
+          "to": "丫",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "今日",
+          "to": "昑",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "低回",
+          "to": "徊",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "反叛",
+          "to": "叛",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "反旗",
+          "to": "旗",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "台所",
+          "to": "廚",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "敷居",
+          "to": "閾",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "時間分",
+          "to": "h分",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "時間近",
+          "to": "h近",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "歯茎",
+          "to": "齶",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "白土",
+          "to": "堊",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "相婿",
+          "to": "婭",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "赤子",
+          "to": "孲",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "階段",
+          "to": "堦",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "（笑）",
+          "to": "笑",
+          "source_category": "08_kanji_phrase_variants"
+        }
+      ]
+    },
+    {
+      "id": "mixed-script-variants",
+      "label": "カタカナ混在や記号起点の熟語",
+      "status": "review-needed",
+      "application_path": "homophone-kanji.phrase_rules",
+      "source_categories": [
+        "08_kanji_phrase_variants"
+      ],
+      "entries": [
+        {
+          "from": "(笑)",
+          "to": "笑",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "アゲハ蝶",
+          "to": "鳳蝶",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "ゴミ箱",
+          "to": "塵箱",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "テントウ虫",
+          "to": "紅娘",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "ド根性",
+          "to": "弩根性",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "満タン",
+          "to": "滿湛",
+          "source_category": "08_kanji_phrase_variants"
+        }
+      ]
+    }
+  ]
+}

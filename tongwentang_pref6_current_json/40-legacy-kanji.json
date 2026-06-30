@@ -1,0 +1,8 @@
+{
+  "id": "legacy-kanji",
+  "label": "旧字変換",
+  "target_bundle": "legacy-kanji",
+  "kind": "reorganized-stage",
+  "intent": "旧版辞書群からは、現行 Stage5 の『ユーザー指定旧字表』に直接寄せるべき独立集合を確定できなかったため空集合とする。",
+  "groups": []
+}

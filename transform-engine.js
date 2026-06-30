@@ -3338,6 +3338,7 @@
     compileRuntimePlan,
     loadStagesFromDefinitions,
     normalizeBundleOverridesPayload,
+    ruleRequiresTokenMatching,
     resolveCrossStageExactRuleConflicts,
     splitCommaSeparatedValues,
     splitMatchCandidates,

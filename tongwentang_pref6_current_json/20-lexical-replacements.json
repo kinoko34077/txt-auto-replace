@@ -1,0 +1,4690 @@
+{
+  "id": "lexical-replacements",
+  "label": "語彙置換",
+  "target_bundle": "lexical-replacements",
+  "kind": "reorganized-stage",
+  "intent": "かな熟語や数詞圧縮のような固定句を Stage2 の語彙辞書へ寄せる。",
+  "groups": [
+    {
+      "id": "numeric-symbols-and-counting",
+      "label": "数詞・分数・単位の圧縮",
+      "status": "active-candidate",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "02_numbers_units"
+      ],
+      "entries": [
+        {
+          "from": "2分の1",
+          "to": "½",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "4分の1",
+          "to": "¼",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "4分の3",
+          "to": "¾",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "8分の1",
+          "to": "⅛",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "8分の3",
+          "to": "⅜",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "8分の5",
+          "to": "⅝",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "8分の7",
+          "to": "⅞",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "ひとしずく",
+          "to": "1雫",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "ひとり",
+          "to": "1人",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "ひとりじめ",
+          "to": "1人占め",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "ふたり",
+          "to": "2人",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "パーセント",
+          "to": "%",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "一つ",
+          "to": "1つ",
+          "source_category": "02_numbers_units"
+        }
+      ]
+    },
+    {
+      "id": "kana-idioms-a",
+      "label": "かな熟語から当て字 あ行",
+      "status": "review-needed",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "04_kana_idioms_to_ateji"
+      ],
+      "entries": [
+        {
+          "from": "ああ",
+          "to": "猗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あいにく",
+          "to": "生憎",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あおい",
+          "to": "葵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あおぞら",
+          "to": "蒼空",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あおり",
+          "to": "障泥",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あかね",
+          "to": "茜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あからさま",
+          "to": "白地",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あきあかね",
+          "to": "秋茜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あきんど",
+          "to": "商人",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あくび",
+          "to": "缺伸",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あぐら",
+          "to": "胡牀",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あけび",
+          "to": "通草",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あこやがい",
+          "to": "阿古屋貝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あさって",
+          "to": "明後日",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あさつき",
+          "to": "淺蔥",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あさり",
+          "to": "淺蜊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あざ",
+          "to": "黶",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あざす",
+          "to": "痣",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あざみ",
+          "to": "薊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あざらし",
+          "to": "海豹",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あしか",
+          "to": "葦鹿",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あした",
+          "to": "明日",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あじさい",
+          "to": "紫陽花",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あす",
+          "to": "明日",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あすなろ",
+          "to": "翌檜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あせび",
+          "to": "馬醉木",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あそび",
+          "to": "遊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あたりは",
+          "to": "邊は",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あたる",
+          "to": "當る",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あつま",
+          "to": "集ま",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あつもりそう",
+          "to": "敦盛草",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あてはめ",
+          "to": "當填",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あぶ",
+          "to": "虻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あぶな",
+          "to": "危な",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あまた",
+          "to": "數多",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あまねく",
+          "to": "普く",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あまり",
+          "to": "餘",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あめふらし",
+          "to": "雨降",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あめんぼ",
+          "to": "水黽",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あやめ",
+          "to": "菖蒲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あゆみ",
+          "to": "步",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あらいぐま",
+          "to": "洗熊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あらかじ",
+          "to": "豫",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あらすじ",
+          "to": "粗筋",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あらたま",
+          "to": "改",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あらため",
+          "to": "改",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あられ",
+          "to": "霰",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あらわす",
+          "to": "表す",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あらわれ",
+          "to": "現れ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あり",
+          "to": "有",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ありあり",
+          "to": "有〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ありがと",
+          "to": "有難",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ありくい",
+          "to": "蟻食",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ありそう",
+          "to": "有相",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ある。",
+          "to": "有｡",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あわただ",
+          "to": "遽",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あわび",
+          "to": "鮑",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あんしん",
+          "to": "安心",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "あんず",
+          "to": "杏",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いいかげん",
+          "to": "好加減",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いいなずけ",
+          "to": "許婚",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いいま",
+          "to": "謂ひま",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いかが",
+          "to": "如何",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いきなり",
+          "to": "行成",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いくつ",
+          "to": "幾つ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いぐさ",
+          "to": "藺草",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いささか",
+          "to": "些か",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いじくりまわ",
+          "to": "弄廻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いじって",
+          "to": "弄て",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いじれ",
+          "to": "弄れ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いずれ",
+          "to": "孰",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いそぎんちゃく",
+          "to": "磯巾著",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いたし",
+          "to": "致し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いただ",
+          "to": "頂",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いたち",
+          "to": "鼬",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いちいち",
+          "to": "一〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いちおう",
+          "to": "一往",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いちご",
+          "to": "莓",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いちごいちえ",
+          "to": "一期一会",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いちじく",
+          "to": "無花果",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いちじるし",
+          "to": "著",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いちょう",
+          "to": "鴨腳樹",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いなご",
+          "to": "稻子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いなずま",
+          "to": "稻妻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いぬがや",
+          "to": "犬榧",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いのしし",
+          "to": "豬",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いびき",
+          "to": "鼾",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いもむし",
+          "to": "芋蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いもり",
+          "to": "井守",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いるか",
+          "to": "海豚",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いろいろ",
+          "to": "色〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いろんな",
+          "to": "色んな",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いわゆる",
+          "to": "所謂",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "いんげんまめ",
+          "to": "隱元豆",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うがい",
+          "to": "嗽",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うさぎ",
+          "to": "毚",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うすぐら",
+          "to": "薄暗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うすばかげろう",
+          "to": "薄翅蜉蝣",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うたがっ",
+          "to": "惢っ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うち",
+          "to": "内",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うつ",
+          "to": "鬱",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うつくし",
+          "to": "娃",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うつぶせ",
+          "to": "俯せ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うつぼかずら",
+          "to": "靫葛",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うどん",
+          "to": "饂飩",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うまれ",
+          "to": "生れ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うみうし",
+          "to": "海牛",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うみほたる",
+          "to": "海螢",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うらない",
+          "to": "占",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うるおぼえ",
+          "to": "疎覺",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うるさ",
+          "to": "煩",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うろおぼえ",
+          "to": "疎覺",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うろちょろ",
+          "to": "疎滎",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うんざり",
+          "to": "厭り",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "うんぬん",
+          "to": "云〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "えがき",
+          "to": "描",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "えくぼ",
+          "to": "靨",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "えのき",
+          "to": "榎",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "えび",
+          "to": "蝦",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "えびね",
+          "to": "蝦根",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "えらく",
+          "to": "豪く",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "えりまき",
+          "to": "襟卷",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "えんどう",
+          "to": "豌豆",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おいし",
+          "to": "旨",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おいわい",
+          "to": "御祝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おうち",
+          "to": "お家",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おうむ",
+          "to": "鸚鵡",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おうむがい",
+          "to": "鸚鵡貝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おおかみ",
+          "to": "狼",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おおげさ",
+          "to": "大袈裟",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おおごと",
+          "to": "大事",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おおごまだら",
+          "to": "大胡麻斑蝶",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おおばこ",
+          "to": "大葉子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おかげ",
+          "to": "御陰",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おかげさま",
+          "to": "御陰樣",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おかず",
+          "to": "御菜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おかゆ",
+          "to": "小粥",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おきかえ",
+          "to": "置換",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おきにいり",
+          "to": "御氣入",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おこのみ",
+          "to": "御好",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おこり",
+          "to": "怒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おさえ",
+          "to": "押え",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おさむし",
+          "to": "筬蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おし",
+          "to": "押",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おしえ",
+          "to": "敎",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おしつけ",
+          "to": "掗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おしはらい",
+          "to": "御支拂",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おしらせ",
+          "to": "御報せ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おすすめ",
+          "to": "御薦",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おそれ",
+          "to": "虞",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おたがい",
+          "to": "御互",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おたまじゃくし",
+          "to": "御玉杓子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おっしゃ",
+          "to": "仰",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おっとせい",
+          "to": "膃肭臍",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おつかれさま",
+          "to": "乙",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おてつづき",
+          "to": "御手續",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おといあわせ",
+          "to": "御問合せ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おとどけ",
+          "to": "御屆",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おとな",
+          "to": "大人",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おなじみ",
+          "to": "御馴染",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おなもみ",
+          "to": "卷耳",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おにぎり",
+          "to": "御握",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おにやんま",
+          "to": "馬大頭",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おのず",
+          "to": "自づ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おはぐろ",
+          "to": "鐵漿",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おぼつか",
+          "to": "覺束",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おまえら",
+          "to": "お前等",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おみくじ",
+          "to": "御籤",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おみつもり",
+          "to": "御見積",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おみなえし",
+          "to": "女郞花",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おもい",
+          "to": "思",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おもしろ",
+          "to": "面白",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おもね",
+          "to": "阿",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おもむろ",
+          "to": "徐",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おもり",
+          "to": "鎚",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おもんぱか",
+          "to": "慮",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "およぎ",
+          "to": "泳",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "およば",
+          "to": "及ば",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "および",
+          "to": "及",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "およぶ",
+          "to": "及ぶ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "およん",
+          "to": "及",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おろか",
+          "to": "疎ヵ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "おわり",
+          "to": "終",
+          "source_category": "04_kana_idioms_to_ateji"
+        }
+      ]
+    },
+    {
+      "id": "kana-idioms-ka",
+      "label": "かな熟語から当て字 か行",
+      "status": "review-needed",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "04_kana_idioms_to_ateji"
+      ],
+      "entries": [
+        {
+          "from": "かいこ",
+          "to": "蠶",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かえって",
+          "to": "卻って",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かえで",
+          "to": "楓",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かえる",
+          "to": "蛙",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かかっ",
+          "to": "掛っ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かかと",
+          "to": "踵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かかり",
+          "to": "掛り",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かかわ",
+          "to": "關",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かきつばた",
+          "to": "杜若",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かぎり",
+          "to": "限り",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かける",
+          "to": "掛る",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かげろう",
+          "to": "蜻蛉",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かこつけ",
+          "to": "託け",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かさぶた",
+          "to": "瘡蓋",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かしこま",
+          "to": "畏",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かすみ",
+          "to": "霞",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かすり",
+          "to": "絣",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かぞえ",
+          "to": "數",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かたち",
+          "to": "形",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かたつむり",
+          "to": "蝸牛",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かたづけ",
+          "to": "片付",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かたびら",
+          "to": "帷子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かたり",
+          "to": "語",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かっこい",
+          "to": "恰好良",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かっこう",
+          "to": "郭公",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かっこよ",
+          "to": "恰好良",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かなり",
+          "to": "可成",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かね",
+          "to": "鉦",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かねがね",
+          "to": "兼〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かねてより",
+          "to": "予てゟ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かばん",
+          "to": "鞄",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かぶと",
+          "to": "兜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かぶとえび",
+          "to": "兜蝦",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かぶとがに",
+          "to": "兜蟹",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かぶとむし",
+          "to": "甲蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かぶる",
+          "to": "被る",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かぼちゃ",
+          "to": "南瓜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かまきり",
+          "to": "蟷螂",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かみきりむし",
+          "to": "髮切蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かみそり",
+          "to": "剃刀",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かめむし",
+          "to": "龜蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かもしか",
+          "to": "氈鹿",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かもしれない",
+          "to": "かも知",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かもしれません",
+          "to": "かも知",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かやつりぐさ",
+          "to": "蚊帳吊草",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かゆ",
+          "to": "痒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "からだ",
+          "to": "體",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "からだじゅう",
+          "to": "體中",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "からまつ",
+          "to": "唐松",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かりん",
+          "to": "花梨",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かるた",
+          "to": "歌留多",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かれら",
+          "to": "彼等",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かわうそ",
+          "to": "獺",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かんがえ",
+          "to": "考",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かんな",
+          "to": "鉋",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かんぬん",
+          "to": "斯〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "かんらん",
+          "to": "甘藍",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "があります",
+          "to": "有",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "がいくら",
+          "to": "が幾ら",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "がいた",
+          "to": "痛",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "がさね",
+          "to": "重ね",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ができ",
+          "to": "が出來",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "がびょう",
+          "to": "畫鋲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "がん",
+          "to": "癌",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ききょう",
+          "to": "橘梗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きこり",
+          "to": "樵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きそうだ",
+          "to": "き相だ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きそうで",
+          "to": "き相で",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きつね",
+          "to": "狐",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きのう",
+          "to": "昨日",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きめ",
+          "to": "肌理",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きもち",
+          "to": "氣持",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きゅうり",
+          "to": "胡瓜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きりぎりす",
+          "to": "螽斯",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きりん",
+          "to": "麒麟",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きれい",
+          "to": "綺麗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きんせんか",
+          "to": "金盞花",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "きんもくせい",
+          "to": "金木犀",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぎめ",
+          "to": "決め",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぎょうざ",
+          "to": "餃子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くぎ",
+          "to": "釘",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くしゃみ",
+          "to": "嚔",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くじら",
+          "to": "鯨",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くすのき",
+          "to": "樟",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くすり",
+          "to": "藥",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くずさ",
+          "to": "崩さ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くずし",
+          "to": "崩",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くずす",
+          "to": "崩す",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くずせ",
+          "to": "崩せ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くずれ",
+          "to": "崩",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くださ",
+          "to": "下さ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くちなし",
+          "to": "梔子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くつわ",
+          "to": "轡",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くぬぎ",
+          "to": "櫟",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くらい",
+          "to": "位",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くらげ",
+          "to": "海月",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くらし",
+          "to": "暮し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くらべて",
+          "to": "較べ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くらまし",
+          "to": "晦まし",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くりかえ",
+          "to": "繰返",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くるみ",
+          "to": "胡桃",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くれぐれ",
+          "to": "暮〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くれた",
+          "to": "吳た",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くれて",
+          "to": "吳て",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くろうと",
+          "to": "玄人",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くわがた",
+          "to": "鍬形",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "くわし",
+          "to": "詳し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぐすり",
+          "to": "藥",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぐみ",
+          "to": "胡頽子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぐらい",
+          "to": "位",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "けだし",
+          "to": "蓋",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "けやき",
+          "to": "欅",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "げじ",
+          "to": "蚰蜒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "げてもの",
+          "to": "下手物",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "げんごろう",
+          "to": "源五郞",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こうがいびる",
+          "to": "笄蛭",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こうして",
+          "to": "斯乄",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こうもり",
+          "to": "蝙蝠",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こおろぎ",
+          "to": "蟋蟀",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こがねむし",
+          "to": "黃金蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こくぞうむし",
+          "to": "穀象蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こころ",
+          "to": "心",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こころみ",
+          "to": "試",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こじ",
+          "to": "拗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こすもす",
+          "to": "秋櫻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こぞって",
+          "to": "擧って",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こたつ",
+          "to": "炬燵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こだわ",
+          "to": "拘",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こだわり",
+          "to": "拘",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ことある",
+          "to": "ヿ有",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ことば",
+          "to": "言葉",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こども",
+          "to": "子供",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こなし",
+          "to": "熟",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こなら",
+          "to": "小楢",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "このほう",
+          "to": "此方",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こぶた",
+          "to": "子豚",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こぶっ",
+          "to": "子振",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こぶり",
+          "to": "小降",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こぶる",
+          "to": "子振る",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こまごま",
+          "to": "細〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こもごも",
+          "to": "交〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こり",
+          "to": "懲り",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "これ",
+          "to": "之",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "こんにゃく",
+          "to": "蒟蒻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごあんない",
+          "to": "御案內",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごかくにん",
+          "to": "御確認",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごけいやく",
+          "to": "御契約",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ござい",
+          "to": "御座い",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ござる",
+          "to": "御座",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごせつめい",
+          "to": "御說明",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごそうだん",
+          "to": "御相談",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごちそう",
+          "to": "御馳走",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごとき",
+          "to": "如き",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごはん",
+          "to": "御飯",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごへんしん",
+          "to": "御返信",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごほうこく",
+          "to": "御報告",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごぼう",
+          "to": "牛蒡",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごみ",
+          "to": "埖",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごみばこ",
+          "to": "芥箱",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごみむし",
+          "to": "塵芥蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごよやく",
+          "to": "御豫約",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごらん",
+          "to": "御覽",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごりよう",
+          "to": "御利用",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ごろ",
+          "to": "頃",
+          "source_category": "04_kana_idioms_to_ateji"
+        }
+      ]
+    },
+    {
+      "id": "kana-idioms-sa",
+      "label": "かな熟語から当て字 さ行",
+      "status": "review-needed",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "04_kana_idioms_to_ateji"
+      ],
+      "entries": [
+        {
+          "from": "さいころ",
+          "to": "賽子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さえぎ",
+          "to": "閼",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さがしまわ",
+          "to": "探回",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さぎそう",
+          "to": "鷺草",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さけび",
+          "to": "叫",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ささげ",
+          "to": "大角豆",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ささっ",
+          "to": "颯〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さざえ",
+          "to": "榮螺",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さざんか",
+          "to": "山茶花",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さしあた",
+          "to": "差當",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さして",
+          "to": "然",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さすが",
+          "to": "流石",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さそり",
+          "to": "蠍",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さっち",
+          "to": "三進",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さつまいも",
+          "to": "薩摩芋",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さて",
+          "to": "扠",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さなだむし",
+          "to": "眞田蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さぼてん",
+          "to": "仙人掌",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さま",
+          "to": "樣",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さまざま",
+          "to": "樣〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さまよ",
+          "to": "彷徨",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さらさら",
+          "to": "更〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さるぐつわ",
+          "to": "猿轡",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さるすべり",
+          "to": "百日紅",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さわがし",
+          "to": "騷し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さわり",
+          "to": "觸",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さんご",
+          "to": "珊瑚",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さんざん",
+          "to": "散〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "さんしょう",
+          "to": "山椒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ざくろ",
+          "to": "柘榴",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ざる",
+          "to": "笊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ざわり",
+          "to": "觸",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しいたけ",
+          "to": "椎茸",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しおからとんぼ",
+          "to": "鹽辛蜻蛉",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しかばね",
+          "to": "屍",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しきっ",
+          "to": "仕切",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しけっ",
+          "to": "濕氣っ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しこり",
+          "to": "痼",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しじみ",
+          "to": "蜆",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しずか",
+          "to": "靜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しずく",
+          "to": "雫",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "したがい",
+          "to": "從い",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "したがっ",
+          "to": "從っ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "したたか",
+          "to": "强ヵ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "したたり",
+          "to": "滴り",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "したたる",
+          "to": "滴る",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "したらいい",
+          "to": "せば良い",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "したらよい",
+          "to": "せば良い",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しだい",
+          "to": "次第",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "して",
+          "to": "乄",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しべ",
+          "to": "蕊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しぼり",
+          "to": "搾り",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しまう",
+          "to": "收う",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しまうま",
+          "to": "縞馬",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しまくった",
+          "to": "仕捲た",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しまへび",
+          "to": "縞蛇",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しまわ",
+          "to": "仕舞",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しめきり",
+          "to": "〆切",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しゃくとり",
+          "to": "尺取",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しゃくなげ",
+          "to": "石楠花",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しゃくやく",
+          "to": "芍藥",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しゃこ",
+          "to": "蝦蛄",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しゃち",
+          "to": "鯱",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しゃっくり",
+          "to": "吃逆",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しゃべ",
+          "to": "喋",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しゃもじ",
+          "to": "杓文字",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しゅろ",
+          "to": "棕梠",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しゅんぎく",
+          "to": "春菊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しょうが",
+          "to": "薑",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しょうがな",
+          "to": "仕樣がな",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しょうじょうばえ",
+          "to": "猩猩蠅",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しょうりょうばった",
+          "to": "精靈蝗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しょせん",
+          "to": "所詮",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しらせ",
+          "to": "報せ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しらみ",
+          "to": "蝨",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しりとり",
+          "to": "尻取",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しるし",
+          "to": "印",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しろうと",
+          "to": "素人",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しろつち",
+          "to": "堊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しんじ",
+          "to": "信",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "しんど",
+          "to": "辛労",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "じむぐり",
+          "to": "地潛",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "じゃこうねこ",
+          "to": "麝香貓",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "じゅうたん",
+          "to": "絨緞",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "じゅごん",
+          "to": "儒艮",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "じょうろ",
+          "to": "如露",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すいか",
+          "to": "水瓜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すかさず",
+          "to": "透さず",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すぎ",
+          "to": "過",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すごく",
+          "to": "凄く",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すごろく",
+          "to": "雙六",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すさまじ",
+          "to": "凄まじ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すすき",
+          "to": "芒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すすみ",
+          "to": "進み",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すずめばち",
+          "to": "雀蜂",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すだち",
+          "to": "酢橘",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すだれ",
+          "to": "簾",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すっかり",
+          "to": "悉皆",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すっとんきょう",
+          "to": "素頓狂",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すっぽか",
+          "to": "素放",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すっぽん",
+          "to": "鼈",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すて",
+          "to": "捨",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すなお",
+          "to": "素直",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すばら",
+          "to": "素晴",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すべて",
+          "to": "総て",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すみれ",
+          "to": "菫",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "するめ",
+          "to": "鯣",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "するめど",
+          "to": "す目處",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "するよう",
+          "to": "する樣",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "すわり",
+          "to": "坐",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ずいぶん",
+          "to": "隨分",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "せいうち",
+          "to": "海象",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "せいぜい",
+          "to": "精々",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "せきどめ",
+          "to": "咳止め",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "せっけん",
+          "to": "石鹸",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "せみ",
+          "to": "蟬",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "せんざんこう",
+          "to": "穿山甲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "せんちこがね",
+          "to": "雪隱金龜子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "せんべい",
+          "to": "煎餠",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぜんまい",
+          "to": "薇",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "そういっ",
+          "to": "然云",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "そうそう",
+          "to": "然〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "そてつ",
+          "to": "蘇鐵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "その",
+          "to": "其",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "そのあと",
+          "to": "其後",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "そのほう",
+          "to": "其方",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "そばかす",
+          "to": "雀斑",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "そもそも",
+          "to": "抑も",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "それ",
+          "to": "其",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "それぞれ",
+          "to": "夫〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぞうむし",
+          "to": "象蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        }
+      ]
+    },
+    {
+      "id": "kana-idioms-ta",
+      "label": "かな熟語から当て字 た行",
+      "status": "review-needed",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "04_kana_idioms_to_ateji"
+      ],
+      "entries": [
+        {
+          "from": "たあたり",
+          "to": "た辺",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たいくつそう",
+          "to": "退屈相",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たいそう",
+          "to": "大層",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たいへん",
+          "to": "大變",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たいまい",
+          "to": "玳瑁",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たがい",
+          "to": "互",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たがが",
+          "to": "箍が",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たがめ",
+          "to": "田鼈",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たくさん",
+          "to": "澤山",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たけのこ",
+          "to": "筍",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たこやき",
+          "to": "蛸燒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たしか",
+          "to": "確",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たたき",
+          "to": "三和土",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ただ",
+          "to": "唯",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ただけ",
+          "to": "た丈",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ただし",
+          "to": "但",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ただしか",
+          "to": "正しか",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ただしく",
+          "to": "正しく",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ただしければ",
+          "to": "正しきゃ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ただしさ",
+          "to": "正しさ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たちがわる",
+          "to": "質が惡",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たちどま",
+          "to": "立止",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たとえ",
+          "to": "例え",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たどり",
+          "to": "辿",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たにし",
+          "to": "田螺",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たばこ",
+          "to": "莨",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たまたま",
+          "to": "偶〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たまむし",
+          "to": "玉蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ためし",
+          "to": "試",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たるを",
+          "to": "足るを",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たわし",
+          "to": "束子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たんこぶ",
+          "to": "膽瘤",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たんす",
+          "to": "簞笥",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "たんぽぽ",
+          "to": "蒲公英",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "だいたい",
+          "to": "大體",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "だいだい",
+          "to": "臭橙",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "だから",
+          "to": "宝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "だが",
+          "to": "箍",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "だがし",
+          "to": "駄菓子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "だって",
+          "to": "楯",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "だめし",
+          "to": "試",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "だれ",
+          "to": "誰",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "だんごむし",
+          "to": "團子蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "だんだん",
+          "to": "段〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ちがい",
+          "to": "違",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ちしゃ",
+          "to": "萵苣",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ちな",
+          "to": "因",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ちなみ",
+          "to": "因",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ちょうちょ",
+          "to": "蝶〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ちょうど",
+          "to": "恰度",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ちょこ",
+          "to": "豬口",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ちょっと",
+          "to": "一寸",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ちょろ",
+          "to": "滎",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ちょろま",
+          "to": "瞧掠瞞",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ちりばめ",
+          "to": "鏤め",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "っていうほど",
+          "to": "て謂程",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つきあ",
+          "to": "附合",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つきものが",
+          "to": "憑物が",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つくし",
+          "to": "土筆",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つくづく",
+          "to": "熟〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つげ",
+          "to": "黃楊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つたな",
+          "to": "拙",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つっこ",
+          "to": "突込",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つつがむし",
+          "to": "恙蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つつし",
+          "to": "謹",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つつじ",
+          "to": "躑躅",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つつまし",
+          "to": "愼し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つなが",
+          "to": "繋",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つぶつぶ",
+          "to": "粒〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つまようじ",
+          "to": "爪楊枝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つまり",
+          "to": "詰",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つまる",
+          "to": "詰る",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つもり",
+          "to": "心算",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つらい",
+          "to": "辛い",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "つらく",
+          "to": "辛く",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ていたらく",
+          "to": "爲體",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ていねい",
+          "to": "叮嚀",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "てらし",
+          "to": "照し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "てんとうむし",
+          "to": "瓢蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "てんぷら",
+          "to": "天麩羅",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "でかつ",
+          "to": "で且",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "できず",
+          "to": "叵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "できずつ",
+          "to": "で傷付",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "できない",
+          "to": "叵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "できる",
+          "to": "出來",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "でんぷん",
+          "to": "澱粉",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とうがらし",
+          "to": "蕃椒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とうがん",
+          "to": "冬瓜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とうひ",
+          "to": "唐檜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とうもろこし",
+          "to": "玉蜀黍",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とおり",
+          "to": "通",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とかげ",
+          "to": "石龍子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とくさ",
+          "to": "砥草",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とこで",
+          "to": "処で",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ところ",
+          "to": "攸",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ところてん",
+          "to": "瓊脂",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とても",
+          "to": "迚",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とど",
+          "to": "海馬",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とどめ",
+          "to": "止め",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とまと",
+          "to": "蕃茄",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とも",
+          "to": "共",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ともいう。",
+          "to": "共云｡",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とりかぶと",
+          "to": "鳥甲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とろろあおい",
+          "to": "黃蜀葵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とろろいも",
+          "to": "薯蕷芋",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とんでも",
+          "to": "頓でも",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "とんぼ",
+          "to": "蜻蛉",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "どいつ",
+          "to": "何奴",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "どう",
+          "to": "妸",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "どうだんつつじ",
+          "to": "滿天星",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "どおり",
+          "to": "通",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "どき",
+          "to": "時",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "どころ",
+          "to": "所",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "どっち",
+          "to": "何方",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "どのみち",
+          "to": "何方道",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "どんぐり",
+          "to": "團栗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "タコができ",
+          "to": "胼胝が出來",
+          "source_category": "04_kana_idioms_to_ateji"
+        }
+      ]
+    },
+    {
+      "id": "kana-idioms-na",
+      "label": "かな熟語から当て字 な行",
+      "status": "review-needed",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "04_kana_idioms_to_ateji"
+      ],
+      "entries": [
+        {
+          "from": "ないし",
+          "to": "乃至",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なお、",
+          "to": "尙",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なかなか",
+          "to": "中〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なかま",
+          "to": "仲閒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なげし",
+          "to": "長押",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なこうど",
+          "to": "媒人",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なす",
+          "to": "茄",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なずな",
+          "to": "薺",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なぞなぞ",
+          "to": "謎〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なた",
+          "to": "鉈",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なって",
+          "to": "成て",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なでしこ",
+          "to": "撫子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ななふし",
+          "to": "七節",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ななほしてんとう",
+          "to": "七星瓢蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なにか",
+          "to": "何か",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なにがし",
+          "to": "某",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なのだ",
+          "to": "何だ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なまけもの",
+          "to": "樹懶",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なまこ",
+          "to": "海鼠",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なみなみ",
+          "to": "竝々",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なめくじ",
+          "to": "蛞蝓",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なめらか",
+          "to": "滑か",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なやみ",
+          "to": "惱",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ならび",
+          "to": "竝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なり、",
+          "to": "成､",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なりそう",
+          "to": "成相",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なりやすい",
+          "to": "爲易い",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なるべく",
+          "to": "成可く",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なるほど",
+          "to": "成程",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なるわけ",
+          "to": "成る訳",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なわけ",
+          "to": "な訳",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なんか",
+          "to": "何ヵ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なんだ",
+          "to": "何だ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なんで",
+          "to": "何で",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "なんなら",
+          "to": "何なら",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "にくい",
+          "to": "難い",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "にっち",
+          "to": "二進",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "になっ",
+          "to": "成っ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "にゃあ",
+          "to": "喵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "にゃー",
+          "to": "喵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "にわとり",
+          "to": "鷄",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "にんじん",
+          "to": "人參",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "にんにく",
+          "to": "大蒜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ねがい",
+          "to": "願",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ねぎ",
+          "to": "葱",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ねじっ",
+          "to": "捻っ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ねじれ",
+          "to": "捻れ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ねずみ",
+          "to": "鼠",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ねむのき",
+          "to": "合歡木",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "のぞみ",
+          "to": "望",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "のみ",
+          "to": "已",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "のれん",
+          "to": "暖簾",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "のろし",
+          "to": "烽火",
+          "source_category": "04_kana_idioms_to_ateji"
+        }
+      ]
+    },
+    {
+      "id": "kana-idioms-ha",
+      "label": "かな熟語から当て字 は行",
+      "status": "review-needed",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "04_kana_idioms_to_ateji"
+      ],
+      "entries": [
+        {
+          "from": "はかなくて",
+          "to": "儚くて",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はげいとう",
+          "to": "葉雞頭",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はこべ",
+          "to": "繁縷",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はさみ",
+          "to": "剪刀",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はさみこ",
+          "to": "挾込",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はしご",
+          "to": "梯",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はじめ",
+          "to": "始",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はす",
+          "to": "蓮",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はず",
+          "to": "筈",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はずかし",
+          "to": "恥し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はぜのき",
+          "to": "黃櫨",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はたら",
+          "to": "働",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はなむぐり",
+          "to": "花潛",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ははそ",
+          "to": "柞",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はまぐり",
+          "to": "文蛤",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はまゆう",
+          "to": "濱木綿",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はむし",
+          "to": "葉蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "はんみょう",
+          "to": "斑貓",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ばいきん",
+          "to": "黴菌",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ばった",
+          "to": "飛蝗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ばら",
+          "to": "薔薇",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ばれいしょ",
+          "to": "馬鈴薯",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひいらぎ",
+          "to": "柊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひきこも",
+          "to": "引籠",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひきこもごも",
+          "to": "悲喜交々",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひきだし",
+          "to": "抽斗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひぐらし",
+          "to": "蜩",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひさし",
+          "to": "庇",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひさしぶり",
+          "to": "久振り",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひざ",
+          "to": "膝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひじ",
+          "to": "肱･臂",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひじき",
+          "to": "鹿尾菜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひっかか",
+          "to": "引掛",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひっかけ",
+          "to": "引掛",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひっぱ",
+          "to": "引張",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひっぱた",
+          "to": "引叩",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひでかつ",
+          "to": "秀勝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひと",
+          "to": "人",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひとこと",
+          "to": "一言",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひとひねり",
+          "to": "一捻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひとめ",
+          "to": "一目",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひとめぼれ",
+          "to": "一目惚",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひど",
+          "to": "酷",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひねくれ",
+          "to": "弄れ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひねり",
+          "to": "捻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひのき",
+          "to": "檜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひばかり",
+          "to": "日計",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひまわり",
+          "to": "向日葵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひゃっくり",
+          "to": "吃逆",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひやか",
+          "to": "素見",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひやかし",
+          "to": "素見",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひょう",
+          "to": "雹",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひょうきん",
+          "to": "剽輕",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひょうへん",
+          "to": "豹變",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひらがな",
+          "to": "平假名",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひらき",
+          "to": "開",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひるね",
+          "to": "午睡",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ひろがる",
+          "to": "擴がる",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "びっくり",
+          "to": "吃驚",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "びゃくだん",
+          "to": "白檀",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "びわ",
+          "to": "枇杷",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ふけっ",
+          "to": "耽っ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ふける",
+          "to": "耽る",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ふざけ",
+          "to": "巫山戯",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ふじつぼ",
+          "to": "富士壺",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ふと",
+          "to": "不圖",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ふとん",
+          "to": "蒲團",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ふなむし",
+          "to": "船蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ふるさと",
+          "to": "古里",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ふるま",
+          "to": "振舞",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぶどう",
+          "to": "葡萄",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "へんは",
+          "to": "邊は",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "べにしじみ",
+          "to": "紅小灰蝶",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほうが",
+          "to": "方が",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほうき",
+          "to": "箒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほうしのう",
+          "to": "胞子嚢",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほうれんそう",
+          "to": "菠薐草",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほおずき",
+          "to": "鬼燈",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほか",
+          "to": "佗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほくろ",
+          "to": "黑子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほぐし",
+          "to": "解し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほしい",
+          "to": "慾しい",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほたてがい",
+          "to": "帆立貝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほたる",
+          "to": "螢",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほぼ",
+          "to": "粗",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほらがい",
+          "to": "吹螺",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ほり",
+          "to": "掘",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぼうふら",
+          "to": "棒振",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぼけ",
+          "to": "木瓜",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぼり",
+          "to": "掘",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぼんぼり",
+          "to": "雪洞",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぼんやり",
+          "to": "惘",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ぽっくり",
+          "to": "木履",
+          "source_category": "04_kana_idioms_to_ateji"
+        }
+      ]
+    },
+    {
+      "id": "kana-idioms-ma",
+      "label": "かな熟語から当て字 ま行",
+      "status": "review-needed",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "04_kana_idioms_to_ateji"
+      ],
+      "entries": [
+        {
+          "from": "まあ",
+          "to": "闖",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まいまいかぶり",
+          "to": "蝸牛被",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まいり",
+          "to": "參",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まえ",
+          "to": "前",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まぎら",
+          "to": "紛",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まぎれ",
+          "to": "紛",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まこと",
+          "to": "誠",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まさか",
+          "to": "眞坂",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まさかり",
+          "to": "鉞",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ますます",
+          "to": "益〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "また",
+          "to": "亦",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まだまだ",
+          "to": "未〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まだら",
+          "to": "斑",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まち",
+          "to": "待",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まったく",
+          "to": "全く",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まつげ",
+          "to": "睫",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まとま",
+          "to": "纏",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まとめ",
+          "to": "纒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まなび",
+          "to": "學",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まま",
+          "to": "儘",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ままごと",
+          "to": "儘事",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まみれ",
+          "to": "塗れ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まむし",
+          "to": "蝮",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まよい",
+          "to": "迷",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まろうど",
+          "to": "賓",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "まんざら",
+          "to": "滿更",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みいら",
+          "to": "木乃伊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みかん",
+          "to": "蜜柑",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みがき",
+          "to": "磨",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みくじ",
+          "to": "御籤",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みじんこ",
+          "to": "微塵子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みずかまきり",
+          "to": "水蟷螂",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みずから",
+          "to": "自ら",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みずすまし",
+          "to": "水澄",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みずとんぼ",
+          "to": "水蜻蛉",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みそか",
+          "to": "晦日",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みぞおち",
+          "to": "鳩尾",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みぞれ",
+          "to": "霙",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みな",
+          "to": "皆",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みなさま",
+          "to": "皆樣",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みなし",
+          "to": "看做し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みなと",
+          "to": "湊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みなみ",
+          "to": "南",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みのむし",
+          "to": "蓑蟲",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みみず",
+          "to": "蚯蚓",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みょうが",
+          "to": "茗荷",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みるくいがい",
+          "to": "海松食貝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "みんな",
+          "to": "皆",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "むかで",
+          "to": "百足",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "むこう",
+          "to": "向う",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "むしけら",
+          "to": "蟲螻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "むずかし",
+          "to": "難し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "めくらまし",
+          "to": "目眩まし",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "めぐみ",
+          "to": "惠",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "めずらし",
+          "to": "珍し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "めちゃ",
+          "to": "目茶",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "めまい",
+          "to": "眩暈･目眩",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もくじ",
+          "to": "目次",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もくせい",
+          "to": "木犀",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もぐら",
+          "to": "土龍",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もずく",
+          "to": "海蘊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もたら",
+          "to": "齎",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もたれかか",
+          "to": "俹",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もっぱら",
+          "to": "專ら",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もつれ",
+          "to": "縺",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もてなし",
+          "to": "饗し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もとづ",
+          "to": "基",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もともと",
+          "to": "本〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もどき",
+          "to": "擬",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もみ",
+          "to": "揉",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もみじ",
+          "to": "黃葉",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もらい",
+          "to": "貰",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もらう",
+          "to": "貰う",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もらえ",
+          "to": "貰え",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もらっ",
+          "to": "貰っ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もらわ",
+          "to": "貰わ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "もんしろちょう",
+          "to": "紋白蝶",
+          "source_category": "04_kana_idioms_to_ateji"
+        }
+      ]
+    },
+    {
+      "id": "kana-idioms-ya",
+      "label": "かな熟語から当て字 や行",
+      "status": "review-needed",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "04_kana_idioms_to_ateji"
+      ],
+      "entries": [
+        {
+          "from": "やえむぐら",
+          "to": "八重葎",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やかまし",
+          "to": "喧し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やき",
+          "to": "燒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やきいも",
+          "to": "焼芋",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やきそば",
+          "to": "燒蕎麥",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やけど",
+          "to": "火傷",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やすく",
+          "to": "易く",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やすで",
+          "to": "馬陸",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やすもう",
+          "to": "休もう",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やすり",
+          "to": "鑢",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やって",
+          "to": "遣て",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やどかり",
+          "to": "宿借",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やはり",
+          "to": "矢張",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やまあらし",
+          "to": "山荒",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やまい",
+          "to": "痾",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やまかがし",
+          "to": "山楝蛇",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やまね",
+          "to": "山鼠",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やもり",
+          "to": "家守",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やり",
+          "to": "遣",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やりき",
+          "to": "遣切",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やりとり",
+          "to": "遣取",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やる",
+          "to": "遣",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "やわらか",
+          "to": "軟",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ゆうぜん",
+          "to": "悠然",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ゆえ",
+          "to": "故",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ゆがみ",
+          "to": "歪",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ゆず",
+          "to": "柚",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ゆずりは",
+          "to": "讓葉",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ゆり",
+          "to": "百合",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ようす",
+          "to": "樣子",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ようで",
+          "to": "樣で",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "よくある",
+          "to": "よく有",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "よくよく",
+          "to": "良〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "よしんば",
+          "to": "縱ば",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "よじっ",
+          "to": "捩っ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "よじれ",
+          "to": "捩れ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "よだれ",
+          "to": "涎",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "よどみ",
+          "to": "澱",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "よほど",
+          "to": "餘程",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "よもぎ",
+          "to": "艾",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "よりどころ",
+          "to": "據所",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "よろし",
+          "to": "宜",
+          "source_category": "04_kana_idioms_to_ateji"
+        }
+      ]
+    },
+    {
+      "id": "kana-idioms-ra",
+      "label": "かな熟語から当て字 ら行",
+      "status": "review-needed",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "04_kana_idioms_to_ateji"
+      ],
+      "entries": [
+        {
+          "from": "らくだ",
+          "to": "駱駝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "らっきょう",
+          "to": "薤",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "らっこ",
+          "to": "獵虎",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "らへん",
+          "to": "ら邊",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "りすぎ",
+          "to": "り過",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "りたかっ",
+          "to": "度かっ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "りたく",
+          "to": "度く",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "りんご",
+          "to": "林檎",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "りんどう",
+          "to": "龍膽",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ることば",
+          "to": "る言葉",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "るつぼ",
+          "to": "坩堝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "れいし",
+          "to": "茘枝",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "れもん",
+          "to": "檸檬",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "れんげ",
+          "to": "蓮華",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "れんこん",
+          "to": "蓮根",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ろくろ",
+          "to": "轆轤",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "ろくろく",
+          "to": "碌〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        }
+      ]
+    },
+    {
+      "id": "kana-idioms-wa",
+      "label": "かな熟語から当て字 わ行",
+      "status": "review-needed",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "04_kana_idioms_to_ateji"
+      ],
+      "entries": [
+        {
+          "from": "わいせつ",
+          "to": "猥褻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わかっ",
+          "to": "分っ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わかめ",
+          "to": "和布",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わから",
+          "to": "分ら",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わかり",
+          "to": "分り",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わかりやす",
+          "to": "分易",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わかる",
+          "to": "分る",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わかれ",
+          "to": "分れ",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わけで",
+          "to": "訳で",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わさび",
+          "to": "山葵",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わざわざ",
+          "to": "態〻",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わすれ",
+          "to": "忘",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わすれなぐさ",
+          "to": "勿忘草",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わずか",
+          "to": "僅",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わずらわし",
+          "to": "煩し",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わたって",
+          "to": "亙って",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わび",
+          "to": "詫",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わらび",
+          "to": "蕨",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "われら",
+          "to": "我等",
+          "source_category": "04_kana_idioms_to_ateji"
+        },
+        {
+          "from": "わんたん",
+          "to": "雲呑",
+          "source_category": "04_kana_idioms_to_ateji"
+        }
+      ]
+    },
+    {
+      "id": "legacy-carryovers",
+      "label": "現行 lexical に近い既知の句",
+      "status": "active-candidate",
+      "application_path": "lexical-replacements.phrase_rules",
+      "source_categories": [
+        "09_general_phrases_misc"
+      ],
+      "entries": []
+    }
+  ]
+}

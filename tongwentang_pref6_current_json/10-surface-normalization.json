@@ -1,0 +1,242 @@
+{
+  "id": "surface-normalization",
+  "label": "表層正規化",
+  "target_bundle": "surface-normalization",
+  "kind": "reorganized-stage",
+  "intent": "句読点・記号・全角ラテン文字のような低リスク正規化を Stage1 へ集約する。",
+  "groups": [
+    {
+      "id": "punctuation-symbols",
+      "label": "句読点と記号",
+      "status": "active-candidate",
+      "application_path": "surface-normalization.rules",
+      "source_categories": [
+        "01_punctuation_symbols"
+      ],
+      "entries": [
+        {
+          "from": "’",
+          "to": "'",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "。。。",
+          "to": "…",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＂",
+          "to": "\"",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＃",
+          "to": "#",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＄",
+          "to": "$",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "％",
+          "to": "%",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＆",
+          "to": "&",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＊",
+          "to": "*",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＋",
+          "to": "+",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "，",
+          "to": ",",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "－",
+          "to": "-",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "．",
+          "to": ".",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "／",
+          "to": "/",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "；",
+          "to": ";",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＜",
+          "to": "<",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＝",
+          "to": "=",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＞",
+          "to": ">",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "？",
+          "to": "?",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＠",
+          "to": "@",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＾",
+          "to": "^",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "＿",
+          "to": "_",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "｀",
+          "to": "`",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "｛",
+          "to": "{",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "｜",
+          "to": "|",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "｝",
+          "to": "}",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "～",
+          "to": "~",
+          "source_category": "01_punctuation_symbols"
+        },
+        {
+          "from": "￥",
+          "to": "\\",
+          "source_category": "01_punctuation_symbols"
+        }
+      ]
+    },
+    {
+      "id": "fullwidth-latin",
+      "label": "全角英字の半角化",
+      "status": "active-candidate",
+      "application_path": "surface-normalization.rules",
+      "source_categories": [
+        "99_unclassified"
+      ],
+      "entries": []
+    },
+    {
+      "id": "fullwidth-digits",
+      "label": "全角数字の半角化",
+      "status": "active-candidate",
+      "application_path": "surface-normalization.rules",
+      "source_categories": [
+        "02_numbers_units"
+      ],
+      "entries": [
+        {
+          "from": "０",
+          "to": "0",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "１",
+          "to": "1",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "２",
+          "to": "2",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "３",
+          "to": "3",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "４",
+          "to": "4",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "５",
+          "to": "5",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "６",
+          "to": "6",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "７",
+          "to": "7",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "８",
+          "to": "8",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "９",
+          "to": "9",
+          "source_category": "02_numbers_units"
+        }
+      ]
+    },
+    {
+      "id": "surface-carryovers",
+      "label": "表層正規化へ寄せられる句読点句",
+      "status": "active-candidate",
+      "application_path": "surface-normalization.rules",
+      "source_categories": [
+        "09_general_phrases_misc"
+      ],
+      "entries": [
+        {
+          "from": " ・ ",
+          "to": "･",
+          "source_category": "09_general_phrases_misc"
+        }
+      ]
+    }
+  ]
+}

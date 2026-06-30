@@ -1,0 +1,60 @@
+{
+  "source_directory": "tongwentang_pref6_categorized",
+  "output_directory": "tongwentang_pref6_current_json",
+  "generated_on": "2026-06-22",
+  "total_source_entries": 3438,
+  "total_output_entries": 3438,
+  "source_totals": {
+    "01_punctuation_symbols": 39,
+    "02_numbers_units": 32,
+    "03_kanji_single_variants": 361,
+    "04_kana_idioms_to_ateji": 989,
+    "05_okurigana_shortening": 371,
+    "06_ben_disambiguation": 25,
+    "07_homophone_restoration_phrases": 7,
+    "08_kanji_phrase_variants": 438,
+    "09_general_phrases_misc": 1124,
+    "99_unclassified": 52
+  },
+  "output_totals": {
+    "10-surface-normalization.json": 38,
+    "20-lexical-replacements.json": 910,
+    "30-okurigana-abbreviation.json": 369,
+    "40-legacy-kanji.json": 0,
+    "50-official-homophone-restoration.json": 2,
+    "55-homophone-kanji.json": 203,
+    "60-general-character-replacements.json": 49,
+    "90-review-needed.json": 183,
+    "存在したもの.json": 1684
+  },
+  "source_allocation": {
+    "01_punctuation_symbols": 39,
+    "02_numbers_units": 32,
+    "09_general_phrases_misc": 1124,
+    "04_kana_idioms_to_ateji": 989,
+    "05_okurigana_shortening": 371,
+    "07_homophone_restoration_phrases": 7,
+    "08_kanji_phrase_variants": 438,
+    "03_kanji_single_variants": 361,
+    "99_unclassified": 52,
+    "06_ben_disambiguation": 25
+  },
+  "unallocated": {
+    "01_punctuation_symbols": 0,
+    "02_numbers_units": 0,
+    "03_kanji_single_variants": 0,
+    "04_kana_idioms_to_ateji": 0,
+    "05_okurigana_shortening": 0,
+    "06_ben_disambiguation": 0,
+    "07_homophone_restoration_phrases": 0,
+    "08_kanji_phrase_variants": 0,
+    "09_general_phrases_misc": 0,
+    "99_unclassified": 0
+  },
+  "notes": [
+    "03_kanji_single_variants は 358 件を general-character-replacements へ集約し、自己写像 3 件を review-needed へ送った。",
+    "05_okurigana_shortening は honorific の seed と、残余の混在短縮句へ二分した。",
+    "09_general_phrases_misc は surface-normalization へ 1 件、lexical-replacements へ 1 件を寄せ、残余を review-needed に隔離した。",
+    "比較対象は transform-settings (1).json とし、その roots ツリーに存在する同一置換は各再編ファイルから除外して存在したもの.json へ移した。"
+  ]
+}

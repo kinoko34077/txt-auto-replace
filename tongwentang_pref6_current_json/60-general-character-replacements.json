@@ -1,0 +1,265 @@
+{
+  "id": "general-character-replacements",
+  "label": "一般単漢字置換",
+  "target_bundle": "general-character-replacements",
+  "kind": "reorganized-stage",
+  "intent": "単漢字の異体字・旧字候補を、legacy-kanji ではなく一般単漢字辞書へ集約する。",
+  "groups": [
+    {
+      "id": "single-kanji-variants",
+      "label": "単漢字の異体字",
+      "status": "active-candidate",
+      "application_path": "general-character-replacements.character_map",
+      "source_categories": [
+        "03_kanji_single_variants"
+      ],
+      "entries": [
+        {
+          "from": "了",
+          "to": "諒",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "冴",
+          "to": "冱",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "凶",
+          "to": "兇",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "刃",
+          "to": "刄",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "券",
+          "to": "劵",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "四",
+          "to": "亖",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "回",
+          "to": "囘",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "園",
+          "to": "薗",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "奇",
+          "to": "畸",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "奨",
+          "to": "獎",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "妊",
+          "to": "姙",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "姉",
+          "to": "姊",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "州",
+          "to": "洲",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "幸",
+          "to": "倖",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "座",
+          "to": "坐",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "弦",
+          "to": "絃",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "戒",
+          "to": "誡",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "拍",
+          "to": "搏",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "敘",
+          "to": "敍",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "昇",
+          "to": "陞",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "暗",
+          "to": "闇",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "杯",
+          "to": "盃",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "模",
+          "to": "摸",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "欲",
+          "to": "慾",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "氷",
+          "to": "冰",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "没",
+          "to": "歿",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "注",
+          "to": "註",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "消",
+          "to": "銷",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "湾",
+          "to": "彎",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "溶",
+          "to": "熔",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "炎",
+          "to": "焔",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "焔",
+          "to": "焰",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "略",
+          "to": "掠",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "知",
+          "to": "智",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "窓",
+          "to": "窗",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "粘",
+          "to": "黏",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "糾",
+          "to": "糺",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "編",
+          "to": "篇",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "萌",
+          "to": "萠",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "補",
+          "to": "輔",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "跡",
+          "to": "蹟",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "踏",
+          "to": "蹈",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "連",
+          "to": "連",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "郭",
+          "to": "廓",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "醤",
+          "to": "醬",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "野",
+          "to": "埜",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "阻",
+          "to": "沮",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "集",
+          "to": "輯",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "鴎",
+          "to": "鷗",
+          "source_category": "03_kanji_single_variants"
+        }
+      ]
+    }
+  ]
+}

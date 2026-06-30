@@ -79,3 +79,15 @@
 - 旧 `phrase_rules` / `character_map` 直下形式
 
 これらは読込時に v2 ツリーへ正規化する。保存時は常に v2 形式で出力する。
+## v3 補足
+
+- 現行保存形式は `schema_version: 3` だが、tree の基本構造は `roots -> children -> entries` のまま維持する。
+- `node.kind` は保存上の主種別であり、各 entry の最終的な runtime 到達先そのものではない。
+- entry ごとの runtime 到達先は次の判定で決まる。
+  - `sequence`
+  - `conditions.prev/current/next`
+  - `match_target`
+  - `type=verb|adjective|literal|compound|renyou`
+- 上記を持つ rule は runtime で `token-rules` 側へ受け流れる。
+- `regex` rule は node kind が `token-rules` でも dictionary 側に残りうる。
+- bulk import では `;タイトル` 行を置くと、その後の行を選択 node 直下の同名子箱へ投入する。同名子箱があれば再利用する。

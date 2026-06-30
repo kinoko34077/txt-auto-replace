@@ -1,0 +1,1003 @@
+{
+  "id": "review-needed",
+  "label": "要レビュー保留",
+  "target_bundle": "manual-review",
+  "kind": "reorganized-stage",
+  "intent": "現行版へ直接投入すると誤爆しやすい強圧縮・略称・部分一致ルールを隔離する。",
+  "groups": [
+    {
+      "id": "aggressive-numeric-compactions",
+      "label": "強い数字圧縮",
+      "status": "review-needed",
+      "application_path": "manual-review",
+      "source_categories": [
+        "02_numbers_units"
+      ],
+      "entries": [
+        {
+          "from": "0,000円",
+          "to": "萬圓",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "000万",
+          "to": "千萬",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "1,000円",
+          "to": "千圓",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "100万",
+          "to": "百萬",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "セカンダリ",
+          "to": "2次",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "セカンダリー",
+          "to": "2次",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "セブンス",
+          "to": "7s",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "ナインス",
+          "to": "9s",
+          "source_category": "02_numbers_units"
+        },
+        {
+          "from": "時間半",
+          "to": ".5h",
+          "source_category": "02_numbers_units"
+        }
+      ]
+    },
+    {
+      "id": "single-character-noops",
+      "label": "自己写像や no-op",
+      "status": "review-needed",
+      "application_path": "manual-review",
+      "source_categories": [
+        "03_kanji_single_variants",
+        "06_ben_disambiguation",
+        "08_kanji_phrase_variants"
+      ],
+      "entries": [
+        {
+          "from": "叶",
+          "to": "叶",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "緖",
+          "to": "緖",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "諸",
+          "to": "諸",
+          "source_category": "03_kanji_single_variants"
+        },
+        {
+          "from": "御利用",
+          "to": "御利用",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御報告",
+          "to": "御報告",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御契約",
+          "to": "御契約",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御相談",
+          "to": "御相談",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御確認",
+          "to": "御確認",
+          "source_category": "08_kanji_phrase_variants"
+        },
+        {
+          "from": "御返信",
+          "to": "御返信",
+          "source_category": "08_kanji_phrase_variants"
+        }
+      ]
+    },
+    {
+      "id": "latin-and-brand-shorthand",
+      "label": "ラテン文字・製品名の略称化",
+      "status": "review-needed",
+      "application_path": "manual-review",
+      "source_categories": [
+        "09_general_phrases_misc"
+      ],
+      "entries": [
+        {
+          "from": "Android",
+          "to": "泥",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "Bluetooth",
+          "to": "靑齒",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "pixiv",
+          "to": "澁",
+          "source_category": "09_general_phrases_misc"
+        }
+      ]
+    },
+    {
+      "id": "deletions",
+      "label": "削除系",
+      "status": "review-needed",
+      "application_path": "manual-review",
+      "source_categories": [
+        "09_general_phrases_misc"
+      ],
+      "entries": [
+        {
+          "from": "おんぷ",
+          "to": "",
+          "source_category": "09_general_phrases_misc"
+        }
+      ]
+    },
+    {
+      "id": "symbol-and-layout-shortcuts",
+      "label": "記号・レイアウト系短縮",
+      "status": "review-needed",
+      "application_path": "manual-review",
+      "source_categories": [
+        "09_general_phrases_misc"
+      ],
+      "entries": [
+        {
+          "from": "サイエンス・フィクション",
+          "to": "SF",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "サウンド・エフェクト",
+          "to": "SE",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "チンギス・カン",
+          "to": "成吉思汗",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "チンギス・ハン",
+          "to": "成吉思汗",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "チンギス・ハーン",
+          "to": "成吉思汗",
+          "source_category": "09_general_phrases_misc"
+        }
+      ]
+    },
+    {
+      "id": "ultra-short-compactions",
+      "label": "超短縮語",
+      "status": "review-needed",
+      "application_path": "manual-review",
+      "source_categories": [
+        "09_general_phrases_misc"
+      ],
+      "entries": [
+        {
+          "from": "あー",
+          "to": "啊",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "お疲れ様",
+          "to": "乙",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "から",
+          "to": "〰",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "される",
+          "to": "さる",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "しよう",
+          "to": "せむ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "じゃあ",
+          "to": "ぢゃ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "する。",
+          "to": "す｡",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "するけど",
+          "to": "せど",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "すれば",
+          "to": "せば",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ずつ",
+          "to": "づゝ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "せや",
+          "to": "せや",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "たこと",
+          "to": "たヿ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "たのが",
+          "to": "たが",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "っていう",
+          "to": "て",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "つつ",
+          "to": "つゝ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "てある",
+          "to": "たる",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "てこと",
+          "to": "てヿ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "でしょ",
+          "to": "でせ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "とナカイ",
+          "to": "馴鹿",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "なぜなら",
+          "to": "∵",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "になる",
+          "to": "なる",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "のは",
+          "to": "は",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "のも",
+          "to": "も",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "のを",
+          "to": "を",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ぽい",
+          "to": "ぽ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ます",
+          "to": "〼",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "らなくて",
+          "to": "らで",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "るけど",
+          "to": "れど",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "るけれど",
+          "to": "れど",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ること",
+          "to": "る",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ることが",
+          "to": "るが",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "るのが",
+          "to": "るが",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "れる。",
+          "to": "る｡",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "わなくて",
+          "to": "わで",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "をする",
+          "to": "する",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ウィキ",
+          "to": "ヰキ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "カッコー",
+          "to": "郭公",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "カテゴリ",
+          "to": "糧",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "カード",
+          "to": "札",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ガァ",
+          "to": "嘎",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ガーガー",
+          "to": "嘎",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ギョーザ",
+          "to": "餃子",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "グァム",
+          "to": "瓦無",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "グアム",
+          "to": "瓜姆",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "コト",
+          "to": "ヿ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "シャボン",
+          "to": "石鹸",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ツッコ",
+          "to": "突込",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ツッコミ",
+          "to": "突込",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ドコモ",
+          "to": "茸",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ドングリ",
+          "to": "團栗",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "パイン",
+          "to": "鳳梨",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "パソコン",
+          "to": "PC",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ピクシブ",
+          "to": "澁",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "プラマイ",
+          "to": "±",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "三角",
+          "to": "∆",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "三角形",
+          "to": "∆",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "令和",
+          "to": "㋿",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "何故なら",
+          "to": "∵",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "偏微分",
+          "to": "∂",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "全て",
+          "to": "∀",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "八分音符",
+          "to": "♪",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "出来ず",
+          "to": "叵",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "出来ない",
+          "to": "叵",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "否定",
+          "to": "¬",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "商標",
+          "to": "™",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "四分音符",
+          "to": "♩",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "大正",
+          "to": "㍽",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "存在する",
+          "to": "∃",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "定義",
+          "to": "≡",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "平成",
+          "to": "㍻",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "平方根",
+          "to": "√",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "従って",
+          "to": "∴",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "押し付け",
+          "to": "掗",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "明治",
+          "to": "㍾",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "昭和",
+          "to": "㍼",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "有限会社",
+          "to": "㈲",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "株式会社",
+          "to": "㍿",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "段落",
+          "to": "¶",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "無限",
+          "to": "∞",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "用い",
+          "to": "用ゐ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "登録商標",
+          "to": "®",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "相似",
+          "to": "∽",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "禁止し",
+          "to": "禁じ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "積分",
+          "to": "∫",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "空集合",
+          "to": "∅",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "美味い",
+          "to": "旨い",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "角度",
+          "to": "∠",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "赤ん坊",
+          "to": "孲",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "逆感嘆符",
+          "to": "¡",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "選び",
+          "to": "撰び",
+          "source_category": "09_general_phrases_misc"
+        }
+      ]
+    },
+    {
+      "id": "substring-and-morphology-shortcuts",
+      "label": "部分一致と語尾省略系",
+      "status": "review-needed",
+      "application_path": "manual-review",
+      "source_categories": [
+        "09_general_phrases_misc"
+      ],
+      "entries": [
+        {
+          "from": "いまし",
+          "to": "ゐまし",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "います",
+          "to": "ゐます",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "いませ",
+          "to": "ゐませ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "かなくても",
+          "to": "かでも",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "さなくても",
+          "to": "さでも",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "されている",
+          "to": "せらる",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "したがって",
+          "to": "∴",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "しようとす",
+          "to": "せむず",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "じゃな",
+          "to": "ぢゃな",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "たなくても",
+          "to": "たでも",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ちゃんねる",
+          "to": "ch",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "である場合",
+          "to": "な時",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ななくても",
+          "to": "なでも",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "まなくても",
+          "to": "までも",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "らなくても",
+          "to": "らでも",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "れてい",
+          "to": "れてゐ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "れてしまってい",
+          "to": "れにけ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "わなくても",
+          "to": "わでも",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "アプリ",
+          "to": "App",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "アプリケーション",
+          "to": "App",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "インゲンマメ",
+          "to": "隱元豆",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "インターフェース",
+          "to": "UI",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "オランダ",
+          "to": "和蘭･阿蘭陀",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "オープンソース",
+          "to": "OSS",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "オープンソースソフトウェア",
+          "to": "OSS",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "カテゴリー",
+          "to": "糧",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "グラフィカルユーザインタフェース",
+          "to": "GUI",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "コンピュータ",
+          "to": "電腦",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "コンピューター",
+          "to": "電腦",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "サイエンスフィクション",
+          "to": "SF",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "サウンドエフェクト",
+          "to": "SE",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "シェークスピア",
+          "to": "沙翁",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "シャンペン",
+          "to": "三鞭酒",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "スメルハラスメント",
+          "to": "スメハラ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "スモールハラスメント",
+          "to": "スメハラ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "セキュリティー",
+          "to": "セキュ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "セクシャルハラスメント",
+          "to": "セクハラ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "タコが出來",
+          "to": "胼胝が出來",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "テンプラ",
+          "to": "天麩羅",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ドミナント",
+          "to": "屬",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ハンガリー",
+          "to": "洪牙利･匈牙利",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "バイオリン",
+          "to": "提琴",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "バスケットボール",
+          "to": "籠球",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "バッファ",
+          "to": "buf",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "バッファー",
+          "to": "buf",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "パイナップル",
+          "to": "鳳梨",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "パパイア",
+          "to": "萬壽果",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "パパイヤ",
+          "to": "萬壽果",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "フェイスブック",
+          "to": "Fb",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ブルートゥース",
+          "to": "靑齒",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "プラスマイナス",
+          "to": "±",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "プログラマ",
+          "to": "PG",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "プログラミング",
+          "to": "PG",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "プロジェクト",
+          "to": "PRJ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ベートーベン",
+          "to": "貝多芬",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ホウレンソウ",
+          "to": "菠薐草",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ホッカイロ",
+          "to": "改羅",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ポインタ",
+          "to": "ptr",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ポインター",
+          "to": "ptr",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "リンカーン",
+          "to": "林肯",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ワグナー",
+          "to": "瓦格納",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "ワーグナー",
+          "to": "瓦格納",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "常識的に考",
+          "to": "常考",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "御問合せ",
+          "to": "御問合せ",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "破線垂直バー",
+          "to": "¦",
+          "source_category": "09_general_phrases_misc"
+        },
+        {
+          "from": "紀元前",
+          "to": "B.C",
+          "source_category": "09_general_phrases_misc"
+        }
+      ]
+    }
+  ]
+}

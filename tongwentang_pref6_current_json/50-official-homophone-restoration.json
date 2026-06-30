@@ -1,0 +1,30 @@
+{
+  "id": "official-homophone-restoration",
+  "label": "告示・同音書換復元",
+  "target_bundle": "official-homophone-restoration",
+  "kind": "reorganized-stage",
+  "intent": "告示系の固定熟語復元を Stage5.5 相当の公式系辞書へ寄せる。",
+  "groups": [
+    {
+      "id": "official-restoration-phrases",
+      "label": "告示系の固定熟語",
+      "status": "active-candidate",
+      "application_path": "official-homophone-restoration.phrase_rules",
+      "source_categories": [
+        "07_homophone_restoration_phrases"
+      ],
+      "entries": [
+        {
+          "from": "七転八倒",
+          "to": "七顚八倒",
+          "source_category": "07_homophone_restoration_phrases"
+        },
+        {
+          "from": "転覆",
+          "to": "顛覆",
+          "source_category": "07_homophone_restoration_phrases"
+        }
+      ]
+    }
+  ]
+}

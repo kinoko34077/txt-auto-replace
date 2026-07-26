@@ -1,11 +1,11 @@
-(() => {
+﻿(() => {
   "use strict";
 
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
   const STORAGE_KEY = "bundleOverrideSettingsV1";
+  const SAVED_PAYLOAD_HISTORY_KEY = "bundleOverrideSavedPayloadHistoryV1";
   const DIAGNOSTIC_UI_STATE_KEY = "diagnosticUiStateV1";
   const BUNDLE_UI_STATE_KEY = "bundleOptionsUiStateV1";
-  const SAVE_HISTORY_STORAGE_KEY = "bundleSavedPayloadHistoryV1";
   const DICT_PATH = "./dict/";
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
   const STAGE4_BUNDLE_ID = "okurigana-abbreviation-stage4";
@@ -23,8 +23,8 @@
       enabled: true,
       hidden: false,
       default_markers: Object.freeze({
-        open: "《",
-        close: "》"
+        open: "\u300a",
+        close: "\u300b"
       })
     })
   });
@@ -59,13 +59,15 @@
     dragPayload: null,
     searchDebounceTimer: null,
     editSession: null,
-    tableUi: {},
+    importFileMode: "replace",
+    importSession: null,
+    savedPayloadHistory: [],
     history: {
       undoStack: [],
       redoStack: [],
       openEditSession: null
     },
-    savedPayloadHistory: [],
+    tableUi: {},
     bundleUi: {
       selectedNodeId: "__all__",
       expandedTreeIds: {},
@@ -81,6 +83,7 @@
   const sitesRoot = document.getElementById("sites-root");
   const panelBundles = document.getElementById("panel-bundles");
   const panelRuby = document.getElementById("panel-ruby");
+  const panelImport = document.getElementById("panel-import");
   const panelKatakanaLongVowel = document.getElementById("panel-katakana-long-vowel");
   const panelStage4 = document.getElementById("panel-stage4");
   const panelDiagnostics = document.getElementById("panel-diagnostics");
@@ -89,6 +92,7 @@
   const panelSites = document.getElementById("panel-sites");
   const tabBundlesButton = document.getElementById("tab-bundles");
   const tabRubyButton = document.getElementById("tab-ruby");
+  const tabImportButton = document.getElementById("tab-import");
   const tabKatakanaLongVowelButton = document.getElementById("tab-katakana-long-vowel");
   const tabStage4Button = document.getElementById("tab-stage4");
   const tabDiagnosticsButton = document.getElementById("tab-diagnostics");
@@ -105,6 +109,7 @@
   const addBundleButton = document.getElementById("add-bundle");
   const reloadDefaultsButton = document.getElementById("reload-defaults");
   const importSettingsButton = document.getElementById("import-settings");
+  const importAdditionalButton = document.getElementById("import-additional");
   const exportJsonButton = document.getElementById("export-json");
   const exportYamlButton = document.getElementById("export-yaml");
   const importFileInput = document.getElementById("import-file");
@@ -115,6 +120,7 @@
   const tokenizerResult = document.getElementById("tokenizer-result");
   const openShortcutsButton = document.getElementById("open-shortcuts");
   const addCurrentSiteButton = document.getElementById("add-current-site");
+  const importRoot = document.getElementById("import-root");
 
   const t = (path, params) => {
     return typeof UiStrings?.get === "function"
@@ -177,6 +183,47 @@
   };
 
   const cloneValue = (value) => JSON.parse(JSON.stringify(value));
+
+  const createEmptyImportSession = () => ({
+    fileName: "",
+    roots: [],
+    selectedSourceId: null,
+    expandedSourceIds: {},
+    options: {
+      mode: "merge-matched"
+    }
+  });
+
+  const normalizeImportSession = (value) => {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    return {
+      fileName: `${value.fileName ?? ""}`,
+      roots: Array.isArray(value.roots) ? value.roots : [],
+      selectedSourceId: value.selectedSourceId ? `${value.selectedSourceId}` : null,
+      expandedSourceIds: value.expandedSourceIds && typeof value.expandedSourceIds === "object" ? value.expandedSourceIds : {},
+      options: {
+        mode: ["append-only", "merge-matched", "split-into-child-box"].includes(value?.options?.mode)
+          ? value.options.mode
+          : "merge-matched"
+      }
+    };
+  };
+
+  const snapshotBundleUiState = () => ({
+    selectedNodeId: state.bundleUi.selectedNodeId,
+    expandedTreeIds: cloneValue(state.bundleUi.expandedTreeIds ?? {}),
+    searchText: state.bundleUi.searchText ?? "",
+    searchTextDraft: state.bundleUi.searchTextDraft ?? "",
+    migrationMode: state.bundleUi.migrationMode === true
+  });
+
+  const restoreBundleUiState = (snapshot) => {
+    state.bundleUi = normalizeBundleUiState(snapshot);
+  };
+
+  const showMigrationDetails = () => state.bundleUi?.migrationMode === true;
 
   const fallbackSplitCommaSeparatedValues = (value) => {
     if (Array.isArray(value)) {
@@ -345,14 +392,14 @@
     if (Array.isArray(entry?.from_options) && entry.from_options.length > 1) {
       return {
         code: "split-from-options",
-        message: "regex ON の rule に plain 用 from_options が残っています。正規表現を再入力してください。"
+        message: "Regex rule cannot use plain from_options.",
       };
     }
 
     if (Array.isArray(entry?.candidates) && entry.candidates.length > 1) {
       return {
         code: "split-candidates",
-        message: "regex ON の rule に plain 用 replacement candidates が残っています。置換後を再入力してください。"
+        message: "Regex rule cannot use plain replacement candidates.",
       };
     }
 
@@ -361,7 +408,7 @@
     } catch (error) {
       return {
         code: "invalid-regex",
-        message: `無効な正規表現です: ${error?.message ?? error}`
+        message: `霎滂ｽ｡陷会ｽｹ邵ｺ・ｪ雎・ｽ｣髫募臆・｡・ｨ霑ｴ・ｾ邵ｺ・ｧ邵ｺ繝ｻ ${error?.message ?? error}`
       };
     }
 
@@ -373,7 +420,7 @@
     if (replacementCandidates.length !== 1 || replacementCandidates[0] !== normalizedTo) {
       return {
         code: "replacement-mode-mismatch",
-        message: "regex ON の置換後に plain 用候補分割の痕跡があります。置換後を再入力してください。"
+        message: "Regex replacement mode is inconsistent with candidates.",
       };
     }
 
@@ -385,21 +432,21 @@
       return {
         placeholder: field === "from" ? "" : "",
         title: field === "from"
-          ? "通常一致。カンマで OR を指定できます。"
-          : "通常置換。カンマで候補指定できます。"
+          ? "Plain source text or from_options list."
+          : "Plain replacement text or candidates list."
       };
     }
 
     if (field === "from") {
       return {
         placeholder: "JS RegExp source",
-        title: "JS RegExp source。文字として記号を使う場合は \\ で escape します。"
+        title: "JavaScript RegExp source. Use double backslashes when needed."
       };
     }
 
     return {
       placeholder: "JS replacement",
-      title: "JS replacement string。$1 $2 $& $$ を使えます。"
+      title: "JavaScript replacement string. Supports $1, $2, $&, and $$."
     };
   };
 
@@ -433,10 +480,10 @@
       });
     };
 
-    if (hasCurrentPos("動詞")) {
+    if (hasCurrentPos("陷肴・・ｩ繝ｻ)) {
       return "verb";
     }
-    if (hasCurrentPos("形容詞")) {
+    if (hasCurrentPos("陟厄ｽ｢陞ｳ・ｹ髫ｧ繝ｻ)) {
       return "adjective";
     }
 
@@ -470,12 +517,12 @@
 
   const getEntryResolvedRuleLabel = (path) => {
     if (path === "token") {
-      return "token行き";
+      return "token髯ｦ蠕娯ｳ";
     }
     if (path === "dictionary") {
-      return "dictionary行き";
+      return "dictionary髯ｦ蠕娯ｳ";
     }
-    return "要確認";
+    return "髫補悪・｢・ｺ髫ｱ繝ｻ;
   };
 
   const summarizeEntriesByResolvedPath = (entries) => {
@@ -824,7 +871,7 @@
         collapsedNodes: getCollapsedNodes()
       }
     }).catch((error) => {
-      console.error("險ｺ譁ｭ UI 迥ｶ諷九・菫晏ｭ倥↓螟ｱ謨励＠縺ｾ縺励◆", error);
+      console.error("鬮ｫ・ｪ繝ｻ・ｺ髫ｴ繝ｻ・ｽ・ｭ UI 髴托ｽ･繝ｻ・ｶ髫ｲ・ｷ闕ｵ譏ｴ繝ｻ髣厄ｽｫ隴取得・ｽ・ｭ陋滂ｽ･遶頑･｢譽斐・・ｱ髫ｰ・ｨ陷会ｽｱ繝ｻ・ｰ驍ｵ・ｺ繝ｻ・ｾ驍ｵ・ｺ陷会ｽｱ隨ｳ繝ｻ, error);
     });
   };
 
@@ -834,7 +881,7 @@
       selectedNodeId: `${value?.selectedNodeId ?? "__all__"}` || "__all__",
       expandedTreeIds: value?.expandedTreeIds && typeof value.expandedTreeIds === "object" ? value.expandedTreeIds : {},
       searchText,
-      searchTextDraft: searchText,
+      searchTextDraft: `${value?.searchTextDraft ?? searchText}`,
       migrationMode: value?.migrationMode === true
     };
   };
@@ -845,6 +892,7 @@
         selectedNodeId: state.bundleUi.selectedNodeId,
         expandedTreeIds: state.bundleUi.expandedTreeIds,
         searchText: state.bundleUi.searchText,
+        searchTextDraft: state.bundleUi.searchTextDraft,
         migrationMode: state.bundleUi.migrationMode === true
       }
     }).catch((error) => {
@@ -1071,7 +1119,7 @@
     const url = chrome.runtime.getURL(path) + `?t=${Date.now()}`;
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
-      throw new Error(`${path} 驍ｵ・ｺ繝ｻ・ｮ鬮ｫ・ｱ繝ｻ・ｭ鬮ｴ雜｣・ｽ・ｼ驍ｵ・ｺ繝ｻ・ｫ髯樊ｻゑｽｽ・ｱ髫ｰ・ｨ陷会ｽｱ繝ｻ・ｰ驍ｵ・ｺ繝ｻ・ｾ驍ｵ・ｺ陷会ｽｱ隨ｳ繝ｻ ${response.status}`);
+      throw new Error(`${path} 鬯ｩ謳ｾ・ｽ・ｵ郢晢ｽｻ繝ｻ・ｺ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｮ鬯ｯ・ｮ繝ｻ・ｫ郢晢ｽｻ繝ｻ・ｱ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｭ鬯ｯ・ｮ繝ｻ・ｴ鬮ｮ諛ｶ・ｽ・｣郢晢ｽｻ繝ｻ・ｽ郢晢ｽｻ繝ｻ・ｼ鬯ｩ謳ｾ・ｽ・ｵ郢晢ｽｻ繝ｻ・ｺ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｫ鬯ｮ・ｯ隶灘･・ｽｽ・ｻ郢ｧ謇假ｽｽ・ｽ繝ｻ・ｽ郢晢ｽｻ繝ｻ・ｱ鬯ｮ・ｫ繝ｻ・ｰ郢晢ｽｻ繝ｻ・ｨ鬮ｯ・ｷ闔ｨ螟ｲ・ｽ・ｽ繝ｻ・ｱ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｰ鬯ｩ謳ｾ・ｽ・ｵ郢晢ｽｻ繝ｻ・ｺ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｾ鬯ｩ謳ｾ・ｽ・ｵ郢晢ｽｻ繝ｻ・ｺ鬮ｯ・ｷ闔ｨ螟ｲ・ｽ・ｽ繝ｻ・ｱ鬮ｫ・ｨ繝ｻ・ｳ驛｢譎｢・ｽ・ｻ ${response.status}`);
     }
 
     return JSON5.parse(await response.text());
@@ -1104,7 +1152,7 @@
         const url = new URL(filename, new URL(DICT_PATH, window.location.href)).href;
         const response = await fetch(url, { cache: "no-store" });
         if (!response.ok) {
-          throw new Error(`鬮ｴ蜿厄ｽｨ髮・ｽｶ讙趣ｽｹ譎・ｽｼ譁撰ｼ憺Δ・ｧ繝ｻ・､驛｢譎｢・ｽ・ｫ髯ｷ・ｿ鬮｢ﾂ繝ｻ・ｾ隲､諛ｶ・ｽ・､繝ｻ・ｱ髫ｰ・ｨ郢晢ｽｻ ${response.status} ${url}`);
+          throw new Error(`鬯ｯ・ｮ繝ｻ・ｴ髯ｷ・ｿ陷ｴ繝ｻ・ｽ・ｽ繝ｻ・ｨ鬯ｮ・ｮ郢晢ｽｻ繝ｻ・ｽ繝ｻ・ｶ髫ｶ蜻ｵ・ｶ・｣繝ｻ・ｽ繝ｻ・ｹ髫ｴ蠑ｱ繝ｻ繝ｻ・ｽ繝ｻ・ｼ髫ｴ竏ｵ閻ｸ繝ｻ・ｼ隲橸ｽｺ・取鱒繝ｻ繝ｻ・ｧ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・､鬯ｩ蟷｢・ｽ・｢髫ｴ雜｣・ｽ・｢郢晢ｽｻ繝ｻ・ｽ郢晢ｽｻ繝ｻ・ｫ鬯ｮ・ｯ繝ｻ・ｷ郢晢ｽｻ繝ｻ・ｿ鬯ｯ・ｮ繝ｻ・｢繝ｻ縺､ﾂ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｾ鬮ｫ・ｲ繝ｻ・､髫ｲ蟷｢・ｽ・ｶ郢晢ｽｻ繝ｻ・ｽ郢晢ｽｻ繝ｻ・､驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｱ鬯ｮ・ｫ繝ｻ・ｰ郢晢ｽｻ繝ｻ・ｨ鬩幢ｽ｢隴趣ｽ｢繝ｻ・ｽ繝ｻ・ｻ ${response.status} ${url}`);
         }
         await response.arrayBuffer();
         return url;
@@ -1189,10 +1237,10 @@
     if (!normalized) {
       return fallback;
     }
-    if (["1", "true", "yes", "on", "enabled", "enable", "有効", "譛牙柑"].includes(normalized)) {
+    if (["1", "true", "yes", "on", "enabled", "enable", "隴帷甥譟・, "髫ｴ蟶ｷ逕･隴溘・].includes(normalized)) {
       return true;
     }
-    if (["0", "false", "no", "off", "disabled", "disable", "無効", "辟｡蜉ｹ"].includes(normalized)) {
+    if (["0", "false", "no", "off", "disabled", "disable", "霎滂ｽ｡陷会ｽｹ", "髴取ｻゑｽｽ・｡髯ｷ莨夲ｽｽ・ｹ"].includes(normalized)) {
       return false;
     }
     return fallback;
@@ -1237,19 +1285,19 @@
     }
     return [
       "enabled",
-      "有効",
+      "隴帷甥譟・,
       "regex",
-      "正規",
-      "正規表現",
+      "雎・ｽ｣髫輔・,
+      "雎・ｽ｣髫募臆・｡・ｨ霑ｴ・ｾ",
       "basic_match",
       "basic",
-      "原形一致",
+      "陷ｴ貅ｷ・ｽ・｢闕ｳﾂ髢ｾ・ｴ",
       "from",
-      "変更前",
+      "陞溽判蟲ｩ陷代・,
       "to",
-      "変更後",
+      "陞溽判蟲ｩ陟輔・,
       "priority",
-      "優先",
+      "陷・ｽｪ陷医・,
       "sequence"
     ].includes(normalized);
   };
@@ -1274,36 +1322,36 @@
     const value = `${rawValue ?? ""}`.trim();
     switch (normalizeBulkFieldName(fieldName)) {
       case "enabled":
-      case "有効":
-      case "譛牙柑":
+      case "隴帷甥譟・:
+      case "髫ｴ蟶ｷ逕･隴溘・:
         entry.enabled = parseBooleanLike(value, true);
         return;
       case "regex":
-      case "正規":
-      case "正規表現":
-      case "豁｣隕・":
-      case "豁｣隕剰｡ｨ迴ｾ":
+      case "雎・ｽ｣髫輔・:
+      case "雎・ｽ｣髫募臆・｡・ｨ霑ｴ・ｾ":
+      case "髮弱・・ｽ・｣鬮ｫ霈斐・":
+      case "髮弱・・ｽ・｣鬮ｫ蜍溯㊥繝ｻ・｡繝ｻ・ｨ髴托ｽｴ繝ｻ・ｾ":
         entry.regex = parseBooleanLike(value, false);
         return;
       case "basic_match":
       case "basic":
-      case "原形一致":
-      case "蜴溷ｽ｢荳閾ｴ":
+      case "陷ｴ貅ｷ・ｽ・｢闕ｳﾂ髢ｾ・ｴ":
+      case "髯ｷ・ｴ雋・ｽｷ繝ｻ・ｽ繝ｻ・｢髣包ｽｳ・つ鬮｢・ｾ繝ｻ・ｴ":
         entry.match_target = effectiveKind === "token-rules" && parseBooleanLike(value, false) ? "basic_form" : null;
         return;
       case "from":
-      case "変更前":
-      case "螟画峩蜑・":
+      case "陞溽判蟲ｩ陷代・:
+      case "髯樊ｺｽ蛻､陝ｲ・ｩ髯ｷ莉｣繝ｻ":
         setEntryFromValue(entry, value);
         return;
       case "to":
-      case "変更後":
-      case "螟画峩蠕・":
+      case "陞溽判蟲ｩ陟輔・:
+      case "髯樊ｺｽ蛻､陝ｲ・ｩ髯溯ｼ斐・":
         entry.to = value;
         return;
       case "priority":
-      case "優先":
-      case "蜆ｪ蜈・":
+      case "陷・ｽｪ陷医・:
+      case "髯ｷ繝ｻ・ｽ・ｪ髯ｷ蛹ｻ繝ｻ":
         entry.priority = Number.isFinite(Number(value)) ? Number(value) : 90;
         return;
       case "sequence":
@@ -1439,10 +1487,10 @@
         cells = line.split("->").map((cell) => cell.trim());
       } else if (line.includes("=>")) {
         cells = line.split("=>").map((cell) => cell.trim());
-      } else if (line.includes("→")) {
-        cells = line.split("→").map((cell) => cell.trim());
-      } else if (line.includes("竊・")) {
-        cells = line.split("竊・").map((cell) => cell.trim());
+      } else if (line.includes("遶翫・)) {
+        cells = line.split("遶翫・).map((cell) => cell.trim());
+      } else if (line.includes("驕ｶ鄙ｫ繝ｻ")) {
+        cells = line.split("驕ｶ鄙ｫ繝ｻ").map((cell) => cell.trim());
       } else {
         cells = parseDelimitedRow(line, detectBulkImportDelimiter(line));
       }
@@ -1480,29 +1528,29 @@
     const normalizedFieldName = normalizeBulkFieldName(fieldName);
     switch (normalizedFieldName) {
       case "enabled":
-      case "有効":
+      case "隴帷甥譟・:
         entry.enabled = parseBooleanLike(value, true);
         return;
       case "regex":
-      case "正規":
-      case "正規表現":
+      case "雎・ｽ｣髫輔・:
+      case "雎・ｽ｣髫募臆・｡・ｨ霑ｴ・ｾ":
         entry.regex = parseBooleanLike(value, false);
         return;
       case "basic_match":
       case "basic":
-      case "原形一致":
+      case "陷ｴ貅ｷ・ｽ・｢闕ｳﾂ髢ｾ・ｴ":
         entry.match_target = effectiveKind === "token-rules" && parseBooleanLike(value, false) ? "basic_form" : null;
         return;
       case "from":
-      case "変更前":
+      case "陞溽判蟲ｩ陷代・:
         setEntryFromValue(entry, value);
         return;
       case "to":
-      case "変更後":
+      case "陞溽判蟲ｩ陟輔・:
         entry.to = value;
         return;
       case "priority":
-      case "優先":
+      case "陷・ｽｪ陷医・:
         entry.priority = Number.isFinite(Number(value)) ? Number(value) : 90;
         return;
       case "sequence":
@@ -1725,16 +1773,16 @@
 
   const applyBulkImportToNode = (node, effectiveKind, text, defaultDelimiter = "") => {
     if (!node) {
-      return { error: "取り込み先の箱が見つかりません。" };
+      return { error: "陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ陷亥現繝ｻ驍ゑｽｱ邵ｺ迹夲ｽｦ荵昶命邵ｺ荵晢ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ };
     }
     if (state.bundleUi.selectedNodeId === "__all__") {
-      return { error: "__all__ のままでは箱分け先を確定できません。明示的に root か group を選択してください。" };
+      return { error: "__all__ 邵ｺ・ｮ邵ｺ・ｾ邵ｺ・ｾ邵ｺ・ｧ邵ｺ・ｯ驍ゑｽｱ陋ｻ繝ｻ・陷亥現・帝￡・ｺ陞ｳ螢ｹ縲堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繧医・驕会ｽｺ騾ｧ繝ｻ竊・root 邵ｺ繝ｻgroup 郢ｧ蟶昶・隰壽ｧｭ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ };
     }
 
     const parsed = parseBulkImportSections(text, effectiveKind, defaultDelimiter);
     if (!parsed.usesSections) {
       if (parsed.defaultEntries.length === 0) {
-        return { error: "一括登録できる行がありません。" };
+        return { error: "闕ｳﾂ隲｡・ｬ騾具ｽｻ鬪ｭ・ｲ邵ｺ・ｧ邵ｺ髦ｪ・矩勗蠕娯ｲ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ };
       }
       node.entries.push(...parsed.defaultEntries);
       return {
@@ -1768,7 +1816,7 @@
     }
 
     if (importedCount === 0) {
-      return { error: "一括登録できる行がありません。" };
+      return { error: "闕ｳﾂ隲｡・ｬ騾具ｽｻ鬪ｭ・ｲ邵ｺ・ｧ邵ｺ髦ｪ・矩勗蠕娯ｲ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ };
     }
 
     return {
@@ -1939,7 +1987,7 @@
       }
     }
 
-    throw new Error(`YAML 驍ｵ・ｺ繝ｻ・ｮ鬮ｯ・ｦ陟暮ｯ会ｽｽ蟶晏專繝ｻ・｣鬯ｩ・･陋ｹ・ｻ邵ｲ蝣､・ｸ・ｺ鬮ｦ・ｪ遶擾ｽｪ驍ｵ・ｺ陝ｶ蜻ｻ・ｽ繝ｻ ${text}`);
+    throw new Error(`YAML 鬯ｩ謳ｾ・ｽ・ｵ郢晢ｽｻ繝ｻ・ｺ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｮ鬯ｯ・ｮ繝ｻ・ｯ郢晢ｽｻ繝ｻ・ｦ鬮ｯ貊灘擠繝ｻ・ｯ闔ｨ螟ｲ・ｽ・ｽ繝ｻ・ｽ髯晢ｽｶ隴惹ｸ橸ｽｰ閧ｲ・ｹ譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・｣鬯ｯ・ｯ繝ｻ・ｩ郢晢ｽｻ繝ｻ・･鬮ｯ蜈ｷ・ｽ・ｹ郢晢ｽｻ繝ｻ・ｻ鬩搾ｽｵ繝ｻ・ｲ髯懶ｽ｣繝ｻ・､郢晢ｽｻ繝ｻ・ｸ郢晢ｽｻ繝ｻ・ｺ鬯ｯ・ｮ繝ｻ・ｦ郢晢ｽｻ繝ｻ・ｪ鬩包ｽｶ隰ｫ・ｾ繝ｻ・ｽ繝ｻ・ｪ鬯ｩ謳ｾ・ｽ・ｵ郢晢ｽｻ繝ｻ・ｺ鬮ｯ譎｢・ｽ・ｶ髯ｷ・ｻ繝ｻ・ｻ郢晢ｽｻ繝ｻ・ｽ驛｢譎｢・ｽ・ｻ ${text}`);
   };
 
   const normalizeYamlKey = (key) => parseYamlScalar(key);
@@ -2435,7 +2483,7 @@
 
   const normalizeManifestDefinition = (bundle, definition) => {
     if (!definition || !definition.kind) {
-      throw new Error(`${bundle.id} の定義が不正です。`);
+      throw new Error(`${bundle.id} 邵ｺ・ｮ陞ｳ螟ゑｽｾ・ｩ邵ｺ蠕｡・ｸ閧ｴ・ｭ・｣邵ｺ・ｧ邵ｺ蜷ｶﾂ・｡);
     }
     return normalizeNode({
       ...definition,
@@ -2596,130 +2644,168 @@
     };
   };
 
-  const buildHistorySnapshot = () => {
-    return {
-      roots: cloneValue(state.roots),
-      runtimeSettings: cloneValue(state.runtimeSettings),
-      disabledSites: cloneValue(state.disabledSites),
-      pageRubySettings: cloneValue(state.pageRubySettings),
-      popupBundleId: state.popupBundleId,
-      selectedNodeId: state.bundleUi.selectedNodeId,
-      focusedNodeId: state.focusedNodeId,
-      bundleUiState: {
-        expandedTreeIds: cloneValue(state.bundleUi.expandedTreeIds ?? {}),
-        searchText: `${state.bundleUi.searchText ?? ""}`,
-        searchTextDraft: `${state.bundleUi.searchTextDraft ?? state.bundleUi.searchText ?? ""}`,
-        migrationMode: state.bundleUi.migrationMode === true
-      },
-      collapsedNodes: cloneValue(state.collapsedNodes ?? {}),
-      activeTab: state.activeTab
-    };
+  const buildStoragePayload = () => ({
+    [STORAGE_KEY]: buildPayload()
+  });
+
+  const captureHistorySnapshot = () => ({
+    payload: buildPayload(),
+    selectedNodeId: state.bundleUi.selectedNodeId,
+    focusedNodeId: state.focusedNodeId,
+    activeTab: state.activeTab,
+    bundleUi: snapshotBundleUiState(),
+    importSession: cloneValue(state.importSession)
+  });
+
+  const stringifyHistorySnapshot = (snapshot) => {
+    return JSON.stringify(snapshot ?? null);
   };
 
-  const applyHistorySnapshot = (snapshot) => {
-    if (!snapshot?.roots) {
+  const restoreHistorySnapshot = (snapshot) => {
+    if (!snapshot || typeof snapshot !== "object") {
       return;
     }
-    state.roots = cloneValue(snapshot.roots);
-    state.runtimeSettings = cloneValue(snapshot.runtimeSettings ?? DEFAULT_RUNTIME_SETTINGS);
-    state.disabledSites = cloneValue(snapshot.disabledSites ?? DEFAULT_DISABLED_SITES);
-    state.pageRubySettings = cloneValue(snapshot.pageRubySettings ?? DEFAULT_PAGE_RUBY_SETTINGS);
-    state.popupBundleId = `${snapshot.popupBundleId ?? DEFAULT_POPUP_BUNDLE_ID}`.trim() || DEFAULT_POPUP_BUNDLE_ID;
-    ensureRuntimeSpecialRoots(state.roots);
-    ensurePopupBundleRoot(state.roots);
-    state.bundleUi = {
-      ...normalizeBundleUiState(snapshot.bundleUiState ?? state.bundleUi),
-      selectedNodeId: `${snapshot.selectedNodeId ?? "__all__"}` || "__all__"
-    };
+    applyPersistedPayloadToState(snapshot.payload ?? buildPayload());
+    restoreBundleUiState(snapshot.bundleUi ?? {
+      selectedNodeId: snapshot.selectedNodeId ?? "__all__",
+      searchText: "",
+      searchTextDraft: "",
+      migrationMode: false
+    });
     state.focusedNodeId = snapshot.focusedNodeId ?? null;
-    state.collapsedNodes = snapshot.collapsedNodes && typeof snapshot.collapsedNodes === "object"
-      ? cloneValue(snapshot.collapsedNodes)
-      : {};
-    state.activeTab = `${snapshot.activeTab ?? "bundles"}` || "bundles";
+    state.activeTab = snapshot.activeTab ?? "bundles";
+    state.importSession = normalizeImportSession(snapshot.importSession);
   };
 
-  const snapshotsEqual = (left, right) => {
-    return JSON.stringify(left) === JSON.stringify(right);
-  };
-
-  const getUndoLabel = () => state.history.undoStack[state.history.undoStack.length - 1]?.label ?? "";
-  const getRedoLabel = () => state.history.redoStack[state.history.redoStack.length - 1]?.label ?? "";
-
-  const pushHistoryItem = (item) => {
-    state.history.undoStack.push(item);
-    if (state.history.undoStack.length > MAX_HISTORY_STEPS) {
-      state.history.undoStack.splice(0, state.history.undoStack.length - MAX_HISTORY_STEPS);
+  const truncateHistoryStack = (stack, maxSize) => {
+    if (stack.length <= maxSize) {
+      return stack;
     }
-    state.history.redoStack = [];
+    return stack.slice(stack.length - maxSize);
   };
 
-  const commitHistoryEntry = (label, beforeSnapshot, afterSnapshot) => {
-    if (!beforeSnapshot || !afterSnapshot || snapshotsEqual(beforeSnapshot, afterSnapshot)) {
+  const pushHistoryItem = (label, beforeSnapshot, afterSnapshot) => {
+    if (!beforeSnapshot || !afterSnapshot) {
       return false;
     }
-    pushHistoryItem({
-      label,
-      beforeSnapshot,
-      afterSnapshot,
-      timestamp: Date.now()
-    });
+    if (stringifyHistorySnapshot(beforeSnapshot) === stringifyHistorySnapshot(afterSnapshot)) {
+      return false;
+    }
+    state.history.undoStack = truncateHistoryStack([
+      ...state.history.undoStack,
+      {
+        label,
+        beforeSnapshot,
+        afterSnapshot,
+        beforePayload: beforeSnapshot.payload,
+        afterPayload: afterSnapshot.payload,
+        selectedNodeId: afterSnapshot.selectedNodeId,
+        focusedNodeId: afterSnapshot.focusedNodeId,
+        timestamp: Date.now()
+      }
+    ], MAX_HISTORY_STEPS);
+    state.history.redoStack = [];
     return true;
   };
 
-  const runTrackedMutation = (label, mutate, { render = true } = {}) => {
-    const beforeSnapshot = buildHistorySnapshot();
-    const result = mutate();
-    const afterSnapshot = buildHistorySnapshot();
-    commitHistoryEntry(label, beforeSnapshot, afterSnapshot);
-    if (render) {
-      renderApp();
-    }
-    return result;
+  const clearOpenHistoryEditSession = () => {
+    state.history.openEditSession = null;
   };
 
-  const undoHistory = () => {
+  const beginHistoryEditSession = (key, label) => {
+    const existing = state.history.openEditSession;
+    if (existing?.key === key) {
+      return;
+    }
+    state.history.openEditSession = {
+      key,
+      label,
+      beforeSnapshot: captureHistorySnapshot()
+    };
+  };
+
+  const commitHistoryEditSession = (key, overrideLabel = null) => {
+    const session = state.history.openEditSession;
+    if (!session || session.key !== key) {
+      return false;
+    }
+    const committed = pushHistoryItem(overrideLabel ?? session.label, session.beforeSnapshot, captureHistorySnapshot());
+    clearOpenHistoryEditSession();
+    return committed;
+  };
+
+  const runStateTransaction = (label, mutate, { render = "app", skipRender = false } = {}) => {
+    const beforeSnapshot = captureHistorySnapshot();
+    const result = mutate();
+    const changed = pushHistoryItem(label, beforeSnapshot, captureHistorySnapshot());
+    if (!skipRender) {
+      if (render === "diagnostics") {
+        renderDiagnostics();
+      } else if (render === "bundles") {
+        renderBundles();
+      } else {
+        renderApp();
+      }
+    }
+    return { changed, result };
+  };
+
+  const runUndoAction = () => {
     const item = state.history.undoStack.pop();
     if (!item) {
       return false;
     }
-    applyHistorySnapshot(item.beforeSnapshot);
-    state.history.redoStack.push(item);
+    restoreHistorySnapshot(item.beforeSnapshot);
+    state.history.redoStack = truncateHistoryStack([
+      ...state.history.redoStack,
+      item
+    ], MAX_HISTORY_STEPS);
     renderApp();
-    setStatus(`取り消し: ${item.label}`, "info");
+    setStatus(`Undo: ${item.label}`, "info");
     return true;
   };
 
-  const redoHistory = () => {
+  const runRedoAction = () => {
     const item = state.history.redoStack.pop();
     if (!item) {
       return false;
     }
-    applyHistorySnapshot(item.afterSnapshot);
-    state.history.undoStack.push(item);
+    restoreHistorySnapshot(item.afterSnapshot);
+    state.history.undoStack = truncateHistoryStack([
+      ...state.history.undoStack,
+      item
+    ], MAX_HISTORY_STEPS);
     renderApp();
-    setStatus(`やり直し: ${item.label}`, "info");
+    setStatus(`Redo: ${item.label}`, "info");
     return true;
   };
 
-  const savePayloadHistory = async (payload) => {
-    const nextHistory = [
+  const appendSavedPayloadHistory = async (payload) => {
+    const nextHistory = truncateHistoryStack([
+      ...(Array.isArray(state.savedPayloadHistory) ? state.savedPayloadHistory : []),
       {
         savedAt: new Date().toISOString(),
         payload: cloneValue(payload)
-      },
-      ...state.savedPayloadHistory
-    ].slice(0, MAX_SAVED_PAYLOAD_HISTORY);
+      }
+    ], MAX_SAVED_PAYLOAD_HISTORY);
     state.savedPayloadHistory = nextHistory;
     await storageSet({
-      [SAVE_HISTORY_STORAGE_KEY]: nextHistory
+      [SAVED_PAYLOAD_HISTORY_KEY]: nextHistory
     });
   };
 
-  const isMigrationMode = () => state.bundleUi.migrationMode === true;
-
-  const buildStoragePayload = () => ({
-    [STORAGE_KEY]: buildPayload()
-  });
+  const syncHistoryButtons = () => {
+    if (undoButton) {
+      const latestUndo = state.history.undoStack[state.history.undoStack.length - 1] ?? null;
+      undoButton.textContent = latestUndo ? `Undo: ${latestUndo.label}` : "Undo";
+      undoButton.disabled = !latestUndo;
+    }
+    if (redoButton) {
+      const latestRedo = state.history.redoStack[state.history.redoStack.length - 1] ?? null;
+      redoButton.textContent = latestRedo ? `Redo: ${latestRedo.label}` : "Redo";
+      redoButton.disabled = !latestRedo;
+    }
+  };
 
   const applyPersistedPayloadToState = (payload) => {
     const importedRoots = normalizeImportedRoots(payload);
@@ -2739,13 +2825,13 @@
     await storageSet({
       [STORAGE_KEY]: payload
     });
-    await savePayloadHistory(payload);
+    await appendSavedPayloadHistory(payload);
     try {
       await notifyRuntimeSettingsApplied();
-      setStatus("設定を保存しました。現在のタブへ反映しました。", "success");
+      setStatus("髫ｪ・ｭ陞ｳ螢ｹ・定将譎擾ｽｭ蛟･・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繧画ｨ溯舉・ｨ邵ｺ・ｮ郢ｧ・ｿ郢晄じ竏郁愾閧ｴ荳千ｸｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "success");
     } catch (error) {
       console.warn("runtime notify failed after save", error);
-      setStatus(`設定は保存しました。runtime 通知は失敗しました: ${error.message}`, "warning");
+      setStatus(`髫ｪ・ｭ陞ｳ螢ｹ繝ｻ闖ｫ譎擾ｽｭ蛟･・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ・ｳuntime 鬨ｾ螟り｡咲ｸｺ・ｯ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ ${error.message}`, "warning");
     }
   };
 
@@ -2781,15 +2867,15 @@
     await storageSet({
       [STORAGE_KEY]: payload
     });
-    await savePayloadHistory(payload);
-    setStatus("設定を保存しました。表示タブを再読み込みしてください。", "success");
+    await appendSavedPayloadHistory(payload);
+    setStatus("髫ｪ・ｭ陞ｳ螢ｹ・定将譎擾ｽｭ蛟･・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繧奇ｽ｡・ｨ驕会ｽｺ郢ｧ・ｿ郢晄じ・定怙蟠趣ｽｪ・ｭ邵ｺ・ｿ髴趣ｽｼ邵ｺ・ｿ邵ｺ蜉ｱ窶ｻ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "success");
   };
 
   const reloadDefaults = () => {
     state.roots = cloneValue(state.baseRoots);
     state.runtimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
     renderApp();
-    setStatus("既定値へ戻しました。", "info");
+    setStatus("隴鯉ｽ｢陞ｳ螢ｼﾂ・､邵ｺ・ｸ隰鯉ｽｻ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "info");
   };
 
   const resetRoot = (rootId) => {
@@ -2805,7 +2891,7 @@
       state.roots.splice(rootIndex, 1);
     }
     renderApp();
-    setStatus("Bundle を初期化しました。", "info");
+    setStatus("Bundle 郢ｧ雋槭・隴帶ｺｷ蝟ｧ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "info");
   };
 
   const moveItem = (items, index, direction) => {
@@ -2964,9 +3050,9 @@
     const selectedNodes = collectSelectedNodes();
     if (selectedNodes.length > 0) {
       const items = selectedNodes.map(({ node }) => createDeepNodeClone(node));
-      state.clipboard = { type: "nodes", items };
       if (cut) {
-        runTrackedMutation("箱切り取り", () => {
+        runStateTransaction("Cut nodes", () => {
+          state.clipboard = { type: "nodes", items };
           selectedNodes
             .sort((left, right) => {
               if (left.trail.length !== right.trail.length) {
@@ -2979,8 +3065,10 @@
             });
           clearAllSelections();
         });
+      } else {
+        state.clipboard = { type: "nodes", items };
       }
-      setStatus(`${items.length} 個の箱を${cut ? "切り取り" : "コピー"}しました。`, "info");
+      setStatus(`${items.length} node(s) ${cut ? "cut" : "copied"}.`, "info");
       if (!cut) {
         renderApp();
       }
@@ -2990,9 +3078,9 @@
     const selectedEntries = collectSelectedEntries();
     if (selectedEntries.length > 0) {
       const items = selectedEntries.map(({ entry }) => createDeepEntryClone(entry));
-      state.clipboard = { type: "entries", items };
       if (cut) {
-        runTrackedMutation("項目切り取り", () => {
+        runStateTransaction("Cut entries", () => {
+          state.clipboard = { type: "entries", items };
           const groups = new Map();
           selectedEntries.forEach(({ node, index }) => {
             const key = node.id;
@@ -3008,22 +3096,24 @@
           });
           clearAllSelections();
         });
+      } else {
+        state.clipboard = { type: "entries", items };
       }
-      setStatus(`${items.length} 件の項目を${cut ? "切り取り" : "コピー"}しました。`, "info");
+      setStatus(`${items.length} entr${items.length === 1 ? "y" : "ies"} ${cut ? "cut" : "copied"}.`, "info");
       if (!cut) {
         renderApp();
       }
       return true;
     }
 
-    setStatus("コピーまたは切り取り対象が選択されていません。", "error");
+    setStatus("Nothing selected to copy or cut.", "error");
     return false;
   };
 
   const pasteClipboardIntoNode = (targetNodeId = null) => {
     const clipboard = state.clipboard;
     if (!clipboard || !Array.isArray(clipboard.items) || clipboard.items.length === 0) {
-      setStatus("貼り付け対象がありません。", "error");
+      setStatus("Clipboard is empty.", "error");
       return false;
     }
 
@@ -3031,23 +3121,23 @@
       ? findNodeLocation(targetNodeId)?.node
       : getPreferredPasteTargetNode();
     if (!targetNode) {
-      setStatus("貼り付け先の箱が見つかりません。", "error");
+      setStatus("No target selected for paste.", "error");
       return false;
     }
 
     if (clipboard.type === "entries") {
-      runTrackedMutation("項目貼り付け", () => {
+      runStateTransaction("Paste entries", () => {
         targetNode.entries.push(...clipboard.items.map((entry) => createDeepEntryClone(entry)));
       });
-      setStatus(`${clipboard.items.length} 件の項目を貼り付けました。`, "success");
+      setStatus(`${clipboard.items.length} entr${clipboard.items.length === 1 ? "y" : "ies"} pasted.`, "success");
       return true;
     }
 
     if (clipboard.type === "nodes") {
-      runTrackedMutation("箱貼り付け", () => {
+      runStateTransaction("Paste nodes", () => {
         targetNode.children.push(...clipboard.items.map((node) => createDeepNodeClone(node)));
       });
-      setStatus(`${clipboard.items.length} 個の箱を貼り付けました。`, "success");
+      setStatus(`${clipboard.items.length} node(s) pasted.`, "success");
       return true;
     }
 
@@ -3057,7 +3147,7 @@
   const deleteCurrentSelection = () => {
     const selectedNodes = collectSelectedNodes();
     if (selectedNodes.length > 0) {
-      runTrackedMutation("選択箱削除", () => {
+      runStateTransaction("Delete nodes", () => {
         selectedNodes
           .sort((left, right) => {
             if (left.trail.length !== right.trail.length) {
@@ -3070,20 +3160,20 @@
           });
         clearAllSelections();
       });
-      setStatus("選択した箱を削除しました。", "info");
+      setStatus("Selected nodes deleted.", "info");
       return true;
     }
 
     const selectedEntries = collectSelectedEntries();
     if (selectedEntries.length > 0) {
-      const grouped = new Map();
-      selectedEntries.forEach(({ node, index }) => {
-        if (!grouped.has(node.id)) {
-          grouped.set(node.id, { node, indexes: [] });
-        }
-        grouped.get(node.id).indexes.push(index);
-      });
-      runTrackedMutation("選択項目削除", () => {
+      runStateTransaction("Delete entries", () => {
+        const grouped = new Map();
+        selectedEntries.forEach(({ node, index }) => {
+          if (!grouped.has(node.id)) {
+            grouped.set(node.id, { node, indexes: [] });
+          }
+          grouped.get(node.id).indexes.push(index);
+        });
         grouped.forEach(({ node, indexes }) => {
           indexes.sort((a, b) => b - a).forEach((index) => {
             node.entries.splice(index, 1);
@@ -3091,10 +3181,11 @@
         });
         clearAllSelections();
       });
-      setStatus("選択した項目を削除しました。", "info");
+      setStatus("Selected entries deleted.", "info");
       return true;
     }
 
+    setStatus("Nothing selected to delete.", "error");
     return false;
   };
 
@@ -3110,40 +3201,15 @@
       return false;
     }
 
-    const isSameNode = source.id === target.id;
-    const targetEntryIndex = targetIndex === null || targetIndex === undefined
-      ? null
-      : Math.max(0, Math.min(targetIndex, target.entries.length - 1));
-    if (isSameNode && targetEntryIndex === index) {
-      return false;
-    }
     const [entry] = source.entries.splice(index, 1);
-    let normalizedIndex = target.entries.length;
-    if (targetEntryIndex !== null) {
-      // A row drop means "place after this row". Account for the source row
-      // disappearing before we calculate the target's post-removal position.
-      normalizedIndex = targetEntryIndex + (isSameNode && index < targetEntryIndex ? 0 : 1);
-      normalizedIndex = Math.max(0, Math.min(normalizedIndex, target.entries.length));
+    let normalizedIndex = targetIndex === null || targetIndex === undefined
+      ? target.entries.length
+      : Math.max(0, Math.min(targetIndex, target.entries.length));
+    if (source.id === target.id && index < normalizedIndex) {
+      normalizedIndex -= 1;
     }
     target.entries.splice(normalizedIndex, 0, entry);
     return true;
-  };
-
-  const moveEntryWithinNode = (node, entryId, direction) => {
-    const index = node?.entries?.findIndex((entry) => entry.id === entryId) ?? -1;
-    if (index < 0 || !moveItem(node.entries, index, direction)) {
-      return false;
-    }
-    setTableSortState(node.id, null, null);
-    return true;
-  };
-
-  const moveEntryAfterTarget = (entryId, sourceNodeId, targetNodeId, targetIndex) => {
-    const moved = moveEntryBetweenNodes(entryId, sourceNodeId, targetNodeId, targetIndex);
-    if (moved) {
-      setTableSortState(targetNodeId, null, null);
-    }
-    return moved;
   };
 
   const moveNodeBetweenParents = (nodeId, targetParentChildren, targetIndex) => {
@@ -3248,43 +3314,43 @@
     return parsed;
   };
 
-  const COMMON_POS_VALUES = ["名詞", "動詞", "助詞", "助動詞", "形容詞", "副詞", "連体詞", "接続詞", "記号"];
-  const COMMON_POS1_VALUES = ["一般", "自立", "非自立", "接尾", "格助詞", "係助詞", "副詞可能", "サ変接続"];
-  const COMMON_CFORM_VALUES = ["基本形", "連体形", "連用形", "未然形", "仮定形", "命令形"];
-  const COMMON_CTYPE_VALUES = ["五段・ラ行", "五段・ワ行促音便", "一段", "サ変・スル", "カ変・クル", "形容詞・イ段"];
+  const COMMON_POS_VALUES = ["陷ｷ蟠趣ｽｩ繝ｻ, "陷肴・・ｩ繝ｻ, "陷会ｽｩ髫ｧ繝ｻ, "陷会ｽｩ陷肴・・ｩ繝ｻ, "陟厄ｽ｢陞ｳ・ｹ髫ｧ繝ｻ, "陷托ｽｯ髫ｧ繝ｻ, "鬨ｾ・｣闖ｴ讌｢・ｩ繝ｻ, "隰暦ｽ･驍ｯ螟奇ｽｩ繝ｻ, "髫ｪ莨懈差"];
+  const COMMON_POS1_VALUES = ["闕ｳﾂ髣奇ｽｬ", "髢ｾ・ｪ驕ｶ繝ｻ, "鬮ｱ讚√・驕ｶ繝ｻ, "隰暦ｽ･陝・ｽｾ", "隴ｬ・ｼ陷会ｽｩ髫ｧ繝ｻ, "闖ｫ繧・匡髫ｧ繝ｻ, "陷托ｽｯ髫ｧ讒ｫ蠎・妙・ｽ", "郢ｧ・ｵ陞溽判逎・け繝ｻ];
+  const COMMON_CFORM_VALUES = ["陜難ｽｺ隴幢ｽｬ陟厄ｽ｢", "鬨ｾ・｣闖ｴ轣假ｽｽ・｢", "鬨ｾ・｣騾包ｽｨ陟厄ｽ｢", "隴幢ｽｪ霎滂ｽｶ陟厄ｽ｢", "闔会ｽｮ陞ｳ螢ｼ・ｽ・｢", "陷ｻ・ｽ闔会ｽ､陟厄ｽ｢"];
+  const COMMON_CTYPE_VALUES = ["闔逍ｲ・ｮ・ｵ郢晢ｽｻ郢晢ｽｩ髯ｦ繝ｻ, "闔逍ｲ・ｮ・ｵ郢晢ｽｻ郢晢ｽｯ髯ｦ蠕｡・ｿ繝ｻ豬ｹ關難ｽｿ", "闕ｳﾂ隹ｿ・ｵ", "郢ｧ・ｵ陞溷ｳｨ繝ｻ郢ｧ・ｹ郢晢ｽｫ", "郢ｧ・ｫ陞溷ｳｨ繝ｻ郢ｧ・ｯ郢晢ｽｫ", "陟厄ｽ｢陞ｳ・ｹ髫ｧ讒ｭ繝ｻ郢ｧ・､隹ｿ・ｵ"];
 
   const MATCHER_VALUE_ALIASES = {
     pos: {
-      "名": "名詞",
-      "動": "動詞",
-      "形": "形容詞",
-      "助": "助詞",
-      "助動": "助動詞",
-      "副": "副詞",
-      "連体": "連体詞",
-      "接続": "接続詞",
-      "記": "記号"
+      "陷ｷ繝ｻ: "陷ｷ蟠趣ｽｩ繝ｻ,
+      "陷阪・: "陷肴・・ｩ繝ｻ,
+      "陟厄ｽ｢": "陟厄ｽ｢陞ｳ・ｹ髫ｧ繝ｻ,
+      "陷会ｽｩ": "陷会ｽｩ髫ｧ繝ｻ,
+      "陷会ｽｩ陷阪・: "陷会ｽｩ陷肴・・ｩ繝ｻ,
+      "陷托ｽｯ": "陷托ｽｯ髫ｧ繝ｻ,
+      "鬨ｾ・｣闖ｴ繝ｻ: "鬨ｾ・｣闖ｴ讌｢・ｩ繝ｻ,
+      "隰暦ｽ･驍ｯ繝ｻ: "隰暦ｽ･驍ｯ螟奇ｽｩ繝ｻ,
+      "髫ｪ繝ｻ: "髫ｪ莨懈差"
     },
     pos1: {
-      "格助": "格助詞",
-      "係助": "係助詞",
-      "副可": "副詞可能",
-      "サ変": "サ変接続"
+      "隴ｬ・ｼ陷会ｽｩ": "隴ｬ・ｼ陷会ｽｩ髫ｧ繝ｻ,
+      "闖ｫ繧・匡": "闖ｫ繧・匡髫ｧ繝ｻ,
+      "陷托ｽｯ陷ｿ・ｯ": "陷托ｽｯ髫ｧ讒ｫ蠎・妙・ｽ",
+      "郢ｧ・ｵ陞溘・: "郢ｧ・ｵ陞溽判逎・け繝ｻ
     },
     cform: {
-      "基本": "基本形",
-      "連用": "連用形",
-      "連体": "連体形",
-      "未然": "未然形",
-      "命令": "命令形",
-      "仮定": "仮定形"
+      "陜難ｽｺ隴幢ｽｬ": "陜難ｽｺ隴幢ｽｬ陟厄ｽ｢",
+      "鬨ｾ・｣騾包ｽｨ": "鬨ｾ・｣騾包ｽｨ陟厄ｽ｢",
+      "鬨ｾ・｣闖ｴ繝ｻ: "鬨ｾ・｣闖ｴ轣假ｽｽ・｢",
+      "隴幢ｽｪ霎滂ｽｶ": "隴幢ｽｪ霎滂ｽｶ陟厄ｽ｢",
+      "陷ｻ・ｽ闔会ｽ､": "陷ｻ・ｽ闔会ｽ､陟厄ｽ｢",
+      "闔会ｽｮ陞ｳ繝ｻ: "闔会ｽｮ陞ｳ螢ｼ・ｽ・｢"
     },
     ctype: {
-      "一段": "一段",
-      "五段": "五段・ワ行促音便",
-      "サ変": "サ変・スル",
-      "カ変": "カ変・クル",
-      "形容詞": "形容詞・アウオ段"
+      "闕ｳﾂ隹ｿ・ｵ": "闕ｳﾂ隹ｿ・ｵ",
+      "闔逍ｲ・ｮ・ｵ": "闔逍ｲ・ｮ・ｵ郢晢ｽｻ郢晢ｽｯ髯ｦ蠕｡・ｿ繝ｻ豬ｹ關難ｽｿ",
+      "郢ｧ・ｵ陞溘・: "郢ｧ・ｵ陞溷ｳｨ繝ｻ郢ｧ・ｹ郢晢ｽｫ",
+      "郢ｧ・ｫ陞溘・: "郢ｧ・ｫ陞溷ｳｨ繝ｻ郢ｧ・ｯ郢晢ｽｫ",
+      "陟厄ｽ｢陞ｳ・ｹ髫ｧ繝ｻ: "陟厄ｽ｢陞ｳ・ｹ髫ｧ讒ｭ繝ｻ郢ｧ・｢郢ｧ・ｦ郢ｧ・ｪ隹ｿ・ｵ"
     }
   };
 
@@ -3574,6 +3640,7 @@
     button.textContent = uiText(node.label || fallback);
 
     const startEditing = () => {
+      const historyKey = `title:${node.id}`;
       const editor = createCompactInput(node.label || "", {
         type: "text",
         min: 6,
@@ -3584,12 +3651,15 @@
       heading.replaceChildren(editor);
       editor.focus();
       editor.select();
+      beginHistoryEditSession(historyKey, "郢ｧ・ｿ郢ｧ・､郢晏現ﾎ晞こ・ｨ鬮ｮ繝ｻ);
 
       const finish = (commit) => {
         if (commit) {
           node.label = editor.value.trim() || fallback;
+          commitHistoryEditSession(historyKey, "郢ｧ・ｿ郢ｧ・､郢晏現ﾎ晞こ・ｨ鬮ｮ繝ｻ);
           onCommit();
         } else {
+          clearOpenHistoryEditSession();
           renderApp();
         }
       };
@@ -3665,10 +3735,10 @@
 
     grid.appendChild(createMatcherField(t("options.fieldSurface"), draft.surface ?? "", null, null, (value) => updateField("surface", value)));
     grid.appendChild(createMatcherField(t("options.fieldBasicCondition"), draft.basic ?? "", null, null, (value) => updateField("basic", value)));
-    grid.appendChild(createMatcherField("品詞", draft.pos ?? "", "pos-values", COMMON_POS_VALUES, (value) => updateField("pos", value)));
-    grid.appendChild(createMatcherField("蜩∬ｩ・", draft.pos1 ?? "", "pos1-values", COMMON_POS1_VALUES, (value) => updateField("pos1", value)));
-    grid.appendChild(createMatcherField("豢ｻ逕ｨ蠖｢", draft.cform ?? "", "cform-values", COMMON_CFORM_VALUES, (value) => updateField("cform", value)));
-    grid.appendChild(createMatcherField("活用型", draft.ctype ?? "", "ctype-values", COMMON_CTYPE_VALUES, (value) => updateField("ctype", value)));
+    grid.appendChild(createMatcherField("陷ｩ竏ｬ・ｩ繝ｻ, draft.pos ?? "", "pos-values", COMMON_POS_VALUES, (value) => updateField("pos", value)));
+    grid.appendChild(createMatcherField("髯ｷ・ｩ遶擾ｽｬ繝ｻ・ｩ郢晢ｽｻ", draft.pos1 ?? "", "pos1-values", COMMON_POS1_VALUES, (value) => updateField("pos1", value)));
+    grid.appendChild(createMatcherField("髮趣ｽ｢繝ｻ・ｻ鬨ｾ蛹・ｽｽ・ｨ髯溷私・ｽ・｢", draft.cform ?? "", "cform-values", COMMON_CFORM_VALUES, (value) => updateField("cform", value)));
+    grid.appendChild(createMatcherField("雎｢・ｻ騾包ｽｨ陜吶・, draft.ctype ?? "", "ctype-values", COMMON_CTYPE_VALUES, (value) => updateField("ctype", value)));
 
     wrap.append(head, grid);
     return wrap;
@@ -3786,13 +3856,13 @@
 
       const actionTd = document.createElement("td");
       actionTd.className = "action-col";
-      actionTd.appendChild(createButton("↑", "ghost", () => {
+      actionTd.appendChild(createButton("遶翫・, "ghost", () => {
         if (moveItem(sequence, matcherIndex, -1)) {
           entry.sequence = cloneValue(sequence);
           renderApp();
         }
       }));
-      actionTd.appendChild(createButton("↓", "ghost", () => {
+      actionTd.appendChild(createButton("遶翫・, "ghost", () => {
         if (moveItem(sequence, matcherIndex, 1)) {
           entry.sequence = cloneValue(sequence);
           renderApp();
@@ -3842,10 +3912,10 @@
 
     grid.appendChild(createMatcherField(t("options.fieldSurface"), draft.surface ?? "", null, null, (value) => updateField("surface", value)));
     grid.appendChild(createMatcherField(t("options.fieldBasicCondition"), draft.basic ?? "", null, null, (value) => updateField("basic", value)));
-    grid.appendChild(createMatcherField("品詞", draft.pos ?? "", "pos-values", COMMON_POS_VALUES, (value) => updateField("pos", value)));
-    grid.appendChild(createMatcherField("蜩∬ｩ・", draft.pos1 ?? "", "pos1-values", COMMON_POS1_VALUES, (value) => updateField("pos1", value)));
-    grid.appendChild(createMatcherField("豢ｻ逕ｨ蠖｢", draft.cform ?? "", "cform-values", COMMON_CFORM_VALUES, (value) => updateField("cform", value)));
-    grid.appendChild(createMatcherField("活用型", draft.ctype ?? "", "ctype-values", COMMON_CTYPE_VALUES, (value) => updateField("ctype", value)));
+    grid.appendChild(createMatcherField("陷ｩ竏ｬ・ｩ繝ｻ, draft.pos ?? "", "pos-values", COMMON_POS_VALUES, (value) => updateField("pos", value)));
+    grid.appendChild(createMatcherField("髯ｷ・ｩ遶擾ｽｬ繝ｻ・ｩ郢晢ｽｻ", draft.pos1 ?? "", "pos1-values", COMMON_POS1_VALUES, (value) => updateField("pos1", value)));
+    grid.appendChild(createMatcherField("髮趣ｽ｢繝ｻ・ｻ鬨ｾ蛹・ｽｽ・ｨ髯溷私・ｽ・｢", draft.cform ?? "", "cform-values", COMMON_CFORM_VALUES, (value) => updateField("cform", value)));
+    grid.appendChild(createMatcherField("雎｢・ｻ騾包ｽｨ陜吶・, draft.ctype ?? "", "ctype-values", COMMON_CTYPE_VALUES, (value) => updateField("ctype", value)));
 
     wrap.append(head, grid);
     return wrap;
@@ -3861,7 +3931,7 @@
     title.textContent = labelText;
     const hint = document.createElement("span");
     hint.className = "count";
-    hint.textContent = "同一行は AND / 複数行は OR";
+    hint.textContent = "陷ｷ蠕｡・ｸﾂ髯ｦ蠕後・ AND / 髫阪・辟夐勗蠕後・ OR";
     head.append(title, hint);
 
     const drafts = getConditionDraftList(entry, slot);
@@ -3887,10 +3957,10 @@
 
       grid.appendChild(createMatcherField(t("options.fieldSurface"), draft.surface ?? "", null, null, (value) => updateField("surface", value)));
       grid.appendChild(createMatcherField(t("options.fieldBasic"), draft.basic ?? "", null, null, (value) => updateField("basic", value)));
-      grid.appendChild(createMatcherField("品詞", draft.pos ?? "", "pos-values", COMMON_POS_VALUES, (value) => updateField("pos", value)));
-      grid.appendChild(createMatcherField("蜩∬ｩ・", draft.pos1 ?? "", "pos1-values", COMMON_POS1_VALUES, (value) => updateField("pos1", value)));
-      grid.appendChild(createMatcherField("豢ｻ逕ｨ蠖｢", draft.cform ?? "", "cform-values", COMMON_CFORM_VALUES, (value) => updateField("cform", value)));
-      grid.appendChild(createMatcherField("活用型", draft.ctype ?? "", "ctype-values", COMMON_CTYPE_VALUES, (value) => updateField("ctype", value)));
+      grid.appendChild(createMatcherField("陷ｩ竏ｬ・ｩ繝ｻ, draft.pos ?? "", "pos-values", COMMON_POS_VALUES, (value) => updateField("pos", value)));
+      grid.appendChild(createMatcherField("髯ｷ・ｩ遶擾ｽｬ繝ｻ・ｩ郢晢ｽｻ", draft.pos1 ?? "", "pos1-values", COMMON_POS1_VALUES, (value) => updateField("pos1", value)));
+      grid.appendChild(createMatcherField("髮趣ｽ｢繝ｻ・ｻ鬨ｾ蛹・ｽｽ・ｨ髯溷私・ｽ・｢", draft.cform ?? "", "cform-values", COMMON_CFORM_VALUES, (value) => updateField("cform", value)));
+      grid.appendChild(createMatcherField("雎｢・ｻ騾包ｽｨ陜吶・, draft.ctype ?? "", "ctype-values", COMMON_CTYPE_VALUES, (value) => updateField("ctype", value)));
       container.appendChild(grid);
     };
 
@@ -3900,7 +3970,7 @@
       const sequenceWrap = document.createElement("div");
       sequenceWrap.className = "panel-actions";
       if (!isOpen) {
-        sequenceWrap.appendChild(createButton("sequence 追加", "ghost", () => {
+        sequenceWrap.appendChild(createButton("sequence 髴托ｽｽ陷会｣ｰ", "ghost", () => {
           draft._sequenceOpen = true;
           renderApp();
         }));
@@ -3918,7 +3988,7 @@
         setConditionSequenceDsl(draft, input.value);
         syncDrafts();
       });
-      sequenceWrap.append("sequence", input, createButton("解除", "ghost", () => {
+      sequenceWrap.append("sequence", input, createButton("髫暦ｽ｣鬮ｯ・､", "ghost", () => {
         delete draft.sequence;
         delete draft._sequenceOpen;
         syncDrafts();
@@ -3934,16 +4004,16 @@
       const matcherHead = document.createElement("div");
       matcherHead.className = "panel-head";
       const matcherTitle = document.createElement("h4");
-      matcherTitle.textContent = `条件 ${matcherIndex + 1}`;
+      matcherTitle.textContent = `隴夲ｽ｡闔会ｽｶ ${matcherIndex + 1}`;
       const matcherActions = document.createElement("div");
       matcherActions.className = "panel-actions";
-      matcherActions.appendChild(createButton("↑", "ghost", () => {
+      matcherActions.appendChild(createButton("遶翫・, "ghost", () => {
         if (moveItem(drafts, matcherIndex, -1)) {
           syncDrafts();
           renderApp();
         }
       }));
-      matcherActions.appendChild(createButton("↓", "ghost", () => {
+      matcherActions.appendChild(createButton("遶翫・, "ghost", () => {
         if (moveItem(drafts, matcherIndex, 1)) {
           syncDrafts();
           renderApp();
@@ -4067,13 +4137,13 @@
 
       const actionTd = document.createElement("td");
       actionTd.className = "action-col";
-      actionTd.appendChild(createButton("↑", "ghost", () => {
+      actionTd.appendChild(createButton("遶翫・, "ghost", () => {
         if (moveItem(sequence, matcherIndex, -1)) {
           entry.sequence = cloneValue(sequence);
           renderApp();
         }
       }));
-      actionTd.appendChild(createButton("↓", "ghost", () => {
+      actionTd.appendChild(createButton("遶翫・, "ghost", () => {
         if (moveItem(sequence, matcherIndex, 1)) {
           entry.sequence = cloneValue(sequence);
           renderApp();
@@ -4106,7 +4176,7 @@
     title.textContent = "sequence";
     const hint = document.createElement("span");
     hint.className = "count";
-    hint.textContent = "完全一致 / OR はカンマ区切り / 値は下に JSON で表示";
+    hint.textContent = "陞ｳ謔溘・闕ｳﾂ髢ｾ・ｴ / OR 邵ｺ・ｯ郢ｧ・ｫ郢晢ｽｳ郢晄ｧｫ邇・崕繝ｻ・・/ 陋滂ｽ､邵ｺ・ｯ闕ｳ荵昶・ JSON 邵ｺ・ｧ髯ｦ・ｨ驕会ｽｺ";
     const actions = document.createElement("div");
     actions.className = "panel-actions";
     actions.appendChild(createButton(t("options.buttonAddToken"), "secondary", () => {
@@ -4230,13 +4300,13 @@
 
       const actionTd = document.createElement("td");
       actionTd.className = "action-col";
-      actionTd.appendChild(createButton("↑", "ghost", () => {
+      actionTd.appendChild(createButton("遶翫・, "ghost", () => {
         if (moveItem(sequence, matcherIndex, -1)) {
           entry.sequence = cloneValue(sequence);
           renderApp();
         }
       }));
-      actionTd.appendChild(createButton("↓", "ghost", () => {
+      actionTd.appendChild(createButton("遶翫・, "ghost", () => {
         if (moveItem(sequence, matcherIndex, 1)) {
           entry.sequence = cloneValue(sequence);
           renderApp();
@@ -4271,7 +4341,7 @@
     title.textContent = t("options.bulkImportTitle");
     const hint = document.createElement("span");
     hint.className = "count";
-    hint.textContent = "変更前/変更後/優先/有効/正規/原形一致/current.* / sequence を入力できます";
+    hint.textContent = "陞溽判蟲ｩ陷代・陞溽判蟲ｩ陟輔・陷・ｽｪ陷医・隴帷甥譟・雎・ｽ｣髫輔・陷ｴ貅ｷ・ｽ・｢闕ｳﾂ髢ｾ・ｴ/current.* / sequence 郢ｧ雋槭・陷牙ｸ吶堤ｸｺ髦ｪ竏ｪ邵ｺ繝ｻ;
     head.append(title, hint);
 
     const body = document.createElement("div");
@@ -4281,13 +4351,13 @@
     const delimiterRow = document.createElement("div");
     delimiterRow.className = "simple-row";
     const delimiterLabel = document.createElement("strong");
-    delimiterLabel.textContent = "区切り文字";
+    delimiterLabel.textContent = "陋ｹ・ｺ陋ｻ繝ｻ・願ｭ√・・ｭ繝ｻ;
     const delimiterInput = createCompactInput(getTableBulkDelimiter(node.id), {
       min: 2,
       max: 6,
       className: "cell-input compact",
       placeholder: ",",
-      title: "未入力ならカンマ、\\t でタブ"
+      title: "隴幢ｽｪ陷茨ｽ･陷牙ｸ吮・郢ｧ蟲ｨ縺咲ｹ晢ｽｳ郢晄ｧｭﾂ窶表t 邵ｺ・ｧ郢ｧ・ｿ郢昴・
     });
     delimiterInput.addEventListener("input", () => {
       setTableBulkDelimiter(node.id, delimiterInput.value);
@@ -4295,19 +4365,19 @@
     });
     const delimiterHint = document.createElement("span");
     delimiterHint.className = "count";
-    delimiterHint.textContent = "未入力なら , / \\t でタブ / @delimiter があればそちらを優先";
+    delimiterHint.textContent = "隴幢ｽｪ陷茨ｽ･陷牙ｸ吮・郢ｧ繝ｻ, / \\t 邵ｺ・ｧ郢ｧ・ｿ郢昴・/ @delimiter 邵ｺ蠕娯旺郢ｧ蠕後・邵ｺ譏ｴ笆郢ｧ蟲ｨ・定怕・ｪ陷医・;
     delimiterRow.append(delimiterLabel, delimiterInput, delimiterHint);
 
     const sectionHint = document.createElement("p");
     sectionHint.className = "diag-summary";
-    sectionHint.textContent = "先頭が ;タイトル の行を置くと、その後ろの行を同名子箱へ追加します。既存の同名子箱があれば再利用します。";
+    sectionHint.textContent = "陷育｣ｯ・ｰ・ｭ邵ｺ繝ｻ;郢ｧ・ｿ郢ｧ・､郢晏現ﾎ・邵ｺ・ｮ髯ｦ蠕鯉ｽ帝р・ｮ邵ｺ荳岩・邵ｲ竏壺落邵ｺ・ｮ陟募ｾ鯉ｽ咲ｸｺ・ｮ髯ｦ蠕鯉ｽ定惺謔滄倹陝・鴻・ｮ・ｱ邵ｺ・ｸ髴托ｽｽ陷会｣ｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧磯㈹陝・･繝ｻ陷ｷ謔滄倹陝・鴻・ｮ・ｱ邵ｺ蠕娯旺郢ｧ蠕後・陷讎願懸騾包ｽｨ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ;
 
     const textarea = document.createElement("textarea");
     textarea.rows = 8;
     textarea.placeholder = [
       "from,to,priority,current.pos,sequence",
-      "かわいい,可愛い,90,形容詞,",
-      "きもち,気持ち,90,名詞,\"き{basic=くる,き;pos=動,助動;cform=連用,基本} もち{basic=もち;pos=名}\""
+      "邵ｺ荵晢ｽ冗ｸｺ繝ｻ・・陷ｿ・ｯ隲｢蟶呻ｼ・90,陟厄ｽ｢陞ｳ・ｹ髫ｧ繝ｻ",
+      "邵ｺ髦ｪ・らｸｺ・｡,雎檎軸謌溽ｸｺ・｡,90,陷ｷ蟠趣ｽｩ繝ｻ\"邵ｺ遐ｿbasic=邵ｺ荳奇ｽ・邵ｺ繝ｻpos=陷阪・陷会ｽｩ陷阪・cform=鬨ｾ・｣騾包ｽｨ,陜難ｽｺ隴幢ｽｬ} 郢ｧ繧・蔓{basic=郢ｧ繧・蔓;pos=陷ｷ髢､\""
     ].join("\n");
     textarea.value = `${node.bulkImportText ?? ""}`;
     textarea.addEventListener("input", () => {
@@ -4326,9 +4396,9 @@
       node.bulkImportOpen = false;
       renderApp();
       const summary = result?.summaries ?? { dictionary: 0, token: 0, review: 0 };
-      const childNote = result.createdChildren > 0 ? ` / 新規箱 ${result.createdChildren}` : "";
+      const childNote = result.createdChildren > 0 ? ` / 隴・ｽｰ髫募・・ｮ・ｱ ${result.createdChildren}` : "";
       setStatus(
-        `${result.importedCount} 件を一括登録しました${childNote} / dictionary行き ${summary.dictionary} / token行き ${summary.token} / 要確認 ${summary.review}`,
+        `${result.importedCount} 闔会ｽｶ郢ｧ蜑・ｽｸﾂ隲｡・ｬ騾具ｽｻ鬪ｭ・ｲ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・{childNote} / dictionary髯ｦ蠕娯ｳ ${summary.dictionary} / token髯ｦ蠕娯ｳ ${summary.token} / 髫補悪・｢・ｺ髫ｱ繝ｻ${summary.review}`,
         "success"
       );
     }));
@@ -4445,15 +4515,13 @@
   const createSortHeaderButton = (nodeId, key, label) => {
     const sortState = getTableSortState(nodeId);
     const marker = sortState.key === key
-      ? (sortState.direction === "asc" ? " ↑" : sortState.direction === "desc" ? " ↓" : "")
+      ? (sortState.direction === "asc" ? " 遶翫・ : sortState.direction === "desc" ? " 遶翫・ : "")
       : "";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "sort-button";
     button.textContent = `${label}${marker}`;
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
+    button.addEventListener("click", () => {
       cycleSortDirection(nodeId, key);
       renderApp();
     });
@@ -4576,41 +4644,13 @@
   };
 
   const beginEditSession = (session) => {
-    if (
-      state.history.openEditSession &&
-      state.history.openEditSession.nodeId === session?.nodeId &&
-      state.history.openEditSession.entryId === session?.entryId &&
-      state.history.openEditSession.sortKey === session?.sortKey
-    ) {
-      state.history.openEditSession.composing = session?.composing === true;
-      state.editSession = {
-        composing: false,
-        ...session
-      };
-      return;
+    if (session?.historyKey && session?.historyLabel) {
+      beginHistoryEditSession(session.historyKey, session.historyLabel);
     }
-
-    const snapshot = buildHistorySnapshot();
-    state.history.openEditSession = {
-      ...session,
-      composing: session?.composing === true,
-      beforeSnapshot: snapshot
-    };
     state.editSession = {
       composing: false,
       ...session
     };
-  };
-
-  const commitOpenEditSession = (label = "項目編集") => {
-    const openEditSession = state.history.openEditSession;
-    state.history.openEditSession = null;
-    clearEditSession();
-    if (!openEditSession?.beforeSnapshot) {
-      return false;
-    }
-    const afterSnapshot = buildHistorySnapshot();
-    return commitHistoryEntry(label, openEditSession.beforeSnapshot, afterSnapshot);
   };
 
   const clearEditSession = () => {
@@ -4618,7 +4658,11 @@
   };
 
   const commitSortedEditIfNeeded = (nodeId, sortKey = null) => {
-    commitOpenEditSession("項目編集");
+    const session = state.editSession;
+    if (session?.historyKey) {
+      commitHistoryEditSession(session.historyKey, session.historyLabel);
+    }
+    clearEditSession();
     if (sortKey && getTableSortState(nodeId)?.key === sortKey) {
       renderApp();
       return;
@@ -4653,10 +4697,10 @@
     const head = document.createElement("div");
     head.className = "panel-head";
     const title = document.createElement("h4");
-    title.textContent = `選択中 ${selectedEntries.length} 件`;
+    title.textContent = `鬩包ｽｸ隰壽ｨ費ｽｸ・ｭ ${selectedEntries.length} 闔会ｽｶ`;
     const hint = document.createElement("span");
     hint.className = "count";
-    hint.textContent = "非空欄の値だけ現条件へ一括反映";
+    hint.textContent = "鬮ｱ讓抵ｽｩ・ｺ隹ｺ繝ｻ繝ｻ陋滂ｽ､邵ｺ・ｰ邵ｺ驢肴ｨ溯ｭ夲ｽ｡闔会ｽｶ邵ｺ・ｸ闕ｳﾂ隲｡・ｬ陷ｿ閧ｴ荳・;
     head.append(title, hint);
 
     const grid = document.createElement("div");
@@ -4665,12 +4709,12 @@
     grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(110px, 1fr))";
 
     const fieldLabels = {
-      surface: "現.surface",
-      basic: "現.basic",
-      pos: "現.pos",
-      pos1: "現.pos1",
-      cform: "現.cform",
-      ctype: "現.ctype"
+      surface: "霑ｴ・ｾ.surface",
+      basic: "霑ｴ・ｾ.basic",
+      pos: "霑ｴ・ｾ.pos",
+      pos1: "霑ｴ・ｾ.pos1",
+      cform: "霑ｴ・ｾ.cform",
+      ctype: "霑ｴ・ｾ.ctype"
     };
 
     for (const field of CURRENT_CONDITION_FIELDS) {
@@ -4696,11 +4740,11 @@
 
     const actions = document.createElement("div");
     actions.className = "panel-actions";
-    actions.appendChild(createButton("現条件を適用", "secondary", () => {
+    actions.appendChild(createButton("霑ｴ・ｾ隴夲ｽ｡闔会ｽｶ郢ｧ蟶昶・騾包ｽｨ", "secondary", () => {
       applyCurrentConditionDraftToEntries(selectedEntries, getTableCurrentBulkDraft(node.id));
       renderApp();
     }));
-    actions.appendChild(createButton("現条件を全消去", "ghost", () => {
+    actions.appendChild(createButton("霑ｴ・ｾ隴夲ｽ｡闔会ｽｶ郢ｧ雋槭・雎ｸ莠･謔・, "ghost", () => {
       clearCurrentConditionFromEntries(selectedEntries);
       resetTableCurrentBulkDraft(node.id);
       renderApp();
@@ -4721,8 +4765,8 @@
     const count = document.createElement("span");
     count.className = "count";
     count.textContent = effectiveKind === "token-rules"
-      ? `token ${node.entries.length} 件 / 選択 ${getSelectedCount(node.entries)} 件`
-      : `dictionary ${node.entries.length} 件 / 選択 ${getSelectedCount(node.entries)} 件`;
+      ? `token ${node.entries.length} 闔会ｽｶ / 鬩包ｽｸ隰壹・${getSelectedCount(node.entries)} 闔会ｽｶ`
+      : `dictionary ${node.entries.length} 闔会ｽｶ / 鬩包ｽｸ隰壹・${getSelectedCount(node.entries)} 闔会ｽｶ`;
     head.append(title, count);
 
     const tableWrap = document.createElement("div");
@@ -4745,7 +4789,7 @@
 
     const selectAll = document.createElement("input");
     selectAll.type = "checkbox";
-    selectAll.setAttribute("aria-label", "全選択");
+    selectAll.setAttribute("aria-label", "陷茨ｽｨ鬩包ｽｸ隰壹・);
     thead.querySelector("th")?.appendChild(selectAll);
 
     const tbody = document.createElement("tbody");
@@ -4765,9 +4809,7 @@
         }
         event.preventDefault();
         const payload = state.dragPayload;
-        if (runTrackedMutation("項目移動", () => {
-          return moveEntryAfterTarget(payload.entryId, payload.sourceNodeId, node.id, entryIndex);
-        }, { render: false })) {
+        if (moveEntryBetweenNodes(payload.entryId, payload.sourceNodeId, node.id, entryIndex)) {
           setFocusedNode(node.id);
           renderApp();
         }
@@ -4776,7 +4818,7 @@
 
       const dragTd = document.createElement("td");
       dragTd.className = "check-col";
-      const dragHandle = createButton("⋮⋮", "ghost", () => {});
+      const dragHandle = createButton("遶呻ｽｮ遶呻ｽｮ", "ghost", () => {});
       dragHandle.type = "button";
       dragHandle.title = t("options.dragEntries");
       dragHandle.draggable = true;
@@ -4836,8 +4878,8 @@
       const basicCheckbox = document.createElement("input");
       basicCheckbox.type = "checkbox";
       basicCheckbox.title = effectiveKind === "token-rules"
-        ? "変更前を辞書形 basic_form に対して一致させる"
-        : "dictionary-rules では使用しません";
+        ? "陞溽判蟲ｩ陷鷹亂・帝恷讓雁ｶ瑚厄ｽ｢ basic_form 邵ｺ・ｫ陝・ｽｾ邵ｺ蜉ｱ窶ｻ闕ｳﾂ髢ｾ・ｴ邵ｺ霈披雷郢ｧ繝ｻ
+        : "dictionary-rules 邵ｺ・ｧ邵ｺ・ｯ闖ｴ・ｿ騾包ｽｨ邵ｺ蜉ｱ竏ｪ邵ｺ蟶呻ｽ・;
       basicCheckbox.checked = effectiveKind === "token-rules" && entry.match_target === "basic_form";
       basicCheckbox.disabled = effectiveKind !== "token-rules";
       basicCheckbox.addEventListener("change", () => {
@@ -4892,12 +4934,12 @@
 
       const actionTd = document.createElement("td");
       actionTd.className = "action-col";
-      const detailButton = createButton(entry.metaOpen ? "閉じる" : "条件", "ghost", () => {
+      const detailButton = createButton(entry.metaOpen ? "鬮｢蟲ｨﾂｧ郢ｧ繝ｻ : "隴夲ｽ｡闔会ｽｶ", "ghost", () => {
         entry.metaOpen = !entry.metaOpen;
         renderApp();
       });
-      detailButton.textContent = entry.metaOpen ? "閉じる" : "条件";
-      detailButton.title = entry.metaOpen ? "条件を閉じる" : "条件を開く";
+      detailButton.textContent = entry.metaOpen ? "鬮｢蟲ｨﾂｧ郢ｧ繝ｻ : "隴夲ｽ｡闔会ｽｶ";
+      detailButton.title = entry.metaOpen ? "隴夲ｽ｡闔会ｽｶ郢ｧ蟶晏陶邵ｺ蛟･・・ : "隴夲ｽ｡闔会ｽｶ郢ｧ蟶晏ｹ慕ｸｺ繝ｻ;
       if (effectiveKind !== "token-rules") {
         detailButton.disabled = true;
         detailButton.title = t("options.detailUnavailable");
@@ -4966,6 +5008,7 @@
   const renderEntryTableV2 = (node, effectiveKind, searchText = "") => {
     const wrapper = document.createElement("div");
     wrapper.className = "panel-block";
+    const migrationMode = showMigrationDetails();
     const sortedEntries = getSortedEntriesForNode(node).filter((entry) => {
       return entryMatchesSearchText(entry, searchText);
     });
@@ -4973,13 +5016,13 @@
     const head = document.createElement("div");
     head.className = "panel-head";
     const title = document.createElement("h4");
-    title.textContent = "項目";
+    title.textContent = "鬯・・蟯ｼ";
     const count = document.createElement("span");
     count.className = "count";
     const routeSummary = summarizeEntriesByResolvedPath(sortedEntries);
-    count.textContent = isMigrationMode()
-      ? `表示 ${sortedEntries.length} 件 / 選択 ${getSelectedCount(sortedEntries)} 件 / dictionary行き ${routeSummary.dictionary} / token行き ${routeSummary.token} / 要確認 ${routeSummary.review}`
-      : `表示 ${sortedEntries.length} 件 / 選択 ${getSelectedCount(sortedEntries)} 件`;
+    count.textContent = migrationMode
+      ? `Visible ${sortedEntries.length} / Selected ${getSelectedCount(sortedEntries)} / D ${routeSummary.dictionary} / T ${routeSummary.token} / ? ${routeSummary.review}`
+      : `Visible ${sortedEntries.length} / Selected ${getSelectedCount(sortedEntries)}`;
     head.append(title, count);
     wrapper.appendChild(head);
 
@@ -5010,32 +5053,29 @@
 
     const selectAll = document.createElement("input");
     selectAll.type = "checkbox";
-    selectAll.setAttribute("aria-label", "全選択");
+    selectAll.setAttribute("aria-label", "陷茨ｽｨ鬩包ｽｸ隰壹・);
     appendHeaderCell(selectAll, "check-col");
     appendHeaderCell("", "check-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "enabled", "有効"), "check-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "regex", "正規"), "check-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "basic_match", "原形一致"), "check-col");
-    appendHeaderCell("かな", "check-col");
-    if (isMigrationMode()) {
-      appendHeaderCell("行先", "check-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "enabled", "隴帷甥譟・), "check-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "regex", "雎・ｽ｣髫輔・), "check-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "basic_match", "Basic"), "check-col");
+    appendHeaderCell("Kana", "check-col");
+    if (migrationMode) {
+      appendHeaderCell("Route", "check-col");
     }
-    const rubyFromSourceHeader = appendHeaderCell(
-      createSortHeaderButton(node.id, "ruby_from_source", "前をルビ化"),
-      "check-col"
-    );
-    rubyFromSourceHeader.title = "変換後にルビが無い場合、変換前をルビとして付与します";
-    appendHeaderCell(createSortHeaderButton(node.id, "from", "変換前"), "text-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "to", "変更後"), "text-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "priority", "優先"), "priority-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "current.surface", "現.surface"), "condition-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "current.basic", "現.basic"), "condition-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "current.pos", "現.pos"), "condition-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "current.pos1", "現.pos1"), "condition-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "current.cform", "現.cform"), "condition-col");
-    appendHeaderCell(createSortHeaderButton(node.id, "current.ctype", "現.ctype"), "condition-col");
-    appendHeaderCell("操作");
+    appendHeaderCell(createSortHeaderButton(node.id, "from", "陞溽判蟲ｩ陷代・), "text-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "to", "陞溽判蟲ｩ陟輔・), "text-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "priority", "陷・ｽｪ陷医・), "priority-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.surface", "霑ｴ・ｾ.surface"), "condition-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.basic", "霑ｴ・ｾ.basic"), "condition-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.pos", "霑ｴ・ｾ.pos"), "condition-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.pos1", "霑ｴ・ｾ.pos1"), "condition-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.cform", "霑ｴ・ｾ.cform"), "condition-col");
+    appendHeaderCell(createSortHeaderButton(node.id, "current.ctype", "霑ｴ・ｾ.ctype"), "condition-col");
+    appendHeaderCell("隰ｫ蝣ｺ・ｽ繝ｻ);
     thead.appendChild(headerRow);
+    const rubyFromSourceHeader = appendHeaderCell(createSortHeaderButton(node.id, "ruby_from_source", "陷鷹亂ﾎ晉ｹ昴・), "check-col");
+    headerRow.insertBefore(rubyFromSourceHeader, headerRow.children[7] ?? null);
 
     const tbody = document.createElement("tbody");
     sortedEntries.forEach((entry) => {
@@ -5057,9 +5097,7 @@
         }
         event.preventDefault();
         const payload = state.dragPayload;
-        if (runTrackedMutation("項目移動", () => {
-          return moveEntryAfterTarget(payload.entryId, payload.sourceNodeId, node.id, entryIndex);
-        }, { render: false })) {
+        if (moveEntryBetweenNodes(payload.entryId, payload.sourceNodeId, node.id, entryIndex)) {
           setFocusedNode(node.id);
           renderApp();
         }
@@ -5068,9 +5106,9 @@
 
       const dragTd = document.createElement("td");
       dragTd.className = "check-col";
-      const dragHandle = createButton("⋮⋮", "ghost", () => {});
+      const dragHandle = createButton("遶呻ｽｮ遶呻ｽｮ", "ghost", () => {});
       dragHandle.type = "button";
-      dragHandle.title = "項目を移動";
+      dragHandle.title = "鬯・・蟯ｼ郢ｧ蝣､・ｧ・ｻ陷阪・;
       dragHandle.draggable = true;
       dragHandle.addEventListener("dragstart", (event) => {
         state.dragPayload = { type: "entry", entryId: entry.id, sourceNodeId: node.id };
@@ -5089,88 +5127,84 @@
       rowCheckbox.type = "checkbox";
       rowCheckbox.checked = entry.selected === true;
       rowCheckbox.addEventListener("change", () => {
-        entry.selected = rowCheckbox.checked;
-        renderApp();
+        runStateTransaction("Select entry", () => {
+          entry.selected = rowCheckbox.checked;
+        });
       });
       checkTd.appendChild(rowCheckbox);
 
-      const createBooleanCell = (checked, onChange) => {
+      const createBooleanCell = (checked, onChange, historyLabel = "Toggle entry option") => {
         const td = document.createElement("td");
         td.className = "check-col";
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = checked;
-        checkbox.addEventListener("change", onChange);
+        checkbox.addEventListener("change", () => {
+          runStateTransaction(historyLabel, () => {
+            onChange();
+          }, { render: "app" });
+        });
         td.appendChild(checkbox);
         return { td, checkbox };
       };
 
       const enabledCell = createBooleanCell(entry.enabled !== false, () => {
-        runTrackedMutation("項目有効切替", () => {
-          entry.enabled = enabledCell.checkbox.checked;
-        }, { render: false });
+        entry.enabled = enabledCell.checkbox.checked;
         refreshEntryRowEffects(node.id, "enabled");
-      });
+      }, "Toggle entry enabled");
 
       const regexCell = createBooleanCell(entry.regex === true, () => {
-        runTrackedMutation("regex切替", () => {
-          entry.regex = regexCell.checkbox.checked;
-          entry.from_options = getNormalizedEntryFromOptions(entry.from_options ?? entry.from, entry.regex === true, entry.from);
-          row.dataset.searchValue = composeEntrySearchValue(entry);
-        }, { render: false });
+        entry.regex = regexCell.checkbox.checked;
+        entry.from_options = getNormalizedEntryFromOptions(entry.from_options ?? entry.from, entry.regex === true, entry.from);
+        row.dataset.searchValue = composeEntrySearchValue(entry);
         renderApp();
-      });
+      }, "Toggle regex");
 
       const basicCell = createBooleanCell(
         entry.match_target === "basic_form",
         () => {
-          runTrackedMutation("原形一致切替", () => {
-            entry.match_target = basicCell.checkbox.checked ? "basic_form" : null;
-          }, { render: false });
+          entry.match_target = basicCell.checkbox.checked ? "basic_form" : null;
           refreshEntryRowEffects(node.id, "basic_match");
-        }
+        },
+        "Toggle basic match"
       );
       basicCell.checkbox.disabled = entry.regex === true;
       basicCell.checkbox.title = entry.regex === true
-        ? "regex rule は token matching にできません"
-        : "basic_form 一致にすると runtime は token stage へ流れます";
+        ? "regex rule 邵ｺ・ｯ token matching 邵ｺ・ｫ邵ｺ・ｧ邵ｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ・
+        : "basic_form 闕ｳﾂ髢ｾ・ｴ邵ｺ・ｫ邵ｺ蜷ｶ・狗ｸｺ・ｨ runtime 邵ｺ・ｯ token stage 邵ｺ・ｸ雎ｬ竏夲ｽ檎ｸｺ・ｾ邵ｺ繝ｻ;
 
       const kanaCell = createBooleanCell(entry.match_options?.kana_insensitive === true, () => {
-        runTrackedMutation("かな同一視切替", () => {
-          entry.match_options = {
-            ...(entry.match_options ?? {}),
-            kana_insensitive: kanaCell.checkbox.checked
-          };
-          if (!kanaCell.checkbox.checked) {
-            delete entry.match_options.kana_insensitive;
-            if (Object.keys(entry.match_options).length === 0) {
-              entry.match_options = null;
-            }
+        entry.match_options = {
+          ...(entry.match_options ?? {}),
+          kana_insensitive: kanaCell.checkbox.checked
+        };
+        if (!kanaCell.checkbox.checked) {
+          delete entry.match_options.kana_insensitive;
+          if (Object.keys(entry.match_options).length === 0) {
+            entry.match_options = null;
           }
-        }, { render: false });
+        }
         renderDiagnostics();
-      });
+      }, "Toggle kana insensitive");
       kanaCell.checkbox.disabled = entry.regex === true;
       kanaCell.checkbox.title = entry.regex === true
-        ? "regex ではかな同一視を使いません"
-        : "平仮名とカタカナを双方向に同一視します";
+        ? "regex 邵ｺ・ｧ邵ｺ・ｯ邵ｺ荵昶・陷ｷ蠕｡・ｸﾂ髫墓じ・定抄・ｿ邵ｺ繝ｻ竏ｪ邵ｺ蟶呻ｽ・
+        : "陝ｷ・ｳ闔会ｽｮ陷ｷ髦ｪ竊堤ｹｧ・ｫ郢ｧ・ｿ郢ｧ・ｫ郢晉ｿｫ・定愾譴ｧ蟀ｿ陷ｷ莉｣竊楢惺蠕｡・ｸﾂ髫墓じ・邵ｺ・ｾ邵ｺ繝ｻ;
 
       const rubyFromSourceCell = createBooleanCell(entry.match_options?.ruby_from_source === true, () => {
-        runTrackedMutation("前ルビ切替", () => {
-          entry.match_options = {
-            ...(entry.match_options ?? {}),
-            ruby_from_source: rubyFromSourceCell.checkbox.checked
-          };
-          if (!rubyFromSourceCell.checkbox.checked) {
-            delete entry.match_options.ruby_from_source;
-            if (Object.keys(entry.match_options).length === 0) {
-              entry.match_options = null;
-            }
+        entry.match_options = {
+          ...(entry.match_options ?? {}),
+          ruby_from_source: rubyFromSourceCell.checkbox.checked
+        };
+        if (!rubyFromSourceCell.checkbox.checked) {
+          delete entry.match_options.ruby_from_source;
+          if (Object.keys(entry.match_options).length === 0) {
+            entry.match_options = null;
           }
-        }, { render: false });
+        }
         renderDiagnostics();
-      });
-      rubyFromSourceCell.checkbox.title = "変換後にルビが無い場合、変換前を自動で《...》として付与します";
+      }, "Toggle ruby from source");
+      rubyFromSourceCell.checkbox.title = "陞溽判驪､陟募ｾ娯・郢晢ｽｫ郢晁侭窶ｲ霎滂ｽ｡邵ｺ繝ｻ・ｰ・ｴ陷ｷ蛹ｻﾂ竏晢ｽ､逕ｻ驪､陷鷹亂・帝明・ｪ陷崎ｼ斐堤ｸｲ繝ｻ..邵ｲ荵昶・邵ｺ蜉ｱ窶ｻ闔牙・ｽｸ蠑ｱ・邵ｺ・ｾ邵ｺ繝ｻ;
 
       const routeTd = document.createElement("td");
       routeTd.className = "check-col";
@@ -5185,10 +5219,11 @@
           td.className = options.cellClassName;
         }
         const input = createCompactInput(value, { ...options, autosize: false });
-        input.addEventListener("focus", () => beginEditSession({ nodeId: node.id, entryId: entry.id, sortKey }));
-        input.addEventListener("compositionstart", () => beginEditSession({ nodeId: node.id, entryId: entry.id, sortKey, composing: true }));
+        const historyKey = `entry:${entry.id}:${sortKey ?? "field"}`;
+        input.addEventListener("focus", () => beginEditSession({ nodeId: node.id, entryId: entry.id, sortKey, historyKey, historyLabel: "Edit entry field" }));
+        input.addEventListener("compositionstart", () => beginEditSession({ nodeId: node.id, entryId: entry.id, sortKey, composing: true, historyKey, historyLabel: "Edit entry field" }));
         input.addEventListener("compositionend", () => {
-          beginEditSession({ nodeId: node.id, entryId: entry.id, sortKey, composing: false });
+          beginEditSession({ nodeId: node.id, entryId: entry.id, sortKey, composing: false, historyKey, historyLabel: "Edit entry field" });
         });
         input.addEventListener("input", () => {
           onInput(input.value);
@@ -5253,41 +5288,19 @@
 
       const actionTd = document.createElement("td");
       actionTd.className = "action-col";
-      const detailButton = createButton(entry.metaOpen ? "閉じる" : "条件", "ghost", () => {
-        runTrackedMutation("条件表示切替", () => {
-          entry.metaOpen = !entry.metaOpen;
-        }, { render: false });
+      const detailButton = createButton(entry.metaOpen ? "鬮｢蟲ｨﾂｧ郢ｧ繝ｻ : "隴夲ｽ｡闔会ｽｶ", "ghost", () => {
+        entry.metaOpen = !entry.metaOpen;
         renderApp();
       });
-      detailButton.title = entry.metaOpen ? "条件を閉じる" : "条件を開く";
+      detailButton.title = entry.metaOpen ? "隴夲ｽ｡闔会ｽｶ郢ｧ蟶晏陶邵ｺ蛟･・・ : "隴夲ｽ｡闔会ｽｶ郢ｧ蟶晏ｹ慕ｸｺ繝ｻ;
       if (!tokenEditorAvailable) {
         detailButton.disabled = true;
-        detailButton.title = "regex rule では条件・sequence を使いません";
+        detailButton.title = "regex rule 邵ｺ・ｧ邵ｺ・ｯ隴夲ｽ｡闔会ｽｶ郢晢ｽｻsequence 郢ｧ蜑・ｽｽ・ｿ邵ｺ繝ｻ竏ｪ邵ｺ蟶呻ｽ・;
       }
       actionTd.appendChild(detailButton);
-      const moveUpButton = createButton("↑", "ghost", () => {
-        if (runTrackedMutation("項目並べ替え", () => {
-          return moveEntryWithinNode(node, entry.id, -1);
-        }, { render: false })) {
-          renderApp();
-        }
-      });
-      moveUpButton.title = "この項目を上へ移動";
-      moveUpButton.disabled = entryIndex <= 0;
-      const moveDownButton = createButton("↓", "ghost", () => {
-        if (runTrackedMutation("項目並べ替え", () => {
-          return moveEntryWithinNode(node, entry.id, 1);
-        }, { render: false })) {
-          renderApp();
-        }
-      });
-      moveDownButton.title = "この項目を下へ移動";
-      moveDownButton.disabled = entryIndex >= node.entries.length - 1;
-      actionTd.append(moveUpButton, moveDownButton);
-      actionTd.appendChild(createButton("削除", "danger row-delete", () => {
-        runTrackedMutation("項目削除", () => {
-          node.entries.splice(entryIndex, 1);
-        });
+      actionTd.appendChild(createButton("陷台ｼ∝求", "danger row-delete", () => {
+        node.entries.splice(entryIndex, 1);
+        renderApp();
       }));
 
       row.append(
@@ -5300,15 +5313,15 @@
         fromTd,
         toTd,
         priorityTd,
-        currentFieldCell("surface", "現.surface"),
-        currentFieldCell("basic", "現.basic"),
-        currentFieldCell("pos", "現.pos"),
-        currentFieldCell("pos1", "現.pos1"),
-        currentFieldCell("cform", "現.cform"),
-        currentFieldCell("ctype", "現.ctype"),
+        currentFieldCell("surface", "霑ｴ・ｾ.surface"),
+        currentFieldCell("basic", "霑ｴ・ｾ.basic"),
+        currentFieldCell("pos", "霑ｴ・ｾ.pos"),
+        currentFieldCell("pos1", "霑ｴ・ｾ.pos1"),
+        currentFieldCell("cform", "霑ｴ・ｾ.cform"),
+        currentFieldCell("ctype", "霑ｴ・ｾ.ctype"),
         actionTd
       );
-      if (isMigrationMode()) {
+      if (migrationMode) {
         row.insertBefore(routeTd, fromTd);
       }
       row.insertBefore(rubyFromSourceCell.td, fromTd);
@@ -5317,26 +5330,26 @@
       if (tokenEditorAvailable && entry.metaOpen) {
         const detailRow = document.createElement("tr");
         const detailCell = document.createElement("td");
-        detailCell.colSpan = isMigrationMode() ? 18 : 17;
+        detailCell.colSpan = 18;
 
         const detailWrap = document.createElement("div");
         detailWrap.className = "panel-block";
         const detailHead = document.createElement("div");
         detailHead.className = "panel-head";
         const detailTitle = document.createElement("h4");
-        detailTitle.textContent = "条件";
+        detailTitle.textContent = "隴夲ｽ｡闔会ｽｶ";
         const detailHint = document.createElement("span");
         detailHint.className = "count";
-        detailHint.textContent = "前条件・現条件・後条件・sequence を編集";
+        detailHint.textContent = "陷題ざ謫・脂・ｶ郢晢ｽｻ霑ｴ・ｾ隴夲ｽ｡闔会ｽｶ郢晢ｽｻ陟墓｢ｧ謫・脂・ｶ郢晢ｽｻsequence 郢ｧ蝣､・ｷ・ｨ鬮ｮ繝ｻ;
         detailHead.append(detailTitle, detailHint);
 
         const detailGrid = document.createElement("div");
         detailGrid.style.display = "grid";
         detailGrid.style.gap = "6px";
         detailGrid.replaceChildren(
-          renderConditionGroupEditor(entry, "prev", "前"),
-          renderConditionGroupEditor(entry, "current", "現"),
-          renderConditionGroupEditor(entry, "next", "後"),
+          renderConditionGroupEditor(entry, "prev", "陷代・),
+          renderConditionGroupEditor(entry, "current", "霑ｴ・ｾ"),
+          renderConditionGroupEditor(entry, "next", "陟輔・),
           renderSequenceEditorV3(entry)
         );
         detailWrap.append(detailHead, detailGrid);
@@ -5347,7 +5360,7 @@
     });
 
     selectAll.addEventListener("change", () => {
-      runTrackedMutation("項目一括選択", () => {
+      runStateTransaction("Select all entries", () => {
         setAllRowsSelected(node.entries, selectAll.checked);
       });
     });
@@ -5386,9 +5399,7 @@
         state.dragPayload = null;
         return;
       }
-      if (runTrackedMutation("箱移動", () => {
-        return moveNodeBetweenParents(payload.nodeId, parentChildren, index);
-      }, { render: false })) {
+      if (moveNodeBetweenParents(payload.nodeId, parentChildren, index)) {
         setFocusedNode(node.id);
         renderApp();
       }
@@ -5397,7 +5408,7 @@
 
     const titleWrap = document.createElement("div");
     titleWrap.className = isRoot ? "bundle-title" : "group-title";
-      const dragHandle = createButton("⋮⋮", "ghost", () => {});
+      const dragHandle = createButton("遶呻ｽｮ遶呻ｽｮ", "ghost", () => {});
     dragHandle.type = "button";
     dragHandle.title = t("options.dragNodes");
     dragHandle.draggable = true;
@@ -5412,7 +5423,7 @@
     });
     titleWrap.appendChild(dragHandle);
     const collapseToggle = createButton(
-      isNodeCollapsed(node.id) ? "▸" : "▾",
+      isNodeCollapsed(node.id) ? "隨・ｽｸ" : "隨・ｽｾ",
       "ghost",
       () => {
         setNodeCollapsed(node.id, !isNodeCollapsed(node.id));
@@ -5426,20 +5437,17 @@
     const treeSummary = summarizeNodeTree(node);
     const entryChip = document.createElement("span");
     entryChip.className = "chip";
-    entryChip.textContent = `項目 ${treeSummary.total}`;
+    entryChip.textContent = `鬯・・蟯ｼ ${treeSummary.total}`;
     const childChip = document.createElement("span");
     childChip.className = "chip";
-    childChip.textContent = `子箱 ${node.children.length}`;
+    childChip.textContent = `陝・鴻・ｮ・ｱ ${node.children.length}`;
     const kindChip = document.createElement("span");
     kindChip.className = "chip";
     kindChip.textContent = effectiveKind;
-    titleWrap.append(entryChip, childChip, kindChip);
-    if (isMigrationMode()) {
-      const dictionaryChip = renderInspectorChip(`dictionary ${treeSummary.dictionary}`);
-      const tokenChip = renderInspectorChip(`token ${treeSummary.token}`);
-      const reviewChip = renderInspectorChip(`review ${treeSummary.review}`);
-      titleWrap.append(dictionaryChip, tokenChip, reviewChip);
-    }
+    const dictionaryChip = renderInspectorChip(`dictionary ${treeSummary.dictionary}`);
+    const tokenChip = renderInspectorChip(`token ${treeSummary.token}`);
+    const reviewChip = renderInspectorChip(`review ${treeSummary.review}`);
+    titleWrap.append(entryChip, childChip, kindChip, dictionaryChip, tokenChip, reviewChip);
 
     const actions = document.createElement("div");
     actions.className = isRoot ? "bundle-actions" : "group-actions";
@@ -5453,7 +5461,7 @@
       node.selected = selectedCheckbox.checked;
       renderDiagnostics();
     });
-    selectedLabel.append(selectedCheckbox, document.createTextNode("選択"));
+    selectedLabel.append(selectedCheckbox, document.createTextNode("鬩包ｽｸ隰壹・));
     actions.appendChild(selectedLabel);
 
     const enabledLabel = document.createElement("label");
@@ -5492,7 +5500,7 @@
       card.appendChild(renderEntryTableV2(node, effectiveKind, searchText));
     }
 
-    if (isMigrationMode()) {
+    if (showMigrationDetails()) {
       card.appendChild(renderNodeMergePanel(node));
     }
     card.appendChild(renderNodeDiagnosticsPanel(node));
@@ -5628,11 +5636,11 @@
     const head = document.createElement("div");
     head.className = "panel-head";
     const title = document.createElement("h4");
-    title.textContent = "概要";
+    title.textContent = "隶弱ｊ・ｦ繝ｻ;
     const summary = summarizeNodeTree(node);
     const count = document.createElement("span");
     count.className = "count";
-    count.textContent = `${trail.map((item) => item.label).join(" / ")} / 子箱 ${node.children.length}`;
+    count.textContent = `${trail.map((item) => item.label).join(" / ")} / 陝・鴻・ｮ・ｱ ${node.children.length}`;
     head.append(title, count);
 
     const body = document.createElement("div");
@@ -5641,7 +5649,7 @@
       renderInspectorChip(`kind ${effectiveKind}`),
       renderInspectorChip(`entry ${summary.total}`)
     );
-    if (isMigrationMode()) {
+    if (showMigrationDetails()) {
       body.append(
         renderInspectorChip(`dictionary ${summary.dictionary}`),
         renderInspectorChip(`token ${summary.token}`),
@@ -5651,18 +5659,17 @@
 
     const note = document.createElement("p");
     note.className = "diag-summary";
-    if (effectiveKind === "dictionary-rules" && summary.token > 0) {
-      note.textContent = "この箱は dictionary-rules ですが、一部の rule は runtime で token stage へ受け流れます。";
+    if (!showMigrationDetails()) {
+      note.textContent = "Selected node only is shown in the inspector.";
+    } else if (effectiveKind === "dictionary-rules" && summary.token > 0) {
+      note.textContent = "邵ｺ阮吶・驍ゑｽｱ邵ｺ・ｯ dictionary-rules 邵ｺ・ｧ邵ｺ蜷ｶ窶ｲ邵ｲ竏ｽ・ｸﾂ鬩幢ｽｨ邵ｺ・ｮ rule 邵ｺ・ｯ runtime 邵ｺ・ｧ token stage 邵ｺ・ｸ陷ｿ蜉ｱ・雎ｬ竏夲ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ;
     } else if (effectiveKind === "token-rules" && summary.dictionary > 0) {
-      note.textContent = "この箱は token-rules ですが、regex など一部の rule は dictionary stage へ残ります。";
+      note.textContent = "邵ｺ阮吶・驍ゑｽｱ邵ｺ・ｯ token-rules 邵ｺ・ｧ邵ｺ蜷ｶ窶ｲ邵ｲ縲影gex 邵ｺ・ｪ邵ｺ・ｩ闕ｳﾂ鬩幢ｽｨ邵ｺ・ｮ rule 邵ｺ・ｯ dictionary stage 邵ｺ・ｸ隹ｿ荵晢ｽ顔ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ;
     } else {
-      note.textContent = "node kind は保存上の主種別です。各 rule の最終到達先は表の「行先」で確認できます。";
+      note.textContent = "node kind 邵ｺ・ｯ闖ｫ譎擾ｽｭ蛟・ｽｸ鄙ｫ繝ｻ闕ｳ・ｻ驕橸ｽｮ陋ｻ・･邵ｺ・ｧ邵ｺ蜷ｶﾂ繧・耳 rule 邵ｺ・ｮ隴崢驍ｨ繧・寒鬩墓ｳ後・邵ｺ・ｯ髯ｦ・ｨ邵ｺ・ｮ邵ｲ迹夲ｽ｡謔溘・邵ｲ髦ｪ縲帝￡・ｺ髫ｱ髦ｪ縲堤ｸｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繝ｻ;
     }
 
-    panel.append(head, body);
-    if (isMigrationMode()) {
-      panel.appendChild(note);
-    }
+    panel.append(head, body, note);
     return panel;
   };
 
@@ -5672,10 +5679,10 @@
     const head = document.createElement("div");
     head.className = "panel-head";
     const title = document.createElement("h4");
-    title.textContent = "一括操作";
+    title.textContent = "闕ｳﾂ隲｡・ｬ隰ｫ蝣ｺ・ｽ繝ｻ;
     const count = document.createElement("span");
     count.className = "count";
-    count.textContent = `選択 node ${collectSelectedNodes().length} / 選択 entry ${collectSelectedEntries().length}`;
+    count.textContent = `鬩包ｽｸ隰壹・node ${collectSelectedNodes().length} / 鬩包ｽｸ隰壹・entry ${collectSelectedEntries().length}`;
     head.append(title, count);
 
     const actions = document.createElement("div");
@@ -5687,12 +5694,10 @@
     selectedCheckbox.type = "checkbox";
     selectedCheckbox.checked = node.selected === true;
     selectedCheckbox.addEventListener("change", () => {
-      runTrackedMutation("node選択", () => {
-        node.selected = selectedCheckbox.checked;
-      }, { render: false });
+      node.selected = selectedCheckbox.checked;
       renderApp();
     });
-    selectedLabel.append(selectedCheckbox, document.createTextNode("node選択"));
+    selectedLabel.append(selectedCheckbox, document.createTextNode("node鬩包ｽｸ隰壹・));
     actions.appendChild(selectedLabel);
 
     const enabledLabel = document.createElement("label");
@@ -5701,31 +5706,28 @@
     enabledCheckbox.type = "checkbox";
     enabledCheckbox.checked = node.enabled !== false;
     enabledCheckbox.addEventListener("change", () => {
-      runTrackedMutation("node有効切替", () => {
-        node.enabled = enabledCheckbox.checked;
-      });
+      node.enabled = enabledCheckbox.checked;
+      renderApp();
     });
     enabledLabel.append(enabledCheckbox, document.createTextNode(t("options.fieldEnabled")));
     actions.appendChild(enabledLabel);
 
     const kindSelect = document.createElement("select");
-    kindSelect.title = "保存上の kind を切り替えます";
+    kindSelect.title = "闖ｫ譎擾ｽｭ蛟・ｽｸ鄙ｫ繝ｻ kind 郢ｧ雋槭・郢ｧ鬆大ｴ帷ｸｺ蛹ｻ竏ｪ邵ｺ繝ｻ;
     kindSelect.innerHTML = `
       <option value="token-rules">token-rules</option>
       <option value="dictionary-rules">dictionary-rules</option>
     `;
     kindSelect.value = effectiveKind;
     kindSelect.addEventListener("change", () => {
-      runTrackedMutation("kind切替", () => {
-        node.kind = kindSelect.value;
-      });
+      node.kind = kindSelect.value;
+      renderApp();
     });
     actions.appendChild(kindSelect);
 
-    actions.appendChild(createButton(node.bulkImportOpen === true ? "一括登録を閉じる" : t("options.bulkImportTitle"), "secondary", () => {
-      runTrackedMutation("一括登録表示切替", () => {
-        node.bulkImportOpen = node.bulkImportOpen !== true;
-      });
+    actions.appendChild(createButton(node.bulkImportOpen === true ? "闕ｳﾂ隲｡・ｬ騾具ｽｻ鬪ｭ・ｲ郢ｧ蟶晏陶邵ｺ蛟･・・ : t("options.bulkImportTitle"), "secondary", () => {
+      node.bulkImportOpen = node.bulkImportOpen !== true;
+      renderApp();
     }));
     actions.appendChild(createButton(t("options.buttonCopySelection"), "ghost", () => {
       copyCurrentSelection(false);
@@ -5736,32 +5738,30 @@
     actions.appendChild(createButton(t("options.buttonPasteHere"), "secondary", () => {
       pasteClipboardIntoNode(node.id);
     }));
-    actions.appendChild(createButton("↑", "ghost", () => {
-      runTrackedMutation("箱並べ替え", () => {
-        moveItem(parentChildren, index, -1);
-      });
+    actions.appendChild(createButton("遶翫・, "ghost", () => {
+      if (moveItem(parentChildren, index, -1)) {
+        renderApp();
+      }
     }));
-    actions.appendChild(createButton("↓", "ghost", () => {
-      runTrackedMutation("箱並べ替え", () => {
-        moveItem(parentChildren, index, 1);
-      });
+    actions.appendChild(createButton("遶翫・, "ghost", () => {
+      if (moveItem(parentChildren, index, 1)) {
+        renderApp();
+      }
     }));
     actions.appendChild(createButton(t("options.buttonAddGroup"), "secondary", () => {
-      runTrackedMutation("Group追加", () => {
-        node.children.push(normalizeNode({
-          id: createNodeId(),
-          label: "Group",
-          kind: effectiveKind,
-          enabled: true,
-          entries: [],
-          children: []
-        }, "group", "Group"));
-      });
+      node.children.push(normalizeNode({
+        id: createNodeId(),
+        label: "Group",
+        kind: effectiveKind,
+        enabled: true,
+        entries: [],
+        children: []
+      }, "group", "Group"));
+      renderApp();
     }));
     actions.appendChild(createButton(t("options.buttonAddEntry"), "secondary", () => {
-      runTrackedMutation("項目追加", () => {
-        node.entries.push(createEmptyBulkEntry());
-      });
+      node.entries.push(createEmptyBulkEntry());
+      renderApp();
     }));
     actions.appendChild(createButton(t("options.buttonDeleteSelection"), "danger", () => {
       if (!deleteCurrentSelection()) {
@@ -5772,22 +5772,18 @@
 
     if (isRoot) {
       actions.appendChild(createButton(t("options.buttonResetRoot"), "ghost", () => {
-        runTrackedMutation("Bundle初期化", () => {
-          resetRoot(node.id);
-        }, { render: false });
+        resetRoot(node.id);
       }));
       if (!findBaseRoot(node.id)) {
         actions.appendChild(createButton(t("options.buttonDeleteBundle"), "warn", () => {
-          runTrackedMutation("Bundle削除", () => {
-            parentChildren.splice(index, 1);
-          });
+          parentChildren.splice(index, 1);
+          renderApp();
         }));
       }
     } else {
       actions.appendChild(createButton(t("options.buttonDeleteGroup"), "warn", () => {
-        runTrackedMutation("Group削除", () => {
-          parentChildren.splice(index, 1);
-        });
+        parentChildren.splice(index, 1);
+        renderApp();
       }));
     }
 
@@ -5803,7 +5799,7 @@
     const head = document.createElement("div");
     head.className = "panel-head";
     const title = document.createElement("h4");
-    title.textContent = "統合候補";
+    title.textContent = "驍ｨ・ｱ陷ｷ莠･ﾂ蜻ｵ・｣繝ｻ;
     const count = document.createElement("span");
     count.className = "count";
     count.textContent = `safe ${safeMerges.length} / candidate ${mergeCandidates.length}`;
@@ -5812,18 +5808,18 @@
 
     const actions = document.createElement("div");
     actions.className = "panel-actions";
-    actions.appendChild(createButton("safe統合を適用", "secondary", () => {
+    actions.appendChild(createButton("safe驍ｨ・ｱ陷ｷ蛹ｻ・帝ｩ包ｽｩ騾包ｽｨ", "secondary", () => {
       const applied = applySafeAutoMergesToNode(node);
       if (applied === 0) {
-        setStatus("safe に統合できる rule はありません。", "info");
+        setStatus("safe 邵ｺ・ｫ驍ｨ・ｱ陷ｷ蛹ｻ縲堤ｸｺ髦ｪ・・rule 邵ｺ・ｯ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ, "info");
         return;
       }
       renderApp();
-      setStatus(`${applied} 件の safe 統合を適用しました。`, "success");
+      setStatus(`${applied} 闔会ｽｶ邵ｺ・ｮ safe 驍ｨ・ｱ陷ｷ蛹ｻ・帝ｩ包ｽｩ騾包ｽｨ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ・｡, "success");
     }));
-    actions.appendChild(createButton("候補を全適用", "ghost", () => {
+    actions.appendChild(createButton("陋溷揃・｣諛奇ｽ定怦・ｨ鬩包ｽｩ騾包ｽｨ", "ghost", () => {
       if (mergeCandidates.length === 0) {
-        setStatus("適用できる統合候補はありません。", "info");
+        setStatus("鬩包ｽｩ騾包ｽｨ邵ｺ・ｧ邵ｺ髦ｪ・矩お・ｱ陷ｷ莠･ﾂ蜻ｵ・｣諛翫・邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ, "info");
         return;
       }
       [...mergeCandidates]
@@ -5832,15 +5828,15 @@
         replaceNodeEntriesWithMergePreview(node, candidate);
         });
       renderApp();
-      setStatus(`${mergeCandidates.length} 件の統合候補を適用しました。`, "success");
+      setStatus(`${mergeCandidates.length} 闔会ｽｶ邵ｺ・ｮ驍ｨ・ｱ陷ｷ莠･ﾂ蜻ｵ・｣諛奇ｽ帝ｩ包ｽｩ騾包ｽｨ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ・｡, "success");
     }));
     panel.appendChild(actions);
 
     const summary = document.createElement("p");
     summary.className = "diag-summary";
     summary.textContent = safeMerges.length === 0 && mergeCandidates.length === 0
-      ? "同一 to / 同一条件の自動統合候補はありません。"
-      : "safe は from 群のみを from_options へまとめます。candidate は current 条件の OR 化候補です。";
+      ? "陷ｷ蠕｡・ｸﾂ to / 陷ｷ蠕｡・ｸﾂ隴夲ｽ｡闔会ｽｶ邵ｺ・ｮ髢ｾ・ｪ陷肴・・ｵ・ｱ陷ｷ莠･ﾂ蜻ｵ・｣諛翫・邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ
+      : "safe 邵ｺ・ｯ from 驗抵ｽ､邵ｺ・ｮ邵ｺ・ｿ郢ｧ繝ｻfrom_options 邵ｺ・ｸ邵ｺ・ｾ邵ｺ・ｨ郢ｧ竏壺穐邵ｺ蜷ｶﾂ・､andidate 邵ｺ・ｯ current 隴夲ｽ｡闔会ｽｶ邵ｺ・ｮ OR 陋ｹ髢ﾂ蜻ｵ・｣諛翫堤ｸｺ蜷ｶﾂ繝ｻ;
     panel.appendChild(summary);
 
     const list = document.createElement("div");
@@ -5849,13 +5845,13 @@
       const item = document.createElement("div");
       item.className = "diag-item";
       const heading = document.createElement("h3");
-      heading.textContent = `${candidate.type === "safe" ? "safe" : "candidate"} / 統合前 ${candidate.beforeCount} 件`;
+      heading.textContent = `${candidate.type === "safe" ? "safe" : "candidate"} / 驍ｨ・ｱ陷ｷ莠･辯・${candidate.beforeCount} 闔会ｽｶ`;
       const body = document.createElement("p");
       body.className = "diag-summary";
-      body.textContent = `${candidate.preview.from} → ${candidate.preview.to} / 失われる情報なし`;
+      body.textContent = `${candidate.preview.from} 遶翫・${candidate.preview.to} / 陞滂ｽｱ郢ｧ荳奇ｽ檎ｹｧ蛹ｺ繝･陜｣・ｱ邵ｺ・ｪ邵ｺ霈ｿ;
       const itemActions = document.createElement("div");
       itemActions.className = "panel-actions";
-      itemActions.appendChild(createButton("この候補を適用", "ghost", () => {
+      itemActions.appendChild(createButton("邵ｺ阮吶・陋溷揃・｣諛奇ｽ帝ｩ包ｽｩ騾包ｽｨ", "ghost", () => {
         replaceNodeEntriesWithMergePreview(node, candidate);
         renderApp();
       }));
@@ -5875,7 +5871,7 @@
     const head = document.createElement("div");
     head.className = "panel-head";
     const title = document.createElement("h4");
-    title.textContent = "診断";
+    title.textContent = "髫ｪ・ｺ隴・ｽｭ";
     const count = document.createElement("span");
     count.className = "count";
     count.textContent = `regex ${diagnostics.regexIssues.length} / duplicate ${diagnostics.duplicateFromIssues.length} / overlap ${diagnostics.overlapIssues.length}`;
@@ -5883,15 +5879,63 @@
     panel.appendChild(head);
 
     const lines = [
-      diagnostics.regexIssues.length > 0 ? `regex 問題 ${diagnostics.regexIssues.length} 件` : null,
-      diagnostics.duplicateFromIssues.length > 0 ? `duplicate from ${diagnostics.duplicateFromIssues.length} 件` : null,
-      diagnostics.overlapIssues.length > 0 ? `overlap ${diagnostics.overlapIssues.length} 件` : null
+      diagnostics.regexIssues.length > 0 ? `regex 陜蝓趣ｽ｡繝ｻ${diagnostics.regexIssues.length} 闔会ｽｶ` : null,
+      diagnostics.duplicateFromIssues.length > 0 ? `duplicate from ${diagnostics.duplicateFromIssues.length} 闔会ｽｶ` : null,
+      diagnostics.overlapIssues.length > 0 ? `overlap ${diagnostics.overlapIssues.length} 闔会ｽｶ` : null
     ].filter(Boolean);
 
     const summary = document.createElement("p");
     summary.className = "diag-summary";
-    summary.textContent = lines.length > 0 ? lines.join(" / ") : "この node 配下で目立つ診断項目はありません。";
+    summary.textContent = lines.length > 0 ? lines.join(" / ") : "邵ｺ阮吶・ node 鬩溷ｺ・ｸ荵昴帝ｶ・ｮ驕ｶ荵昶命髫ｪ・ｺ隴・ｽｭ鬯・・蟯ｼ邵ｺ・ｯ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
     panel.appendChild(summary);
+    return panel;
+  };
+
+  const renderSavedPayloadHistoryPanel = () => {
+    const panel = document.createElement("section");
+    panel.className = "panel-block";
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h4");
+    title.textContent = "Saved History";
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = `${state.savedPayloadHistory.length} snapshots`;
+    head.append(title, count);
+    panel.appendChild(head);
+
+    const summary = document.createElement("p");
+    summary.className = "diag-summary";
+    summary.textContent = "Restore a previous saved payload. This is separate from in-memory undo/redo.";
+    panel.appendChild(summary);
+
+    if (state.savedPayloadHistory.length === 0) {
+      return panel;
+    }
+
+    const list = document.createElement("div");
+    list.className = "diag-list";
+    [...state.savedPayloadHistory]
+      .slice()
+      .reverse()
+      .forEach((item, reverseIndex) => {
+        const itemPanel = document.createElement("div");
+        itemPanel.className = "diag-item";
+        const label = document.createElement("div");
+        label.className = "diag-summary";
+        label.textContent = item.savedAt ?? `Snapshot ${reverseIndex + 1}`;
+        const actions = document.createElement("div");
+        actions.className = "panel-actions";
+        actions.appendChild(createButton("Restore", "ghost", () => {
+          runStateTransaction("Restore saved payload", () => {
+            applyPersistedPayloadToState(item.payload);
+          });
+          setStatus("Saved payload restored.", "info");
+        }));
+        itemPanel.append(label, actions);
+        list.appendChild(itemPanel);
+      });
+    panel.appendChild(list);
     return panel;
   };
 
@@ -5904,8 +5948,8 @@
     summary.className = "diag-summary";
     const selectedNodes = collectSelectedNodes();
     summary.textContent = selectedNodes.length > 1
-      ? `${selectedNodes.length} 個の node を複数選択中です。右側では一括 kind 変更・有効切替・統合候補を扱います。`
-      : `${visibleRoots.length} 個の root を表示中です。左の tree から root か group を選ぶと Inspector を表示します。`;
+      ? `${selectedNodes.length} 陋滉ｹ昴・ node 郢ｧ螳夲ｽ､繝ｻ辟夐ｩ包ｽｸ隰壽ｨ費ｽｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繧・価陋幢ｽｴ邵ｺ・ｧ邵ｺ・ｯ闕ｳﾂ隲｡・ｬ kind 陞溽判蟲ｩ郢晢ｽｻ隴帷甥譟題崕繝ｻ蟠帷ｹ晢ｽｻ驍ｨ・ｱ陷ｷ莠･ﾂ蜻ｵ・｣諛奇ｽ定ｬ・ｽｱ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ・｡
+      : `${visibleRoots.length} 陋滉ｹ昴・ root 郢ｧ螳夲ｽ｡・ｨ驕会ｽｺ闕ｳ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繧・ｽｷ・ｦ邵ｺ・ｮ tree 邵ｺ荵晢ｽ・root 邵ｺ繝ｻgroup 郢ｧ蟶昶・邵ｺ・ｶ邵ｺ・ｨ Inspector 郢ｧ螳夲ｽ｡・ｨ驕会ｽｺ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ・｡;
     panel.append(title, summary);
     return panel;
   };
@@ -5916,7 +5960,7 @@
     const head = document.createElement("div");
     head.className = "panel-head";
     const title = document.createElement("h2");
-    title.textContent = "複数選択";
+    title.textContent = "髫阪・辟夐ｩ包ｽｸ隰壹・;
     const count = document.createElement("span");
     count.className = "count";
     count.textContent = `${selectedNodes.length} nodes`;
@@ -5925,34 +5969,34 @@
 
     const actions = document.createElement("div");
     actions.className = "panel-actions";
-    actions.appendChild(createButton("dictionary-rules にする", "secondary", () => {
+    actions.appendChild(createButton("dictionary-rules 邵ｺ・ｫ邵ｺ蜷ｶ・・, "secondary", () => {
       selectedNodes.forEach(({ node }) => {
         node.kind = "dictionary-rules";
       });
       renderApp();
     }));
-    actions.appendChild(createButton("token-rules にする", "secondary", () => {
+    actions.appendChild(createButton("token-rules 邵ｺ・ｫ邵ｺ蜷ｶ・・, "secondary", () => {
       selectedNodes.forEach(({ node }) => {
         node.kind = "token-rules";
       });
       renderApp();
     }));
-    actions.appendChild(createButton("有効化", "ghost", () => {
+    actions.appendChild(createButton("隴帷甥譟題峪繝ｻ, "ghost", () => {
       selectedNodes.forEach(({ node }) => {
         node.enabled = true;
       });
       renderApp();
     }));
-    actions.appendChild(createButton("無効化", "ghost", () => {
+    actions.appendChild(createButton("霎滂ｽ｡陷会ｽｹ陋ｹ繝ｻ, "ghost", () => {
       selectedNodes.forEach(({ node }) => {
         node.enabled = false;
       });
       renderApp();
     }));
-    actions.appendChild(createButton("safe統合を適用", "secondary", () => {
+    actions.appendChild(createButton("safe驍ｨ・ｱ陷ｷ蛹ｻ・帝ｩ包ｽｩ騾包ｽｨ", "secondary", () => {
       const applied = selectedNodes.reduce((sum, { node }) => sum + applySafeAutoMergesToNode(node), 0);
       renderApp();
-      setStatus(applied > 0 ? `${applied} 件の safe 統合を適用しました。` : "safe に統合できる rule はありません。", applied > 0 ? "success" : "info");
+      setStatus(applied > 0 ? `${applied} 闔会ｽｶ邵ｺ・ｮ safe 驍ｨ・ｱ陷ｷ蛹ｻ・帝ｩ包ｽｩ騾包ｽｨ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ・｡ : "safe 邵ｺ・ｫ驍ｨ・ｱ陷ｷ蛹ｻ縲堤ｸｺ髦ｪ・・rule 邵ｺ・ｯ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ, applied > 0 ? "success" : "info");
     }));
     panel.appendChild(actions);
 
@@ -6034,12 +6078,12 @@
   };
 
   const createDismissButton = (issueId, issueLabel) => {
-    const button = createButton("×", "ghost", () => {
+    const button = createButton("・・・, "ghost", () => {
       dismissDiagnostic(issueId, issueLabel);
       renderDiagnostics();
     });
     button.title = t("options.diagnosticsDismissTitle");
-    button.setAttribute("aria-label", `${issueLabel} を非表示`);
+    button.setAttribute("aria-label", `${issueLabel} 郢ｧ蟶晄直髯ｦ・ｨ驕会ｽｺ`);
     return button;
   };
 
@@ -6054,7 +6098,7 @@
 
     const summary = document.createElement("p");
     summary.className = "diag-summary";
-    summary.textContent = visibleIssues.length === 0 ? emptyText : `${visibleIssues.length} 件の問題があります。`;
+    summary.textContent = visibleIssues.length === 0 ? emptyText : `${visibleIssues.length} 闔会ｽｶ邵ｺ・ｮ陜蝓趣ｽ｡蠕娯ｲ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蜷ｶﾂ・｡;
     card.appendChild(summary);
 
     if (visibleIssues.length === 0) {
@@ -6093,7 +6137,7 @@
 
     const summary = document.createElement("p");
     summary.className = "diag-summary";
-    summary.textContent = `${dismissedEntries.length} 件を非表示中です。`;
+    summary.textContent = `${dismissedEntries.length} 闔会ｽｶ郢ｧ蟶晄直髯ｦ・ｨ驕会ｽｺ闕ｳ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ・｡;
     card.appendChild(summary);
 
     const actions = document.createElement("div");
@@ -6139,9 +6183,9 @@
     diagnosticsRoot.textContent = "";
     const diagnostics = collectDiagnostics();
     diagnosticsRoot.appendChild(renderIssueCard(
-      "regex 問題",
+      "regex 陜蝓趣ｽ｡繝ｻ,
       diagnostics.regexIssues,
-      "regex ルールの問題はありません。",
+      "regex 郢晢ｽｫ郢晢ｽｼ郢晢ｽｫ邵ｺ・ｮ陜蝓趣ｽ｡蠕後・邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ,
       (issue) => createDiagnosticIssueId("regex", [issue.pathText, issue.entryId, issue.code, issue.from, issue.to]),
       (issue) => `regex: ${issue.from}`,
       (issue) => {
@@ -6165,14 +6209,14 @@
     ));
 
     diagnosticsRoot.appendChild(renderIssueCard(
-      "重複した変更前",
+      "鬩･蟠趣ｽ､繝ｻ・邵ｺ貅ｷ・､逕ｻ蟲ｩ陷代・,
       diagnostics.duplicateFromIssues,
-      "重複はありません。",
+      "鬩･蟠趣ｽ､繝ｻ繝ｻ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ,
       ([entryKey, occurrences]) => createDiagnosticIssueId("duplicate-from", [
         entryKey,
         ...occurrences.map((occurrence) => `${occurrence.pathText}->${occurrence.to}`)
       ]),
-      ([entryKey]) => `重複した変更前: ${entryKey}`,
+      ([entryKey]) => `鬩･蟠趣ｽ､繝ｻ・邵ｺ貅ｷ・､逕ｻ蟲ｩ陷代・ ${entryKey}`,
       ([entryKey, occurrences]) => {
         const item = document.createElement("div");
         item.className = "diag-item";
@@ -6193,21 +6237,21 @@
     ));
 
     diagnosticsRoot.appendChild(renderIssueCard(
-      "包含している変更前",
+      "陋ｹ繝ｻ諤ｧ邵ｺ蜉ｱ窶ｻ邵ｺ繝ｻ・玖棔逕ｻ蟲ｩ陷代・,
       diagnostics.overlapIssues,
-      "包含関係はありません。",
+      "陋ｹ繝ｻ諤ｧ鬮｢・｢闖ｫ繧・・邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ,
       ({ longer, shorter }) => createDiagnosticIssueId("overlap", [
         longer.pathText,
         longer.from,
         shorter.pathText,
         shorter.from
       ]),
-      ({ longer, shorter }) => `包含: ${longer.from} ⊃ ${shorter.from}`,
+      ({ longer, shorter }) => `陋ｹ繝ｻ諤ｧ: ${longer.from} 遶薙・${shorter.from}`,
       ({ longer, shorter }) => {
         const item = document.createElement("div");
         item.className = "diag-item";
         const heading = document.createElement("h3");
-        heading.textContent = `${longer.from} ⊃ ${shorter.from}`;
+        heading.textContent = `${longer.from} 遶薙・${shorter.from}`;
         const body = document.createElement("div");
         body.className = "diag-occurrence";
 
@@ -6226,11 +6270,11 @@
     ));
 
     diagnosticsRoot.appendChild(renderIssueCard(
-      "重複したグループ名",
+      "鬩･蟠趣ｽ､繝ｻ・邵ｺ貅倥￡郢晢ｽｫ郢晢ｽｼ郢晄憺倹",
       diagnostics.duplicateNodeLabelIssues,
-      "競合はありません。",
+      "驕ｶ・ｶ陷ｷ蛹ｻ繝ｻ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ,
       ([labelKey, paths]) => createDiagnosticIssueId("duplicate-group", [labelKey, ...paths]),
-      ([, paths]) => `重複したグループ名: ${paths[0].split(" / ").slice(-1)[0]}`,
+      ([, paths]) => `鬩･蟠趣ｽ､繝ｻ・邵ｺ貅倥￡郢晢ｽｫ郢晢ｽｼ郢晄憺倹: ${paths[0].split(" / ").slice(-1)[0]}`,
       ([, paths]) => {
         const item = document.createElement("div");
         item.className = "diag-item";
@@ -6251,7 +6295,7 @@
             })[0];
           const line = document.createElement("div");
           if (targetNode) {
-            line.appendChild(createJumpButton("移動", { nodeId: targetNode.id, rootId: targetNode.id }));
+            line.appendChild(createJumpButton("驕假ｽｻ陷阪・, { nodeId: targetNode.id, rootId: targetNode.id }));
             line.append(` ${pathText}`);
           } else {
             line.textContent = pathText;
@@ -6342,7 +6386,7 @@
         setFocusedNode(targetNode.id);
         state.activeTab = "bundles";
         renderApp();
-        setStatus(`「${entry.from}」を ${targetNode.label || "Group"} に追加しました。`, "success");
+        setStatus(`邵ｲ繝ｻ{entry.from}邵ｲ髦ｪ・・${targetNode.label || "Group"} 邵ｺ・ｫ髴托ｽｽ陷会｣ｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ・｡, "success");
       }));
       row.appendChild(actionTd);
 
@@ -6358,11 +6402,12 @@
     const text = tokenizerInput.value ?? "";
     const tokens = state.tokenizer.tokenize(text);
     renderTokenizerResult(tokens);
-    setStatus(`形態素解析で ${tokens.length} 件を解析しました。`, "success");
+    setStatus(`陟厄ｽ｢隲ｷ迢暦ｽｴ・ｰ髫暦ｽ｣隴ｫ闊後・${tokens.length} 闔会ｽｶ郢ｧ螳夲ｽｧ・｣隴ｫ闊鯉ｼ邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ・｡, "success");
   };
 
   const renderTabState = () => {
     const bundlesActive = state.activeTab === "bundles";
+    const importActive = state.activeTab === "import";
     const rubyActive = state.activeTab === "ruby";
     const katakanaLongVowelActive = state.activeTab === "katakana-long-vowel";
     const stage4Active = state.activeTab === "stage4";
@@ -6371,6 +6416,7 @@
     const hotkeysActive = state.activeTab === "hotkeys";
     const sitesActive = state.activeTab === "sites";
     panelBundles.hidden = !bundlesActive;
+    panelImport.hidden = !importActive;
     panelRuby.hidden = !rubyActive;
     panelKatakanaLongVowel.hidden = !katakanaLongVowelActive;
     panelStage4.hidden = !stage4Active;
@@ -6379,6 +6425,7 @@
     panelHotkeys.hidden = !hotkeysActive;
     panelSites.hidden = !sitesActive;
     tabBundlesButton.setAttribute("aria-selected", bundlesActive ? "true" : "false");
+    tabImportButton?.setAttribute("aria-selected", importActive ? "true" : "false");
     tabRubyButton.setAttribute("aria-selected", rubyActive ? "true" : "false");
     tabKatakanaLongVowelButton.setAttribute("aria-selected", katakanaLongVowelActive ? "true" : "false");
     tabStage4Button.setAttribute("aria-selected", stage4Active ? "true" : "false");
@@ -6387,6 +6434,9 @@
     tabHotkeysButton.setAttribute("aria-selected", hotkeysActive ? "true" : "false");
     tabSitesButton.setAttribute("aria-selected", sitesActive ? "true" : "false");
     tabBundlesButton.className = bundlesActive ? "tab-button secondary" : "tab-button ghost";
+    if (tabImportButton) {
+      tabImportButton.className = importActive ? "tab-button secondary" : "tab-button ghost";
+    }
     tabRubyButton.className = rubyActive ? "tab-button secondary" : "tab-button ghost";
     tabKatakanaLongVowelButton.className = katakanaLongVowelActive ? "tab-button secondary" : "tab-button ghost";
     tabStage4Button.className = stage4Active ? "tab-button secondary" : "tab-button ghost";
@@ -6418,6 +6468,7 @@
     row.style.paddingLeft = `${depth * 14 + 8}px`;
     row.dataset.selected = state.bundleUi.selectedNodeId === node.id ? "true" : "false";
     const nodeSummary = summarizeNodeTree(node);
+    const migrationMode = showMigrationDetails();
     row.draggable = true;
     row.addEventListener("dragstart", (event) => {
       state.dragPayload = { type: "node", nodeId: node.id };
@@ -6428,25 +6479,29 @@
       state.dragPayload = null;
     });
     row.addEventListener("dragover", (event) => {
-      if (state.dragPayload?.type === "node") {
+      if (state.dragPayload?.type === "node" || state.dragPayload?.type === "import-node" || state.dragPayload?.type === "import-entry") {
         event.preventDefault();
       }
     });
     row.addEventListener("drop", (event) => {
-      if (state.dragPayload?.type !== "node") {
+      if (!state.dragPayload) {
         return;
       }
       event.preventDefault();
       const payload = state.dragPayload;
-      const location = findNodeLocation(node.id);
-      if (!location || payload.nodeId === node.id || isNodeAncestorOf(payload.nodeId, node.id)) {
-        state.dragPayload = null;
-        return;
-      }
-      if (runTrackedMutation("箱移動", () => {
-        return moveNodeBetweenParents(payload.nodeId, location.parentChildren, location.index);
-      }, { render: false })) {
-        renderApp();
+      if (payload.type === "node") {
+        const location = findNodeLocation(node.id);
+        if (!location || payload.nodeId === node.id || isNodeAncestorOf(payload.nodeId, node.id)) {
+          state.dragPayload = null;
+          return;
+        }
+        runStateTransaction("Move nodes", () => {
+          moveNodeBetweenParents(payload.nodeId, location.parentChildren, location.index);
+        });
+      } else if (payload.type === "import-node") {
+        applyImportPayloadToTarget(payload, node.id);
+      } else if (payload.type === "import-entry") {
+        applyImportPayloadToTarget(payload, node.id);
       }
       state.dragPayload = null;
     });
@@ -6455,8 +6510,8 @@
     const expandButton = document.createElement("button");
     expandButton.type = "button";
     expandButton.className = "icon-button";
-    expandButton.textContent = hasChildren ? (state.bundleUi.expandedTreeIds?.[node.id] === false ? "▸" : "▾") : "•";
-    expandButton.title = hasChildren ? "表示切替" : "leaf";
+    expandButton.textContent = hasChildren ? (state.bundleUi.expandedTreeIds?.[node.id] === false ? "隨・ｽｸ" : "隨・ｽｾ") : "遯ｶ・｢";
+    expandButton.title = hasChildren ? "髯ｦ・ｨ驕会ｽｺ陋ｻ繝ｻ蟠・ : "leaf";
     expandButton.disabled = !hasChildren;
     expandButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -6469,7 +6524,7 @@
         delete state.bundleUi.expandedTreeIds[node.id];
       }
       saveBundleUiState();
-      renderBundles();
+      renderApp();
     });
     row.appendChild(expandButton);
 
@@ -6480,8 +6535,9 @@
       event.stopPropagation();
     });
     selectedCheckbox.addEventListener("change", () => {
-      node.selected = selectedCheckbox.checked;
-      renderBundles();
+      runStateTransaction("Select node", () => {
+        node.selected = selectedCheckbox.checked;
+      });
     });
     row.appendChild(selectedCheckbox);
 
@@ -6492,14 +6548,14 @@
     labelButton.addEventListener("click", () => {
       state.bundleUi.selectedNodeId = node.id;
       saveBundleUiState();
-      renderBundles();
+      renderApp();
     });
     row.appendChild(labelButton);
     row.append(
       renderInspectorChip(node.kind ?? "dictionary-rules"),
       renderInspectorChip(`${nodeSummary.total}`)
     );
-    if (isMigrationMode()) {
+    if (migrationMode) {
       row.append(
         renderInspectorChip(`D ${nodeSummary.dictionary}`),
         renderInspectorChip(`T ${nodeSummary.token}`),
@@ -6626,19 +6682,20 @@
       migrationToggle.className = "toggle";
       const migrationCheckbox = document.createElement("input");
       migrationCheckbox.type = "checkbox";
-      migrationCheckbox.checked = isMigrationMode();
+      migrationCheckbox.checked = showMigrationDetails();
       migrationCheckbox.addEventListener("change", () => {
         state.bundleUi.migrationMode = migrationCheckbox.checked;
         saveBundleUiState();
-        renderBundles();
+        renderApp();
       });
-      migrationToggle.append(migrationCheckbox, document.createTextNode("移行モード"));
+      migrationToggle.append(migrationCheckbox, document.createTextNode("Migration mode"));
       controlsRight.appendChild(migrationToggle);
       controls.appendChild(controlsRight);
       right.appendChild(controls);
 
       const content = document.createElement("div");
       content.className = "bundle-sections";
+      content.appendChild(renderSavedPayloadHistoryPanel());
 
       if (selectedNodes.length > 1) {
         content.appendChild(renderMultiSelectionInspector(selectedNodes));
@@ -6661,8 +6718,8 @@
         const empty = document.createElement("p");
         empty.className = "diag-summary";
         empty.textContent = searchText
-          ? "検索条件に一致する bundle / group / rule はありません。"
-          : "表示できる bundle がありません。";
+          ? "隶諛・ｽｴ・｢隴夲ｽ｡闔会ｽｶ邵ｺ・ｫ闕ｳﾂ髢ｾ・ｴ邵ｺ蜷ｶ・・bundle / group / rule 邵ｺ・ｯ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ
+          : "髯ｦ・ｨ驕会ｽｺ邵ｺ・ｧ邵ｺ髦ｪ・・bundle 邵ｺ蠕娯旺郢ｧ鄙ｫ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
         empty.textContent = searchText
           ? t("options.noSearchResult")
           : t("options.noVisibleBundle");
@@ -6708,7 +6765,7 @@
     const head = document.createElement("div");
     head.className = "panel-head";
     const title = document.createElement("h2");
-    title.textContent = "カタカナ長音省略";
+    title.textContent = "郢ｧ・ｫ郢ｧ・ｿ郢ｧ・ｫ郢昜ｼ∬◇鬮ｻ・ｳ騾ｵ竏ｫ謇・;
     const actions = document.createElement("div");
     actions.className = "panel-actions";
 
@@ -6734,11 +6791,11 @@
     const summary = document.createElement("p");
     summary.className = "diag-summary";
     summary.textContent = root
-      ? "カタカナ語末尾の長音「ー」を省略します。除外語は変換しません。"
-      : "カタカナ長音省略 bundle が見つかりません。";
+      ? "郢ｧ・ｫ郢ｧ・ｿ郢ｧ・ｫ郢晞｡假ｽｪ讓雁ｿｰ陝・ｽｾ邵ｺ・ｮ鬮滂ｽｷ鬮ｻ・ｳ邵ｲ蠕後・邵ｲ髦ｪ・帝ｵ竏ｫ謇慕ｸｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧句求陞溷・・ｪ讒ｭ繝ｻ陞溽判驪､邵ｺ蜉ｱ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ
+      : "郢ｧ・ｫ郢ｧ・ｿ郢ｧ・ｫ郢昜ｼ∬◇鬮ｻ・ｳ騾ｵ竏ｫ謇・bundle 邵ｺ迹夲ｽｦ荵昶命邵ｺ荵晢ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
     body.appendChild(summary);
     if (root) {
-      summary.textContent = "カタカナ語片末尾の長音「ー」を省略します。除外語は変換しません。";
+      summary.textContent = "郢ｧ・ｫ郢ｧ・ｿ郢ｧ・ｫ郢晞｡假ｽｪ讓呈抄隴幢ｽｫ陝・ｽｾ邵ｺ・ｮ鬮滂ｽｷ鬮ｻ・ｳ邵ｲ蠕後・邵ｲ髦ｪ・帝ｵ竏ｫ謇慕ｸｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧句求陞溷・・ｪ讒ｭ繝ｻ陞溽判驪､邵ｺ蜉ｱ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
     }
 
     if (root) {
@@ -6761,10 +6818,10 @@
         minLengthInput.value = String(nextValue);
         renderDiagnostics();
       });
-      minLengthLabel.append("対象文字数", minLengthInput);
+      minLengthLabel.append("陝・ｽｾ髮趣ｽ｡隴√・・ｭ邇ｲ辟・, minLengthInput);
       const minLengthHint = document.createElement("span");
       minLengthHint.className = "count";
-      minLengthHint.textContent = "長音を含む語片の文字数。4 なら「○○○ー」以上を対象にします。";
+      minLengthHint.textContent = "鬮滂ｽｷ鬮ｻ・ｳ郢ｧ雋樊ｧ郢ｧﾂ髫ｱ讓呈抄邵ｺ・ｮ隴√・・ｭ邇ｲ辟夂ｸｲ繝ｻ 邵ｺ・ｪ郢ｧ蟲ｨﾂ螽ｯ髮ｷ隨ｳ驫髮ｷ郢晢ｽｼ邵ｲ蝣ｺ・ｻ・･闕ｳ鄙ｫ・定汞・ｾ髮趣ｽ｡邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ;
       settingsRow.append(minLengthLabel, minLengthHint);
       body.appendChild(settingsRow);
 
@@ -6774,7 +6831,7 @@
       if (entries.length === 0) {
         const empty = document.createElement("p");
         empty.className = "diag-summary";
-        empty.textContent = "除外語はありません。";
+        empty.textContent = "鬮ｯ・､陞溷・・ｪ讒ｭ繝ｻ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
         listWrap.appendChild(empty);
       }
 
@@ -6785,7 +6842,7 @@
         input.type = "text";
         input.className = "domain-input";
         input.value = entry.from ?? "";
-        input.placeholder = "バッター";
+        input.placeholder = "郢晁・繝｣郢ｧ・ｿ郢晢ｽｼ";
         input.addEventListener("change", () => {
           const value = input.value.trim();
           entry.from = value;
@@ -6807,7 +6864,7 @@
       const addInput = document.createElement("input");
       addInput.type = "text";
       addInput.className = "domain-input";
-      addInput.placeholder = "バッター";
+      addInput.placeholder = "郢晁・繝｣郢ｧ・ｿ郢晢ｽｼ";
       addRow.appendChild(addInput);
       addRow.appendChild(createButton(t("options.buttonAdd"), "secondary", () => {
         const value = addInput.value.trim();
@@ -6847,7 +6904,7 @@
     const head = document.createElement("div");
     head.className = "panel-head";
     const title = document.createElement("h2");
-    title.textContent = "ルビ";
+    title.textContent = "郢晢ｽｫ郢昴・;
     head.appendChild(title);
 
     const body = document.createElement("div");
@@ -6855,7 +6912,7 @@
 
     const summary = document.createElement("p");
     summary.className = "diag-summary";
-    summary.textContent = "辞書の変換後は常に なろう形式として扱います。ページ側の記号設定は本文解釈用で、popup から URL ごとに切り替えられます。";
+    summary.textContent = "髴取ｨ雁ｶ檎ｸｺ・ｮ陞溽判驪､陟募ｾ後・陝ｶ・ｸ邵ｺ・ｫ 邵ｺ・ｪ郢ｧ髦ｪ竕ｧ陟厄ｽ｢陟台ｸ岩・邵ｺ蜉ｱ窶ｻ隰・ｽｱ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繧・・郢晢ｽｼ郢ｧ・ｸ陋幢ｽｴ邵ｺ・ｮ髫ｪ莨懈差髫ｪ・ｭ陞ｳ螢ｹ繝ｻ隴幢ｽｬ隴√・・ｧ・｣鬩･閧ｲ逡醍ｸｺ・ｧ邵ｲ・捐pup 邵ｺ荵晢ｽ・URL 邵ｺ譁絶・邵ｺ・ｫ陋ｻ繝ｻ・願ｭ厄ｽｿ邵ｺ蛹ｻ・臥ｹｧ蠕娯穐邵ｺ蜷ｶﾂ繝ｻ;
     body.appendChild(summary);
 
     const enabledLabel = document.createElement("label");
@@ -6865,9 +6922,9 @@
     enabledInput.checked = rubySettings.enabled !== false;
     enabledInput.addEventListener("change", () => {
       state.runtimeSettings.ruby.enabled = enabledInput.checked;
-      setStatus("ルビ設定を更新しました。保存すると runtime に反映されます。", "info");
+      setStatus("郢晢ｽｫ郢晄･｢・ｨ・ｭ陞ｳ螢ｹ・定ｭ厄ｽｴ隴・ｽｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繧・ｽｿ譎擾ｽｭ蛟･笘・ｹｧ荵昶・ runtime 邵ｺ・ｫ陷ｿ閧ｴ荳千ｸｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ, "info");
     });
-    enabledLabel.append(enabledInput, document.createTextNode("標準でなろう形式ルビを有効にする"));
+    enabledLabel.append(enabledInput, document.createTextNode("隶灘綜・ｺ謔ｶ縲堤ｸｺ・ｪ郢ｧ髦ｪ竕ｧ陟厄ｽ｢陟台ｸ莞晉ｹ晁侭・定ｭ帷甥譟醍ｸｺ・ｫ邵ｺ蜷ｶ・・));
     body.appendChild(enabledLabel);
 
     const hiddenLabel = document.createElement("label");
@@ -6877,25 +6934,25 @@
     hiddenInput.checked = rubySettings.hidden === true;
     hiddenInput.addEventListener("change", () => {
       state.runtimeSettings.ruby.hidden = hiddenInput.checked;
-      setStatus("ルビ設定を更新しました。保存すると runtime に反映されます。", "info");
+      setStatus("郢晢ｽｫ郢晄･｢・ｨ・ｭ陞ｳ螢ｹ・定ｭ厄ｽｴ隴・ｽｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繧・ｽｿ譎擾ｽｭ蛟･笘・ｹｧ荵昶・ runtime 邵ｺ・ｫ陷ｿ閧ｴ荳千ｸｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ, "info");
     });
-    hiddenLabel.append(hiddenInput, document.createTextNode("ルビを非表示にする"));
+    hiddenLabel.append(hiddenInput, document.createTextNode("郢晢ｽｫ郢晁侭・帝ｫｱ讚・ｽ｡・ｨ驕会ｽｺ邵ｺ・ｫ邵ｺ蜷ｶ・・));
     body.appendChild(hiddenLabel);
 
     const markerRow = document.createElement("div");
     markerRow.className = "simple-row";
     const markerTitle = document.createElement("strong");
-    markerTitle.textContent = "既定のページ記号";
+    markerTitle.textContent = "隴鯉ｽ｢陞ｳ螢ｹ繝ｻ郢晏｣ｹ繝ｻ郢ｧ・ｸ髫ｪ莨懈差";
     const openInput = document.createElement("input");
     openInput.type = "text";
     openInput.className = "compact";
-    openInput.value = rubySettings.default_markers?.open ?? "《";
-    openInput.placeholder = "《";
+    openInput.value = rubySettings.default_markers?.open ?? "\u300a";
+    openInput.placeholder = "\u300a";
     const closeInput = document.createElement("input");
     closeInput.type = "text";
     closeInput.className = "compact";
-    closeInput.value = rubySettings.default_markers?.close ?? "》";
-    closeInput.placeholder = "》";
+    closeInput.value = rubySettings.default_markers?.close ?? "\u300b";
+    closeInput.placeholder = "\u300b";
     const applyMarkers = () => {
       state.runtimeSettings.ruby.default_markers = TransformShared.normalizeRubyMarkers({
         open: openInput.value,
@@ -6903,7 +6960,7 @@
       });
       openInput.value = state.runtimeSettings.ruby.default_markers.open;
       closeInput.value = state.runtimeSettings.ruby.default_markers.close;
-      setStatus("ルビ記号を更新しました。保存すると runtime に反映されます。", "info");
+      setStatus("郢晢ｽｫ郢晄･｢・ｨ莨懈差郢ｧ蜻亥ｳｩ隴・ｽｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繧・ｽｿ譎擾ｽｭ蛟･笘・ｹｧ荵昶・ runtime 邵ｺ・ｫ陷ｿ閧ｴ荳千ｸｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ, "info");
     };
     openInput.addEventListener("change", applyMarkers);
     closeInput.addEventListener("change", applyMarkers);
@@ -6914,7 +6971,7 @@
     maxLengthRow.className = "simple-row";
     const baseLengthLabel = document.createElement("label");
     baseLengthLabel.className = "toggle";
-    baseLengthLabel.append("本文最大文字数", document.createTextNode(" "));
+    baseLengthLabel.append("隴幢ｽｬ隴√・諤呵棔・ｧ隴√・・ｭ邇ｲ辟・, document.createTextNode(" "));
     const baseLengthInput = document.createElement("input");
     baseLengthInput.type = "number";
     baseLengthInput.min = "1";
@@ -6925,13 +6982,13 @@
       const nextValue = Math.max(1, Math.floor(Number(baseLengthInput.value) || 24));
       state.runtimeSettings.ruby.max_base_length = nextValue;
       baseLengthInput.value = String(nextValue);
-      setStatus("ルビ最大文字数を更新しました。保存すると runtime に反映されます。", "info");
+      setStatus("郢晢ｽｫ郢晄瑳諤呵棔・ｧ隴√・・ｭ邇ｲ辟夂ｹｧ蜻亥ｳｩ隴・ｽｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繧・ｽｿ譎擾ｽｭ蛟･笘・ｹｧ荵昶・ runtime 邵ｺ・ｫ陷ｿ閧ｴ荳千ｸｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ, "info");
     });
     baseLengthLabel.append(baseLengthInput);
 
     const rubyLengthLabel = document.createElement("label");
     rubyLengthLabel.className = "toggle";
-    rubyLengthLabel.append("ルビ最大文字数", document.createTextNode(" "));
+    rubyLengthLabel.append("郢晢ｽｫ郢晄瑳諤呵棔・ｧ隴√・・ｭ邇ｲ辟・, document.createTextNode(" "));
     const rubyLengthInput = document.createElement("input");
     rubyLengthInput.type = "number";
     rubyLengthInput.min = "1";
@@ -6942,7 +6999,7 @@
       const nextValue = Math.max(1, Math.floor(Number(rubyLengthInput.value) || 24));
       state.runtimeSettings.ruby.max_ruby_length = nextValue;
       rubyLengthInput.value = String(nextValue);
-      setStatus("ルビ最大文字数を更新しました。保存すると runtime に反映されます。", "info");
+      setStatus("郢晢ｽｫ郢晄瑳諤呵棔・ｧ隴√・・ｭ邇ｲ辟夂ｹｧ蜻亥ｳｩ隴・ｽｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繧・ｽｿ譎擾ｽｭ蛟･笘・ｹｧ荵昶・ runtime 邵ｺ・ｫ陷ｿ閧ｴ荳千ｸｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ, "info");
     });
     rubyLengthLabel.append(rubyLengthInput);
 
@@ -6951,7 +7008,7 @@
 
     const hint = document.createElement("p");
     hint.className = "diag-summary";
-    hint.textContent = "変換後に《ルビ》を含み ｜ が無い場合は、変換後文字列の先頭へ ｜ を補完して実ルビ表示します。本文とルビの最大文字数を超えた組はルビ化しません。";
+    hint.textContent = "陞溽判驪､陟募ｾ娯・邵ｲ鄙ｫﾎ晉ｹ晁侭ﾂ荵晢ｽ定惺・ｫ邵ｺ・ｿ 繝ｻ繝ｻ邵ｺ讙寂伯邵ｺ繝ｻ・ｰ・ｴ陷ｷ蛹ｻ繝ｻ邵ｲ竏晢ｽ､逕ｻ驪､陟墓｢ｧ譫夊氛諤懊・邵ｺ・ｮ陷育｣ｯ・ｰ・ｭ邵ｺ・ｸ 繝ｻ繝ｻ郢ｧ螳夲ｽ｣諛ｷ・ｮ蠕鯉ｼ邵ｺ・ｦ陞ｳ貅佩晉ｹ晄･｢・｡・ｨ驕会ｽｺ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧域た隴√・竊堤ｹ晢ｽｫ郢晁侭繝ｻ隴崢陞滂ｽｧ隴√・・ｭ邇ｲ辟夂ｹｧ螳夲ｽｶ繝ｻ竏ｴ邵ｺ貅ｽ・ｵ繝ｻ繝ｻ郢晢ｽｫ郢晉§蝟ｧ邵ｺ蜉ｱ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
     body.appendChild(hint);
 
     card.append(head, body);
@@ -6971,7 +7028,7 @@
     const head = document.createElement("div");
     head.className = "panel-head";
     const title = document.createElement("h2");
-    title.textContent = "Stage4 送り仮名省略";
+    title.textContent = "Stage4 鬨ｾ竏夲ｽ願脂・ｮ陷ｷ蜥ｲ諤宣｡・･";
     const actions = document.createElement("div");
     actions.className = "panel-actions";
 
@@ -6997,8 +7054,8 @@
     const summary = document.createElement("p");
     summary.className = "diag-summary";
     summary.textContent = root
-      ? "Stage4 は複合動詞や未列挙動詞の送り仮名省略を runtime 側で補完します。通常の Bundle 編集一覧からは分離されています。"
-      : "Stage4 bundle が見つかりません。";
+      ? "Stage4 邵ｺ・ｯ髫阪・邊玖恪謌奇ｽｩ讒ｭ・・ｭ幢ｽｪ陋ｻ邇ｲ雖瑚恪謌奇ｽｩ讒ｭ繝ｻ鬨ｾ竏夲ｽ願脂・ｮ陷ｷ蜥ｲ諤宣｡・･郢ｧ繝ｻruntime 陋幢ｽｴ邵ｺ・ｧ髯ｬ諛ｷ・ｮ蠕鯉ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繧仰螢ｼ・ｸ・ｸ邵ｺ・ｮ Bundle 驍ｱ・ｨ鬮ｮ繝ｻ・ｸﾂ髫包ｽｧ邵ｺ荵晢ｽ臥ｸｺ・ｯ陋ｻ繝ｻ螻ｬ邵ｺ霈費ｽ檎ｸｺ・ｦ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ
+      : "Stage4 bundle 邵ｺ迹夲ｽｦ荵昶命邵ｺ荵晢ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
     body.appendChild(summary);
 
     if (root) {
@@ -7006,10 +7063,10 @@
       list.style.margin = "0";
       list.style.paddingLeft = "1.2rem";
       [
-        "語幹作用: 変わる→変る / 行なう→行う / 上がる→上る",
-        "連用形省略: 書き始める→書始める / 走り度い→走度い",
-        "最後尾動詞圧縮: 持ち上がる→持上る / 積み上げ→積上",
-        "サ変特例: 確認する→確認す / 確認すれば→確認せば"
+        "髫ｱ讒ｫ・ｹ・ｹ闖ｴ諛・舞: 陞溷ｳｨ・冗ｹｧ驫繝ｻ陞溷ｳｨ・・/ 髯ｦ蠕娯・邵ｺ繝ｻ繝ｻ髯ｦ蠕娯鴬 / 闕ｳ鄙ｫ窶ｲ郢ｧ驫繝ｻ闕ｳ鄙ｫ・・,
+        "鬨ｾ・｣騾包ｽｨ陟厄ｽ｢騾ｵ竏ｫ謇・ 隴厄ｽｸ邵ｺ讎奇ｽｧ荵晢ｽ∫ｹｧ驫繝ｻ隴厄ｽｸ陝倶ｹ晢ｽ∫ｹｧ繝ｻ/ 隘搾ｽｰ郢ｧ髮・ｽｺ・ｦ邵ｺ繝ｻ繝ｻ隘搾ｽｰ陟趣ｽｦ邵ｺ繝ｻ,
+        "隴崢陟墓ぁ・ｰ・ｾ陷肴・・ｩ讒ｫ謔ｸ驍ｵ・ｮ: 隰問・笆闕ｳ鄙ｫ窶ｲ郢ｧ驫繝ｻ隰問或・ｸ鄙ｫ・・/ 驕ｨ髦ｪ竏ｩ闕ｳ鄙ｫ・｡遶雁､・ｩ蝣ｺ・ｸ繝ｻ,
+        "郢ｧ・ｵ陞溯・髻ｳ關薙・ 驕抵ｽｺ髫ｱ髦ｪ笘・ｹｧ驫繝ｻ驕抵ｽｺ髫ｱ髦ｪ笘・/ 驕抵ｽｺ髫ｱ髦ｪ笘・ｹｧ蠕後・遶雁､・｢・ｺ髫ｱ髦ｪ笳狗ｸｺ・ｰ"
       ].forEach((text) => {
         const item = document.createElement("li");
         item.textContent = text;
@@ -7127,9 +7184,371 @@
     return ownEntries + childEntries;
   };
 
+  const findImportNodeLocation = (nodeId, nodes = state.importSession?.roots ?? [], parentChildren = state.importSession?.roots ?? [], parentNode = null) => {
+    for (let index = 0; index < nodes.length; index += 1) {
+      const node = nodes[index];
+      if (node.id === nodeId) {
+        return { node, index, parentChildren, parentNode };
+      }
+      const nested = findImportNodeLocation(nodeId, node.children ?? [], node.children ?? [], node);
+      if (nested) {
+        return nested;
+      }
+    }
+    return null;
+  };
+
+  const findImportEntry = (nodeId, entryId) => {
+    const location = findImportNodeLocation(nodeId);
+    if (!location) {
+      return null;
+    }
+    return location.node.entries.find((entry) => entry.id === entryId) ?? null;
+  };
+
+  const findMatchingNodeByIdOrLabel = (nodes, sourceNode) => {
+    const byId = sourceNode?.id ? nodes.find((node) => node.id === sourceNode.id) : null;
+    if (byId) {
+      return byId;
+    }
+    if (!sourceNode?.label) {
+      return null;
+    }
+    return nodes.find((node) => node.label === sourceNode.label) ?? null;
+  };
+
+  const createImportSplitBox = (sourceNode) => normalizeNode({
+    id: createNodeId(),
+    label: sourceNode?.label || "Imported",
+    kind: sourceNode?.kind || "dictionary-rules",
+    enabled: true,
+    entries: [],
+    children: []
+  }, "import-box", sourceNode?.label || "Imported");
+
+  const mergeImportedNodeIntoTarget = (targetNode, sourceNode) => {
+    if (!targetNode || !sourceNode) {
+      return;
+    }
+    targetNode.entries.push(...(sourceNode.entries ?? []).map((entry) => createDeepEntryClone(entry)));
+    for (const sourceChild of sourceNode.children ?? []) {
+      const matchedChild = findMatchingNodeByIdOrLabel(targetNode.children ?? [], sourceChild);
+      if (matchedChild) {
+        mergeImportedNodeIntoTarget(matchedChild, sourceChild);
+      } else {
+        targetNode.children.push(createDeepNodeClone(sourceChild));
+      }
+    }
+    applySafeAutoMergesToNode(targetNode);
+  };
+
+  const applyImportPayloadToTarget = (payload, explicitTargetNodeId = null) => {
+    const targetNodeId = explicitTargetNodeId ?? state.bundleUi.selectedNodeId;
+    if (!targetNodeId || targetNodeId === "__all__") {
+      setStatus("Select a target node before importing.", "error");
+      return false;
+    }
+    const targetLocation = findNodeLocation(targetNodeId);
+    if (!targetLocation) {
+      setStatus("Target node not found.", "error");
+      return false;
+    }
+    const targetNode = targetLocation.node;
+    const mode = state.importSession?.options?.mode ?? "merge-matched";
+
+    return runStateTransaction("Apply staged import", () => {
+      if (payload.type === "import-entry") {
+        const sourceEntry = findImportEntry(payload.sourceNodeId, payload.entryId);
+        if (!sourceEntry) {
+          return false;
+        }
+        if (mode === "split-into-child-box") {
+          const boxLabel = payload.sourceLabel || payload.sourceNodeLabel || "Imported";
+          let childBox = targetNode.children.find((child) => child.label === boxLabel) ?? null;
+          if (!childBox) {
+            childBox = createImportSplitBox({ label: boxLabel, kind: targetNode.kind });
+            targetNode.children.push(childBox);
+          }
+          childBox.entries.push(createDeepEntryClone(sourceEntry));
+          applySafeAutoMergesToNode(childBox);
+        } else {
+          targetNode.entries.push(createDeepEntryClone(sourceEntry));
+          applySafeAutoMergesToNode(targetNode);
+        }
+        return true;
+      }
+
+      if (payload.type !== "import-node") {
+        return false;
+      }
+
+      const sourceLocation = findImportNodeLocation(payload.sourceNodeId);
+      if (!sourceLocation) {
+        return false;
+      }
+      const sourceNode = sourceLocation.node;
+      const sourceIsRoot = !sourceLocation.parentNode;
+      const targetIsRoot = !targetLocation.parentNode;
+
+      if (sourceIsRoot && targetIsRoot && mode !== "split-into-child-box") {
+        if (mode === "merge-matched") {
+          const matchedRoot = findMatchingNodeByIdOrLabel(state.roots, sourceNode);
+          if (matchedRoot) {
+            mergeImportedNodeIntoTarget(matchedRoot, sourceNode);
+          } else {
+            state.roots.splice(targetLocation.index + 1, 0, createDeepNodeClone(sourceNode));
+          }
+        } else {
+          state.roots.splice(targetLocation.index + 1, 0, createDeepNodeClone(sourceNode));
+        }
+        return true;
+      }
+
+      if (mode === "split-into-child-box") {
+        let childBox = targetNode.children.find((child) => child.label === sourceNode.label) ?? null;
+        if (!childBox) {
+          childBox = createImportSplitBox(sourceNode);
+          targetNode.children.push(childBox);
+        }
+        mergeImportedNodeIntoTarget(childBox, sourceNode);
+        return true;
+      }
+
+      if (mode === "merge-matched") {
+        const matchedChild = findMatchingNodeByIdOrLabel(targetNode.children ?? [], sourceNode);
+        if (matchedChild) {
+          mergeImportedNodeIntoTarget(matchedChild, sourceNode);
+        } else {
+          targetNode.children.push(createDeepNodeClone(sourceNode));
+        }
+      } else {
+        targetNode.children.push(createDeepNodeClone(sourceNode));
+      }
+      applySafeAutoMergesToNode(targetNode);
+      return true;
+    }).changed;
+  };
+
+  const renderImportSourceTreeNode = (node, depth = 0) => {
+    const row = document.createElement("div");
+    row.className = "explorer-row";
+    row.style.paddingLeft = `${depth * 14 + 8}px`;
+    row.dataset.selected = state.importSession?.selectedSourceId === node.id ? "true" : "false";
+    const summary = summarizeNodeTree(node);
+    const migrationMode = showMigrationDetails();
+    row.draggable = true;
+    row.addEventListener("dragstart", (event) => {
+      state.dragPayload = { type: "import-node", sourceNodeId: node.id };
+      event.dataTransfer.effectAllowed = "copy";
+      event.dataTransfer.setData("text/plain", node.id);
+    });
+    row.addEventListener("dragend", () => {
+      state.dragPayload = null;
+    });
+    row.addEventListener("click", () => {
+      state.importSession.selectedSourceId = node.id;
+      renderImportPanel();
+    });
+
+    const label = document.createElement("button");
+    label.type = "button";
+    label.className = "tree-label";
+    label.textContent = node.label || "Imported";
+    label.addEventListener("click", (event) => {
+      event.stopPropagation();
+      state.importSession.selectedSourceId = node.id;
+      renderImportPanel();
+    });
+    row.appendChild(label);
+    row.appendChild(renderInspectorChip(node.kind ?? "dictionary-rules"));
+    row.appendChild(renderInspectorChip(`${summary.total}`));
+    if (migrationMode) {
+      row.appendChild(renderInspectorChip(`D ${summary.dictionary}`));
+      row.appendChild(renderInspectorChip(`T ${summary.token}`));
+      row.appendChild(renderInspectorChip(`? ${summary.review}`));
+    }
+
+    const wrap = document.createElement("div");
+    wrap.appendChild(row);
+    for (const child of node.children ?? []) {
+      wrap.appendChild(renderImportSourceTreeNode(child, depth + 1));
+    }
+    return wrap;
+  };
+
+  const renderImportPanel = () => {
+    if (!importRoot) {
+      return;
+    }
+    importRoot.textContent = "";
+    const session = state.importSession;
+    const workspace = document.createElement("section");
+    workspace.className = "bundle-workspace";
+
+    const left = document.createElement("aside");
+    left.className = "bundle-explorer";
+    const leftHead = document.createElement("div");
+    leftHead.className = "workspace-head";
+    const leftTitle = document.createElement("h3");
+    leftTitle.textContent = session ? `Staging: ${session.fileName || "Import"}` : "Staging";
+    leftHead.appendChild(leftTitle);
+    left.appendChild(leftHead);
+
+    if (!session || session.roots.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "diag-summary";
+      empty.textContent = "Use JSON/YAML???? to load a staging tree.";
+      left.appendChild(empty);
+      workspace.appendChild(left);
+      importRoot.appendChild(workspace);
+      return;
+    }
+
+    const sourceTree = document.createElement("div");
+    sourceTree.className = "explorer-tree";
+    session.roots.forEach((root) => {
+      sourceTree.appendChild(renderImportSourceTreeNode(root));
+    });
+    left.appendChild(sourceTree);
+
+    const right = document.createElement("div");
+    right.className = "bundle-grid-shell";
+    const content = document.createElement("div");
+    content.className = "bundle-sections";
+
+    const optionsPanel = document.createElement("section");
+    optionsPanel.className = "panel-block";
+    const optionsHead = document.createElement("div");
+    optionsHead.className = "panel-head";
+    const optionsTitle = document.createElement("h4");
+    optionsTitle.textContent = "Import Options";
+    optionsHead.appendChild(optionsTitle);
+    const optionsActions = document.createElement("div");
+    optionsActions.className = "panel-actions";
+    const modeSelect = document.createElement("select");
+    modeSelect.innerHTML = `
+      <option value="merge-matched">merge matched</option>
+      <option value="append-only">append only</option>
+      <option value="split-into-child-box">split into child box</option>
+    `;
+    modeSelect.value = session.options?.mode ?? "merge-matched";
+    modeSelect.addEventListener("change", () => {
+      session.options.mode = modeSelect.value;
+    });
+    const migrationToggle = document.createElement("label");
+    migrationToggle.className = "toggle";
+    const migrationCheckbox = document.createElement("input");
+    migrationCheckbox.type = "checkbox";
+    migrationCheckbox.checked = showMigrationDetails();
+    migrationCheckbox.addEventListener("change", () => {
+      state.bundleUi.migrationMode = migrationCheckbox.checked;
+      saveBundleUiState();
+      renderApp();
+    });
+    migrationToggle.append(migrationCheckbox, document.createTextNode("Migration mode"));
+    optionsActions.append(modeSelect, migrationToggle);
+    optionsPanel.append(optionsHead, optionsActions);
+    content.appendChild(optionsPanel);
+
+    const sourceNode = session.selectedSourceId ? findImportNodeLocation(session.selectedSourceId)?.node ?? null : session.roots[0] ?? null;
+    if (sourceNode && !session.selectedSourceId) {
+      session.selectedSourceId = sourceNode.id;
+    }
+
+    if (sourceNode) {
+      const sourcePanel = document.createElement("section");
+      sourcePanel.className = "panel-block";
+      const sourceHead = document.createElement("div");
+      sourceHead.className = "panel-head";
+      const sourceTitle = document.createElement("h4");
+      sourceTitle.textContent = `Source: ${sourceNode.label}`;
+      const sourceSummary = document.createElement("span");
+      sourceSummary.className = "count";
+      const sourceCounts = summarizeNodeTree(sourceNode);
+      sourceSummary.textContent = showMigrationDetails()
+        ? `entries ${sourceCounts.total} / D ${sourceCounts.dictionary} / T ${sourceCounts.token} / ? ${sourceCounts.review}`
+        : `entries ${sourceCounts.total}`;
+      sourceHead.append(sourceTitle, sourceSummary);
+      const sourceActions = document.createElement("div");
+      sourceActions.className = "panel-actions";
+      sourceActions.appendChild(createButton("Add node to selected target", "secondary", () => {
+        applyImportPayloadToTarget({ type: "import-node", sourceNodeId: sourceNode.id }, state.bundleUi.selectedNodeId);
+      }));
+      sourcePanel.append(sourceHead, sourceActions);
+
+      if (sourceNode.entries.length > 0) {
+        const entryList = document.createElement("div");
+        entryList.className = "diag-list";
+        sourceNode.entries.forEach((entry) => {
+          const item = document.createElement("div");
+          item.className = "diag-item";
+          item.draggable = true;
+          item.addEventListener("dragstart", (event) => {
+            state.dragPayload = {
+              type: "import-entry",
+              sourceNodeId: sourceNode.id,
+              sourceNodeLabel: sourceNode.label,
+              sourceLabel: sourceNode.label,
+              entryId: entry.id
+            };
+            event.dataTransfer.effectAllowed = "copy";
+            event.dataTransfer.setData("text/plain", entry.id);
+          });
+          item.addEventListener("dragend", () => {
+            state.dragPayload = null;
+          });
+          const text = document.createElement("div");
+          text.className = "diag-summary";
+          text.textContent = `${entry.from} -> ${entry.to}`;
+          const actions = document.createElement("div");
+          actions.className = "panel-actions";
+          actions.appendChild(createButton("Add entry", "ghost", () => {
+            applyImportPayloadToTarget({
+              type: "import-entry",
+              sourceNodeId: sourceNode.id,
+              sourceNodeLabel: sourceNode.label,
+              sourceLabel: sourceNode.label,
+              entryId: entry.id
+            }, state.bundleUi.selectedNodeId);
+          }));
+          item.append(text, actions);
+          entryList.appendChild(item);
+        });
+        sourcePanel.appendChild(entryList);
+      }
+      content.appendChild(sourcePanel);
+    }
+
+    const targetPanel = document.createElement("section");
+    targetPanel.className = "panel-block";
+    const targetHead = document.createElement("div");
+    targetHead.className = "panel-head";
+    const targetTitle = document.createElement("h4");
+    targetTitle.textContent = "Target Explorer";
+    const targetSummary = document.createElement("span");
+    targetSummary.className = "count";
+    targetSummary.textContent = state.bundleUi.selectedNodeId === "__all__"
+      ? "Select a target node"
+      : getNodeTrailById(state.bundleUi.selectedNodeId, state.roots)?.map((item) => item.label).join(" / ") ?? "Select a target node";
+    targetHead.append(targetTitle, targetSummary);
+    targetPanel.appendChild(targetHead);
+    const targetTree = document.createElement("div");
+    targetTree.className = "explorer-tree";
+    getBundleEditorRoots().forEach((root) => {
+      targetTree.appendChild(renderTreeNode(root));
+    });
+    targetPanel.appendChild(targetTree);
+    content.appendChild(targetPanel);
+
+    right.appendChild(content);
+    workspace.append(left, right);
+    importRoot.appendChild(workspace);
+  };
+
   const renderApp = () => {
     renderRuntimeSettings();
     renderBundles();
+    renderImportPanel();
     renderRubyPanel();
     renderKatakanaLongVowelPanel();
     renderStage4Panel();
@@ -7137,50 +7556,58 @@
     renderHotkeys();
     renderDisabledSites();
     renderTabState();
-    if (undoButton) {
-      undoButton.disabled = state.history.undoStack.length === 0;
-      undoButton.textContent = getUndoLabel() ? `Undo: ${getUndoLabel()}` : "Undo";
-    }
-    if (redoButton) {
-      redoButton.disabled = state.history.redoStack.length === 0;
-      redoButton.textContent = getRedoLabel() ? `Redo: ${getRedoLabel()}` : "Redo";
-    }
+    syncHistoryButtons();
     normalizeUiTree(document.body);
   };
 
   const exportSettingsAsJson = () => {
     downloadText("transform-settings.json", `${JSON.stringify(buildPayload(), null, 2)}\n`, "application/json");
-    setStatus("JSON を書き出しました。", "success");
+    setStatus("JSON 郢ｧ蜻亥ｶ檎ｸｺ讎翫・邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "success");
   };
 
   const exportSettingsAsYaml = () => {
     downloadText("transform-settings.yaml", `${serializeYamlObject(buildPayload())}\n`, "text/yaml");
-    setStatus("YAML を書き出しました。", "success");
+    setStatus("YAML 郢ｧ蜻亥ｶ檎ｸｺ讎翫・邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "success");
+  };
+
+  const parseSettingsDocumentText = (text) => {
+    try {
+      return JSON5.parse(text);
+    } catch (jsonError) {
+      try {
+        return parseYamlDocument(text);
+      } catch (yamlError) {
+        throw new Error(`Failed to parse JSON/YAML: ${yamlError.message}`);
+      }
+    }
   };
 
   const importSettingsFromText = async (text, fileName) => {
-    let parsed;
-    try {
-      parsed = JSON5.parse(text);
-    } catch (jsonError) {
-      try {
-        parsed = parseYamlDocument(text);
-      } catch (yamlError) {
-        throw new Error(`鬮ｫ・ｱ繝ｻ・ｭ鬮ｴ雜｣・ｽ・ｼ驍ｵ・ｺ繝ｻ・ｫ髯樊ｻゑｽｽ・ｱ髫ｰ・ｨ陷会ｽｱ繝ｻ・ｰ驍ｵ・ｺ繝ｻ・ｾ驍ｵ・ｺ陷会ｽｱ隨ｳ繝ｻ ${yamlError.message}`);
-      }
-    }
+    const parsed = parseSettingsDocumentText(text);
+    const importedRoots = normalizeImportedRoots(parsed);
+    state.roots = importedRoots;
+    state.runtimeSettings = extractRuntimeSettings(parsed);
+    state.disabledSites = extractDisabledSites(parsed);
+    state.pageRubySettings = extractPageRubySettings(parsed);
+    state.popupBundleId = extractPopupBundleId(parsed);
+    ensureRuntimeSpecialRoots(state.roots);
+    ensurePopupBundleRoot(state.roots);
+    renderApp();
+    setStatus(`${fileName} loaded as full replacement.`, "success");
+  };
 
-    runTrackedMutation(`置換読込: ${fileName}`, () => {
-      const importedRoots = normalizeImportedRoots(parsed);
-      state.roots = importedRoots;
-      state.runtimeSettings = extractRuntimeSettings(parsed);
-      state.disabledSites = extractDisabledSites(parsed);
-      state.pageRubySettings = extractPageRubySettings(parsed);
-      state.popupBundleId = extractPopupBundleId(parsed);
-      ensureRuntimeSpecialRoots(state.roots);
-      ensurePopupBundleRoot(state.roots);
+  const stageImportSessionFromText = (text, fileName) => {
+    const parsed = parseSettingsDocumentText(text);
+    const roots = normalizeImportedRoots(parsed);
+    state.importSession = normalizeImportSession({
+      ...createEmptyImportSession(),
+      fileName,
+      roots,
+      selectedSourceId: roots[0]?.id ?? null
     });
-    setStatus(`${fileName} を読み込みました。`, "success");
+    state.activeTab = "import";
+    renderApp();
+    setStatus(`${fileName} loaded into staging.`, "success");
   };
 
   const initialize = async () => {
@@ -7204,7 +7631,7 @@
       storageGet(STORAGE_KEY),
       storageGet(DIAGNOSTIC_UI_STATE_KEY),
       storageGet(BUNDLE_UI_STATE_KEY),
-      storageGet(SAVE_HISTORY_STORAGE_KEY)
+      storageGet(SAVED_PAYLOAD_HISTORY_KEY)
     ]);
     let currentRoots = cloneValue(baseRoots);
     const shouldSeedStorage = !hasStoredRootsPayload(storedPayload);
@@ -7230,17 +7657,22 @@
       : {};
     state.bundleUi = normalizeBundleUiState(storedBundleUiState);
     state.savedPayloadHistory = Array.isArray(storedSavedPayloadHistory)
-      ? storedSavedPayloadHistory.slice(0, MAX_SAVED_PAYLOAD_HISTORY)
+      ? storedSavedPayloadHistory.filter((item) => item?.payload && typeof item === "object")
       : [];
     if (shouldSeedStorage) {
       await storageSet(buildStoragePayload());
     }
     renderApp();
-    setStatus("設定を読み込みました。", "info");
+    setStatus("髫ｪ・ｭ陞ｳ螢ｹ・帝坡・ｭ邵ｺ・ｿ髴趣ｽｼ邵ｺ・ｿ邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "info");
   };
 
   tabBundlesButton.addEventListener("click", () => {
     state.activeTab = "bundles";
+    renderTabState();
+  });
+
+  tabImportButton?.addEventListener("click", () => {
+    state.activeTab = "import";
     renderTabState();
   });
 
@@ -7271,7 +7703,7 @@
       await runTokenizerTest();
     } catch (error) {
       console.error(error);
-      setStatus(`形態素解析に失敗しました: ${error.message}`, "error");
+      setStatus(`陟厄ｽ｢隲ｷ迢暦ｽｴ・ｰ髫暦ｽ｣隴ｫ闊娯・陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ ${error.message}`, "error");
     }
   });
 
@@ -7280,53 +7712,47 @@
       await saveAllAndNotify();
     } catch (error) {
       console.error(error);
-      setStatus(`保存に失敗しました: ${error.message}`, "error");
+      setStatus(`闖ｫ譎擾ｽｭ蛟･竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ ${error.message}`, "error");
     }
   });
 
-  undoButton?.addEventListener("click", () => {
-    undoHistory();
-  });
-
-  redoButton?.addEventListener("click", () => {
-    redoHistory();
-  });
-
   runtimeSkipEditableInput.addEventListener("change", () => {
-    runTrackedMutation("runtime: editable除外", () => {
-      state.runtimeSettings.skipEditableInputs = runtimeSkipEditableInput.checked;
-    }, { render: false });
-    setStatus("runtime 設定を更新しました。保存すると本文へ反映されます。", "info");
+    state.runtimeSettings.skipEditableInputs = runtimeSkipEditableInput.checked;
+    setStatus("runtime 髫ｪ・ｭ陞ｳ螢ｹ・定ｭ厄ｽｴ隴・ｽｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繧・ｽｿ譎擾ｽｭ蛟･笘・ｹｧ荵昶・隴幢ｽｬ隴√・竏郁愾閧ｴ荳千ｸｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ, "info");
   });
 
   addBundleButton.addEventListener("click", () => {
-    runTrackedMutation("Bundle追加", () => {
-      state.roots.push(normalizeNode({
-        id: createNodeId(),
-        label: "Bundle",
-        enabled: true,
-        entries: [],
-        children: []
-      }, "bundle", "Bundle"));
-    });
-    setStatus("Bundle を追加しました。", "info");
+    state.roots.push(normalizeNode({
+      id: createNodeId(),
+      label: "Bundle",
+      enabled: true,
+      entries: [],
+      children: []
+    }, "bundle", "Bundle"));
+    renderApp();
+    setStatus("Bundle 郢ｧ螳夲ｽｿ・ｽ陷会｣ｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "info");
   });
 
   reloadDefaultsButton.addEventListener("click", async () => {
     try {
-      runTrackedMutation("既定値へ戻す", () => {
-        applyDefaultState();
-      }, { render: false });
+      applyDefaultState();
       await saveAllAndNotify();
     } catch (error) {
       console.error(error);
       setStatus(`restore defaults failed: ${error.message}`, "error");
       return;
     }
-    setStatus("既定値へ戻しました。", "info");
+    setStatus("隴鯉ｽ｢陞ｳ螢ｼﾂ・､邵ｺ・ｸ隰鯉ｽｻ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "info");
   });
 
   importSettingsButton.addEventListener("click", () => {
+    state.importFileMode = "replace";
+    importFileInput.value = "";
+    importFileInput.click();
+  });
+
+  importAdditionalButton?.addEventListener("click", () => {
+    state.importFileMode = "staging";
     importFileInput.value = "";
     importFileInput.click();
   });
@@ -7338,7 +7764,12 @@
     }
 
     try {
-      await importSettingsFromText(await file.text(), file.name);
+      const fileText = await file.text();
+      if (state.importFileMode === "staging") {
+        stageImportSessionFromText(fileText, file.name);
+      } else {
+        await importSettingsFromText(fileText, file.name);
+      }
     } catch (error) {
       console.error(error);
       setStatus(error.message, "error");
@@ -7350,7 +7781,7 @@
       exportSettingsAsJson();
     } catch (error) {
       console.error(error);
-      setStatus(`JSON の書き出しに失敗しました: ${error.message}`, "error");
+      setStatus(`JSON 邵ｺ・ｮ隴厄ｽｸ邵ｺ讎翫・邵ｺ蜉ｱ竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ ${error.message}`, "error");
     }
   });
 
@@ -7359,7 +7790,7 @@
       exportSettingsAsYaml();
     } catch (error) {
       console.error(error);
-      setStatus(`YAML の書き出しに失敗しました: ${error.message}`, "error");
+      setStatus(`YAML 邵ｺ・ｮ隴厄ｽｸ邵ｺ讎翫・邵ｺ蜉ｱ竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ ${error.message}`, "error");
     }
   });
 
@@ -7368,7 +7799,7 @@
       await runTokenizerTest();
     } catch (error) {
       console.error(error);
-      setStatus(`形態素解析に失敗しました: ${error.message}`, "error");
+      setStatus(`陟厄ｽ｢隲ｷ迢暦ｽｴ・ｰ髫暦ｽ｣隴ｫ闊娯・陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ ${error.message}`, "error");
     }
   });
 
@@ -7383,10 +7814,8 @@
   });
 
   runtimeGlobalEnabledInput?.addEventListener("change", () => {
-    runTrackedMutation("runtime: 全体有効", () => {
-      state.runtimeSettings.globalEnabled = runtimeGlobalEnabledInput.checked;
-    }, { render: false });
-    setStatus("拡張全体の有効状態を更新しました。保存すると即時反映されます。", "info");
+    state.runtimeSettings.globalEnabled = runtimeGlobalEnabledInput.checked;
+    setStatus("隲｡・｡陟托ｽｵ陷茨ｽｨ闖ｴ阮吶・隴帷甥譟題ｿ･・ｶ隲ｷ荵晢ｽ定ｭ厄ｽｴ隴・ｽｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繧・ｽｿ譎擾ｽｭ蛟･笘・ｹｧ荵昶・陷奇ｽｳ隴弱ｇ貂夊ｭ擾｣ｰ邵ｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ, "info");
   });
 
   openShortcutsButton?.addEventListener("click", async () => {
@@ -7394,7 +7823,7 @@
       await sendRuntimeMessage({ type: MESSAGE_TYPES.OPEN_SHORTCUTS_PAGE });
     } catch (error) {
       console.error(error);
-      setStatus(`ショートカット画面を開けませんでした: ${error.message}`, "error");
+      setStatus(`郢ｧ・ｷ郢晢ｽｧ郢晢ｽｼ郢晏現縺咲ｹ昴・繝ｨ騾包ｽｻ鬮ｱ・｢郢ｧ蟶晏ｹ慕ｸｺ莉｣竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・ ${error.message}`, "error");
     }
   });
 
@@ -7403,26 +7832,29 @@
       const activeTab = await getActiveTab();
       const hostname = activeTab?.url ? new URL(activeTab.url).hostname.toLowerCase() : "";
       if (!hostname) {
-        setStatus("現在サイトの取得に失敗しました。", "error");
+        setStatus("霑ｴ・ｾ陜ｨ・ｨ郢ｧ・ｵ郢ｧ・､郢晏現繝ｻ陷ｿ髢・ｾ蜉ｱ竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "error");
         return;
       }
 
-      runTrackedMutation("無効サイト追加", () => {
-        state.disabledSites.domains.push(hostname);
-        state.disabledSites = normalizeDisabledSites(state.disabledSites);
-      });
-      setStatus(`${hostname} を無効サイトへ追加しました。保存すると反映されます。`, "info");
+      state.disabledSites.domains.push(hostname);
+      state.disabledSites = normalizeDisabledSites(state.disabledSites);
+      renderDisabledSites();
+      setStatus(`${hostname} 郢ｧ蝣､笏瑚怏・ｹ郢ｧ・ｵ郢ｧ・､郢晏現竏磯恆・ｽ陷会｣ｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繧・ｽｿ譎擾ｽｭ蛟･笘・ｹｧ荵昶・陷ｿ閧ｴ荳千ｸｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ・｡, "info");
     } catch (error) {
       console.error(error);
-      setStatus(`現在サイトの追加に失敗しました: ${error.message}`, "error");
+      setStatus(`霑ｴ・ｾ陜ｨ・ｨ郢ｧ・ｵ郢ｧ・､郢晏現繝ｻ髴托ｽｽ陷会｣ｰ邵ｺ・ｫ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ ${error.message}`, "error");
     }
   });
 
-  document.addEventListener("keydown", (event) => {
-    if (state.activeTab !== "bundles") {
-      return;
-    }
+  undoButton?.addEventListener("click", () => {
+    runUndoAction();
+  });
 
+  redoButton?.addEventListener("click", () => {
+    runRedoAction();
+  });
+
+  document.addEventListener("keydown", (event) => {
     const target = event.target;
     if (
       target instanceof HTMLElement &&
@@ -7437,21 +7869,23 @@
     const key = `${event.key ?? ""}`.toLowerCase();
     const modifier = event.ctrlKey || event.metaKey;
 
-    if (modifier && key === "z" && event.shiftKey) {
+    if (modifier && key === "z") {
       event.preventDefault();
-      redoHistory();
+      if (event.shiftKey) {
+        runRedoAction();
+      } else {
+        runUndoAction();
+      }
       return;
     }
 
     if (modifier && key === "y") {
       event.preventDefault();
-      redoHistory();
+      runRedoAction();
       return;
     }
 
-    if (modifier && key === "z") {
-      event.preventDefault();
-      undoHistory();
+    if (state.activeTab !== "bundles" && state.activeTab !== "import") {
       return;
     }
 
@@ -7496,6 +7930,7 @@
 
   initialize().catch((error) => {
     console.error(error);
-    setStatus(`初期化に失敗しました: ${error.message}`, "error");
+    setStatus(`陋ｻ譎・ｄ陋ｹ謔ｶ竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ ${error.message}`, "error");
   });
 })();
+

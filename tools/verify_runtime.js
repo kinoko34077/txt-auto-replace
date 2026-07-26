@@ -2005,6 +2005,7 @@ const verifyRubyTransformBehavior = () => {
   }];
 
   const autoRuby = TransformEngine.transformTextWithStages("Bluetooth", autoRubyStages, null);
+  const reappliedAutoRuby = TransformEngine.transformTextWithStages(autoRuby, autoRubyStages, null);
   const explicitRuby = TransformEngine.transformTextWithStages("Bluetooth", explicitRubyStages, null);
   const chainedRuby = TransformEngine.transformTextWithStages("Bluetooth", chainedRubyStages, null);
   const trailingTextRuby = TransformEngine.transformTextWithStages("Bluetooth", [{
@@ -2106,6 +2107,7 @@ const verifyRubyTransformBehavior = () => {
   return {
     passed:
       autoRuby === "\uff5c\u9752\u6b6f\u300aBluetooth\u300b" &&
+      reappliedAutoRuby === "\uff5c\u9752\u6b6f\u300aBluetooth\u300b" &&
       explicitRuby === "\uff5c\u9752\u6b6f\u300aBluetooth\u300b" &&
       chainedRuby === "\uff5c\u9751\u9f52\u300aBluetooth\u300b" &&
       trailingTextRuby === "\uff5c\u9752\u6b6f\u300aBluetooth\u300b\u3068\u8868\u8a18" &&
@@ -2115,6 +2117,7 @@ const verifyRubyTransformBehavior = () => {
       partialShadowRuby === "\u9751\u9f52 \uff5c\u9751\u9f52\u300aBluetooth\u300b",
     details: {
       autoRuby,
+      reappliedAutoRuby,
       explicitRuby,
       chainedRuby,
       trailingTextRuby,

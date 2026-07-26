@@ -81,6 +81,22 @@
         ruby.append(rb, rt);
         result.append(ruby);
       }
+      const isolatedHost = document.createElement("span");
+      isolatedHost.dataset.fixtureRubyIsolated = "1";
+      isolatedHost.dataset.jpnTransformRubyRun = "1";
+      isolatedHost.dataset.jpnTransformRubySource = "Bluetooth";
+      const isolatedShadow = isolatedHost.attachShadow({ mode: "open" });
+      const isolatedStyle = document.createElement("style");
+      isolatedStyle.textContent = "ruby { ruby-position: over; } rt { font-size: .5em; line-height: 1; }";
+      const isolatedRuby = document.createElement("ruby");
+      const isolatedBase = document.createElement("rb");
+      isolatedBase.textContent = "青歯";
+      const isolatedReading = document.createElement("rt");
+      isolatedReading.textContent = "Bluetooth";
+      isolatedRuby.append(isolatedBase, isolatedReading);
+      isolatedShadow.append(isolatedStyle, isolatedRuby);
+      result.append(isolatedHost);
+
       const ruby = result.querySelector("ruby[data-fixture-ruby]");
       const passed =
         transformed === "｜青歯《Bluetooth》" &&
@@ -91,7 +107,13 @@
         ruby?.querySelector("rt")?.textContent === "Bluetooth" &&
         getComputedStyle(ruby).visibility === "visible" &&
         getComputedStyle(ruby.querySelector("rt")).visibility === "visible" &&
-        getComputedStyle(ruby.querySelector("rt")).fontSize !== "0px";
+        getComputedStyle(ruby.querySelector("rt")).fontSize !== "0px" &&
+        isolatedHost.textContent === "" &&
+        isolatedHost.dataset.jpnTransformRubySource === "Bluetooth" &&
+        getComputedStyle(isolatedRuby).display === "ruby" &&
+        getComputedStyle(isolatedReading).display === "ruby-text" &&
+        getComputedStyle(isolatedReading).visibility === "visible" &&
+        getComputedStyle(isolatedReading).fontSize !== "0px";
       const status = document.getElementById("status");
       status.textContent = passed ? "PASS" : `FAIL: ${transformed}`;
       status.dataset.passed = passed ? "true" : "false";

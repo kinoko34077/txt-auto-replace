@@ -300,6 +300,9 @@
       markRecentWriteNode(extraNode);
       markRecentWriteNode(extraNode.parentNode);
       markRecentWriteNode(extraNode.parentElement);
+      if (extraNode.shadowRoot) {
+        markRecentWriteNode(extraNode.shadowRoot);
+      }
     }
   };
 
@@ -832,65 +835,90 @@
     return containers.length;
   };
 
-  const buildRubyRunWrapper = (sourceText, segments, options = {}) => {
-    const wrapper = document.createElement("span");
-    wrapper.setAttribute(RUBY_RUN_ATTRIBUTE, "1");
-    wrapper.setAttribute(RUBY_SOURCE_ATTRIBUTE, sourceText);
-    wrapper.style.setProperty("display", "contents", "important");
-
+  const appendRubySegments = (container, segments, options = {}) => {
     const hidden = options.hidden === true;
     for (const segment of segments) {
       if (!segment) {
         continue;
       }
 
-      if (segment.type === "ruby") {
-        const ruby = document.createElement("ruby");
-        ruby.setAttribute("data-jpn-transform-ruby", "1");
-        ruby.style.setProperty("display", "ruby", "important");
-        ruby.style.setProperty("ruby-position", "over", "important");
-        ruby.style.setProperty("visibility", "visible", "important");
-        ruby.style.setProperty("opacity", "1", "important");
-        ruby.style.setProperty("font-size", "inherit", "important");
-        ruby.style.setProperty("line-height", "inherit", "important");
-        const rb = document.createElement("rb");
-        rb.textContent = `${segment.base ?? ""}`;
-        rb.style.setProperty("display", "ruby-base", "important");
-        rb.style.setProperty("visibility", "visible", "important");
-        rb.style.setProperty("opacity", "1", "important");
-        rb.style.setProperty("font-size", "inherit", "important");
-        rb.style.setProperty("line-height", "inherit", "important");
-        const rt = document.createElement("rt");
-        rt.textContent = `${segment.ruby ?? ""}`;
-        if (hidden) {
-          rt.style.setProperty("display", "none", "important");
-        } else {
-          rt.style.setProperty("display", "ruby-text", "important");
-          rt.style.setProperty("visibility", "visible", "important");
-          rt.style.setProperty("opacity", "1", "important");
-          rt.style.setProperty("position", "static", "important");
-          rt.style.setProperty("font-size", "0.5em", "important");
-          rt.style.setProperty("line-height", "1", "important");
-          rt.style.setProperty("width", "auto", "important");
-          rt.style.setProperty("height", "auto", "important");
-          rt.style.setProperty("overflow", "visible", "important");
-          rt.style.setProperty("clip", "auto", "important");
-          rt.style.setProperty("clip-path", "none", "important");
-          rt.style.setProperty("transform", "none", "important");
-        }
-        ruby.append(rb, rt);
-        wrapper.appendChild(ruby);
+      if (segment.type !== "ruby") {
+        container.appendChild(document.createTextNode(`${segment.text ?? ""}`));
         continue;
       }
 
-      wrapper.appendChild(document.createTextNode(`${segment.text ?? ""}`));
-    }
+      const ruby = document.createElement("ruby");
+      ruby.setAttribute("data-jpn-transform-ruby", "1");
+      ruby.style.setProperty("display", "ruby", "important");
+      ruby.style.setProperty("ruby-position", "over", "important");
+      ruby.style.setProperty("visibility", "visible", "important");
+      ruby.style.setProperty("opacity", "1", "important");
+      ruby.style.setProperty("font-size", "inherit", "important");
+      ruby.style.setProperty("line-height", "inherit", "important");
 
+      const rb = document.createElement("rb");
+      rb.textContent = `${segment.base ?? ""}`;
+      rb.style.setProperty("display", "ruby-base", "important");
+      rb.style.setProperty("visibility", "visible", "important");
+      rb.style.setProperty("opacity", "1", "important");
+      rb.style.setProperty("font-size", "inherit", "important");
+      rb.style.setProperty("line-height", "inherit", "important");
+
+      const rt = document.createElement("rt");
+      rt.textContent = `${segment.ruby ?? ""}`;
+      if (hidden) {
+        rt.style.setProperty("display", "none", "important");
+      } else {
+        rt.style.setProperty("display", "ruby-text", "important");
+        rt.style.setProperty("visibility", "visible", "important");
+        rt.style.setProperty("opacity", "1", "important");
+        rt.style.setProperty("position", "static", "important");
+        rt.style.setProperty("font-size", "0.5em", "important");
+        rt.style.setProperty("line-height", "1", "important");
+        rt.style.setProperty("width", "auto", "important");
+        rt.style.setProperty("height", "auto", "important");
+        rt.style.setProperty("overflow", "visible", "important");
+        rt.style.setProperty("clip", "auto", "important");
+        rt.style.setProperty("clip-path", "none", "important");
+        rt.style.setProperty("transform", "none", "important");
+      }
+      ruby.append(rb, rt);
+      container.appendChild(ruby);
+    }
+  };
+
+  const createManagedRubyHost = (sourceText) => {
+    const wrapper = document.createElement("span");
+    wrapper.setAttribute(RUBY_RUN_ATTRIBUTE, "1");
+    wrapper.setAttribute(RUBY_SOURCE_ATTRIBUTE, sourceText);
     return wrapper;
   };
 
+  const buildRubyRunWrapper = (sourceText, segments, options = {}) => {
+    const wrapper = createManagedRubyHost(sourceText);
+    wrapper.style.setProperty("display", "contents", "important");
+    appendRubySegments(wrapper, segments, options);
+    return wrapper;
+  };
+
+  const buildIsolatedRubyRunWrapper = (sourceText, segments, options = {}) => {
+    const host = createManagedRubyHost(sourceText);
+    host.setAttribute("data-jpn-transform-ruby-isolated", "1");
+    host.style.setProperty("display", "inline", "important");
+    host.style.setProperty("font", "inherit", "important");
+    host.style.setProperty("color", "inherit", "important");
+    host.style.setProperty("white-space", "inherit", "important");
+    const shadow = host.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = ":host { color: inherit; font: inherit; white-space: inherit; } ruby { ruby-position: over; } rt { font-size: .5em; line-height: 1; }";
+    shadow.appendChild(style);
+    appendRubySegments(shadow, segments, options);
+    return host;
+  };
+
   const inspectRenderedRubyStyles = (wrapper) => {
-    const ruby = wrapper?.querySelector?.("ruby[data-jpn-transform-ruby]");
+    const root = wrapper?.shadowRoot ?? wrapper;
+    const ruby = root?.querySelector?.("ruby[data-jpn-transform-ruby]");
     const rt = ruby?.querySelector?.("rt");
     if (!ruby || !rt || !ruby.isConnected) {
       return null;
@@ -912,6 +940,38 @@
         fontSize: rtStyle.fontSize,
         lineHeight: rtStyle.lineHeight
       }
+    };
+  };
+
+  const isUsableRubyRendering = (styles, hidden) => {
+    if (hidden) {
+      return true;
+    }
+    if (!styles?.ruby || !styles?.rt) {
+      return false;
+    }
+    const fontSize = Number.parseFloat(styles.rt.fontSize);
+    return styles.ruby.display === "ruby" &&
+      styles.rt.display === "ruby-text" &&
+      styles.ruby.visibility === "visible" &&
+      styles.rt.visibility === "visible" &&
+      Number(styles.ruby.opacity) > 0 &&
+      Number(styles.rt.opacity) > 0 &&
+      Number.isFinite(fontSize) && fontSize > 0;
+  };
+
+  const ensureReadableRubyRendering = (wrapper, sourceText, segments, options = {}) => {
+    const styles = inspectRenderedRubyStyles(wrapper);
+    if (isUsableRubyRendering(styles, options.hidden === true)) {
+      return { wrapper, renderer: "light", styles };
+    }
+    const isolatedWrapper = buildIsolatedRubyRunWrapper(sourceText, segments, options);
+    wrapper.replaceWith(isolatedWrapper);
+    return {
+      wrapper: isolatedWrapper,
+      renderer: "isolated",
+      styles: inspectRenderedRubyStyles(isolatedWrapper),
+      rejectedStyles: styles
     };
   };
 
@@ -1091,14 +1151,18 @@
       });
       if (textNodes.length === 1) {
         firstNode.replaceWith(wrapper);
-        markRecentWriteForRun(textNodes, wrapper);
+        const rendering = ensureReadableRubyRendering(wrapper, sourceText, rubySegments, {
+          hidden: activeRuntimeSettings.ruby?.hidden === true
+        });
+        markRecentWriteForRun(textNodes, rendering.wrapper);
         recordRubyDebug({
           ...(lastRubyDebug ?? {}),
-          decision: "dom-applied-single-node",
+          decision: `dom-applied-single-node-${rendering.renderer}`,
           sourceText,
           transformedText: transformed,
           textNodeCount: 1,
-          renderedStyles: inspectRenderedRubyStyles(wrapper)
+          renderedStyles: rendering.styles,
+          rejectedStyles: rendering.rejectedStyles ?? null
         });
         setRunState(firstNode, {
           sourceText,
@@ -1108,14 +1172,18 @@
         return true;
       }
       if (replaceTextRunWithRubyWrapper(textNodes, wrapper)) {
-        markRecentWriteForRun(textNodes, wrapper);
+        const rendering = ensureReadableRubyRendering(wrapper, sourceText, rubySegments, {
+          hidden: activeRuntimeSettings.ruby?.hidden === true
+        });
+        markRecentWriteForRun(textNodes, rendering.wrapper);
         recordRubyDebug({
           ...(lastRubyDebug ?? {}),
-          decision: "dom-applied-shared-parent",
+          decision: `dom-applied-shared-parent-${rendering.renderer}`,
           sourceText,
           transformedText: transformed,
           textNodeCount: textNodes.length,
-          renderedStyles: inspectRenderedRubyStyles(wrapper)
+          renderedStyles: rendering.styles,
+          rejectedStyles: rendering.rejectedStyles ?? null
         });
         setRunState(firstNode, {
           sourceText,
@@ -1125,14 +1193,18 @@
         return true;
       }
       if (replaceTextRunRangeWithRubyWrapper(textNodes, wrapper, currentParts.join(""))) {
-        markRecentWriteForRun(textNodes, wrapper);
+        const rendering = ensureReadableRubyRendering(wrapper, sourceText, rubySegments, {
+          hidden: activeRuntimeSettings.ruby?.hidden === true
+        });
+        markRecentWriteForRun(textNodes, rendering.wrapper);
         recordRubyDebug({
           ...(lastRubyDebug ?? {}),
-          decision: "dom-applied-range",
+          decision: `dom-applied-range-${rendering.renderer}`,
           sourceText,
           transformedText: transformed,
           textNodeCount: textNodes.length,
-          renderedStyles: inspectRenderedRubyStyles(wrapper)
+          renderedStyles: rendering.styles,
+          rejectedStyles: rendering.rejectedStyles ?? null
         });
         setRunState(firstNode, {
           sourceText,

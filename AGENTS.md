@@ -10,9 +10,9 @@
 
 
 
-* \[AI コーディングポリシー](./guidelines/AI\_CODING\_POLICY.md)
-* \[UI / UX ポリシー](./guidelines/UI\_UX\_POLICY.md)
-* \[仕様管理ポリシー](./guidelines/SPEC\_POLICY.md)
+* \[AI コーディングポリシー](./.ai-guidelines/guidelines/AI\_CODING\_POLICY.md)
+* \[UI / UX ポリシー](./.ai-guidelines/guidelines/UI\_UX\_POLICY.md)
+* \[仕様管理ポリシー](./.ai-guidelines/guidelines/SPEC\_POLICY.md)
 
 ## 優先順位
 

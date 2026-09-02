@@ -27,6 +27,7 @@
         "lib/json5.min.js",
         "lib/kuromoji.js",
         "transform-shared.js",
+        "structured-dictionary.js",
         "transform-engine.js",
         "content.js"
       ],
@@ -39,6 +40,7 @@
         "transform-bundles.json5",
         "transform-worker.js",
         "transform-shared.js",
+        "structured-dictionary.js",
         "transform-engine.js",
         "lib/kuromoji.js",
         "transforms/**",

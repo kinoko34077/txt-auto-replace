@@ -91,3 +91,65 @@
 - 上記を持つ rule は runtime で `token-rules` 側へ受け流れる。
 - `regex` rule は node kind が `token-rules` でも dictionary 側に残りうる。
 - bulk import では `;タイトル` 行を置くと、その後の行を選択 node 直下の同名子箱へ投入する。同名子箱があれば再利用する。
+
+## Structured dictionary extension (format version 1)
+
+`schema_version: 3` and its executable `roots -> children -> entries` tree remain
+the runtime-compatible representation. A payload may additionally contain an
+independent `structured_dictionary` object for management tools and richer word
+relations. Its absence is valid: the extension derives an initial dictionary from
+the executable tree without modifying that tree.
+
+```js
+{
+  structured_dictionary: {
+    format_version: 1,
+    words: [{ id: "word-ashita", value: "あした", metadata: {} }],
+    relations: [{
+      id: "relation-tomorrow",
+      sources: ["word-ashita"],
+      targets: [{ word_id: "word-asu", default: true, conditions: null }],
+      mappings: [],
+      type: "replacement", // replacement | candidate | derivation | related | alias
+      mode: "automatic", // automatic | default | conditional | manual | unresolved
+      enabled: true,
+      priority: 0,
+      conditions: null,
+      metadata: {},
+      execution_binding: null
+    }],
+    metadata: {}
+  }
+}
+```
+
+- Words keep an immutable identifier separate from their visible text.
+- A relation may have multiple sources and targets. `mappings` records explicit
+  source-to-target pairs and avoids implicitly expanding an unresolved many-to-many
+  relation into every combination.
+- A target marked `default: true` is the only target that can be compiled from a
+  one-to-many relation with `mode: "default"`.
+- `derivation`, `related`, `alias`, `manual`, and `unresolved` relations are kept
+  for management/export only and are never compiled to executable rules.
+- `execution_binding` preserves the node placement, legacy entry IDs, and the
+  original runtime attributes such as regex, token conditions, sequence,
+  match options, priority, and enabled state. It is the compatibility boundary for
+  fields that cannot be expressed directly by a word graph.
+
+### Adapter and round trip rules
+
+- Importing an old tree creates one relation per legacy rule. Rules are merged into
+  a multi-source relation only when they share node placement, output, and every
+  execution attribute. `from_options` becomes multiple relation sources.
+- A legacy rule with multiple candidate outputs is retained as an unresolved
+  `candidate` relation with its execution binding. The existing tree remains the
+  runtime source, so candidate behavior is not simplified or changed.
+- The adapter compiles only enabled `replacement` relations that are automatic
+  one-to-one/many-to-one, explicit mappings, or a relation with one default target.
+  It never compiles non-replacement relations or unresolved relations.
+- If a compiled source conflicts with an existing tree rule at the same target node,
+  the adapter excludes that generated rule and reports a diagnostic. Existing rules
+  always win; structured data does not overwrite the runtime tree.
+- Normal tree editing updates only compatible legacy execution bindings. Divergent
+  or missing bound entries leave the relation intact and produce a synchronization
+  diagnostic instead of deleting management data.

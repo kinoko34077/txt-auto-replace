@@ -38,11 +38,18 @@
   const UiStrings = globalThis.ExtensionUiStrings;
   const TransformShared = globalThis.TransformShared;
   const TransformEngine = globalThis.TransformEngine;
+  const StructuredDictionary = globalThis.StructuredDictionary;
+
+  if (!StructuredDictionary) {
+    throw new Error("StructuredDictionary is not loaded.");
+  }
 
   const state = {
     activeTab: "bundles",
     roots: [],
     baseRoots: [],
+    structuredDictionary: StructuredDictionary.createEmptyDictionary(),
+    structuredSyncIssues: [],
     runtimeSettings: { ...DEFAULT_RUNTIME_SETTINGS },
     disabledSites: { ...DEFAULT_DISABLED_SITES },
     pageRubySettings: { ...DEFAULT_PAGE_RUBY_SETTINGS },
@@ -2586,19 +2593,31 @@
   };
 
   const buildPayload = () => {
+    const synchronized = StructuredDictionary.synchronizeBindingsFromRoots(state.structuredDictionary, state.roots);
+    state.structuredDictionary = synchronized.dictionary;
+    state.structuredSyncIssues = synchronized.issues;
     return {
       schema_version: 3,
       runtime_settings: cloneValue(state.runtimeSettings),
       disabled_sites: cloneValue(state.disabledSites),
       page_ruby_settings: cloneValue(state.pageRubySettings),
       popup_bundle_id: state.popupBundleId,
+      structured_dictionary: StructuredDictionary.normalizeDictionary(state.structuredDictionary),
       roots: state.roots.map((root, index) => serializeNode(root, index + 1))
     };
+  };
+
+  const extractStructuredDictionary = (payload, roots) => {
+    const source = payload?.structured_dictionary ?? payload?.[STORAGE_KEY]?.structured_dictionary;
+    return source
+      ? StructuredDictionary.normalizeDictionary(source)
+      : StructuredDictionary.createFromRoots(roots);
   };
 
   const buildHistorySnapshot = () => {
     return {
       roots: cloneValue(state.roots),
+      structuredDictionary: cloneValue(state.structuredDictionary),
       runtimeSettings: cloneValue(state.runtimeSettings),
       disabledSites: cloneValue(state.disabledSites),
       pageRubySettings: cloneValue(state.pageRubySettings),
@@ -2621,6 +2640,9 @@
       return;
     }
     state.roots = cloneValue(snapshot.roots);
+    state.structuredDictionary = StructuredDictionary.normalizeDictionary(
+      snapshot.structuredDictionary ?? StructuredDictionary.createFromRoots(state.roots)
+    );
     state.runtimeSettings = cloneValue(snapshot.runtimeSettings ?? DEFAULT_RUNTIME_SETTINGS);
     state.disabledSites = cloneValue(snapshot.disabledSites ?? DEFAULT_DISABLED_SITES);
     state.pageRubySettings = cloneValue(snapshot.pageRubySettings ?? DEFAULT_PAGE_RUBY_SETTINGS);
@@ -2730,6 +2752,7 @@
     state.popupBundleId = extractPopupBundleId(payload);
     ensureRuntimeSpecialRoots(state.roots);
     ensurePopupBundleRoot(state.roots);
+    state.structuredDictionary = extractStructuredDictionary(payload, state.roots);
   };
 
   const saveAllAndNotify = async () => {
@@ -2756,6 +2779,7 @@
     state.pageRubySettings = cloneValue(DEFAULT_PAGE_RUBY_SETTINGS);
     ensureRuntimeSpecialRoots(state.roots);
     ensurePopupBundleRoot(state.roots);
+    state.structuredDictionary = StructuredDictionary.createFromRoots(state.roots);
   };
 
   const findBaseRoot = (rootId) => {
@@ -5506,6 +5530,7 @@
     const overlapIssues = [];
     const regexIssues = [];
     const plainEntries = [];
+    const structuredValidation = StructuredDictionary.validateDictionary(state.structuredDictionary);
 
     walkNodes(state.roots, (node, trail) => {
       const pathText = getNodePathText(trail);
@@ -5589,7 +5614,12 @@
       regexIssues,
       duplicateFromIssues: [...duplicateFromMap.entries()].filter(([, entries]) => entries.length > 1),
       duplicateNodeLabelIssues: [...duplicateNodeLabelMap.entries()].filter(([, entries]) => entries.length > 1),
-      overlapIssues
+      overlapIssues,
+      structuredIssues: [
+        ...structuredValidation.errors.map((issue) => ({ ...issue, severity: "error" })),
+        ...structuredValidation.warnings.map((issue) => ({ ...issue, severity: "warning" })),
+        ...state.structuredSyncIssues.map((issue) => ({ ...issue, severity: "warning" }))
+      ]
     };
   };
 
@@ -6138,6 +6168,36 @@
   const renderDiagnostics = () => {
     diagnosticsRoot.textContent = "";
     const diagnostics = collectDiagnostics();
+    const structuredSummary = document.createElement("section");
+    structuredSummary.className = "diagnostics-card";
+    const structuredHead = document.createElement("div");
+    structuredHead.className = "panel-head";
+    const structuredTitle = document.createElement("h2");
+    structuredTitle.textContent = "構造化辞書";
+    const structuredCount = document.createElement("span");
+    structuredCount.className = "count";
+    structuredCount.textContent = `語 ${state.structuredDictionary.words.length} / 関係 ${state.structuredDictionary.relations.length} / 問題 ${diagnostics.structuredIssues.length}`;
+    structuredHead.append(structuredTitle, structuredCount);
+    structuredSummary.appendChild(structuredHead);
+    diagnosticsRoot.appendChild(structuredSummary);
+    diagnosticsRoot.appendChild(renderIssueCard(
+      "構造化辞書の検証",
+      diagnostics.structuredIssues,
+      "構造化辞書の問題はありません。",
+      (issue) => createDiagnosticIssueId("structured", [issue.code, issue.relation_id ?? "", issue.word_id ?? ""]),
+      (issue) => `${issue.severity === "error" ? "Error" : "Warning"}: ${issue.code}`,
+      (issue) => {
+        const item = document.createElement("div");
+        item.className = "diag-item";
+        const heading = document.createElement("h3");
+        heading.textContent = issue.code;
+        const body = document.createElement("div");
+        body.className = "diag-occurrence";
+        body.textContent = issue.relation_id ? `relation: ${issue.relation_id}` : "構造化辞書の同期または参照を確認してください。";
+        item.append(heading, body);
+        return item;
+      }
+    ));
     diagnosticsRoot.appendChild(renderIssueCard(
       "regex 問題",
       diagnostics.regexIssues,
@@ -7179,6 +7239,7 @@
       state.popupBundleId = extractPopupBundleId(parsed);
       ensureRuntimeSpecialRoots(state.roots);
       ensurePopupBundleRoot(state.roots);
+      state.structuredDictionary = extractStructuredDictionary(parsed, state.roots);
     });
     setStatus(`${fileName} を読み込みました。`, "success");
   };
@@ -7220,6 +7281,7 @@
     state.popupBundleId = extractPopupBundleId(storedPayload);
     ensureRuntimeSpecialRoots(state.roots);
     ensurePopupBundleRoot(state.roots);
+    state.structuredDictionary = extractStructuredDictionary(storedPayload, state.roots);
     state.commands = await getAllCommands();
     state.dismissedDiagnostics = storedDiagnosticUiState?.dismissedDiagnostics && typeof storedDiagnosticUiState.dismissedDiagnostics === "object"
       ? storedDiagnosticUiState.dismissedDiagnostics

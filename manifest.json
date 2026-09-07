@@ -1,10 +1,10 @@
 {
   "name": "Text Transform Extension",
   "description": "Transforms Japanese text on web pages with ordered rules and morphological analysis.",
-  "version": "1.5",
+  "version": "1.6",
   "manifest_version": 3,
   "permissions": ["storage", "tabs"],
-  "host_permissions": ["<all_urls>"],
+    "host_permissions": ["<all_urls>", "https://api.kinotch.workers.dev/*"],
   "options_page": "options.html",
   "action": {
     "default_popup": "popup.html"
@@ -29,6 +29,7 @@
         "transform-shared.js",
         "structured-dictionary.js",
         "transform-engine.js",
+        "text-api-client.js",
         "content.js"
       ],
       "run_at": "document_idle"

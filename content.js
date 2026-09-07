@@ -1,5 +1,5 @@
 // content.js
-// Manifest で lib/json5.min.js → lib/kuromoji.js → content.js の順に読み込む前提。
+// Manifest で依存スクリプト → text-api-client.js → content.js の順に読み込む前提。
 // そのため、このファイルでは import / script 注入 / top-level await を使わない。
 
 (() => {
@@ -8,6 +8,7 @@
   const DEBUG = false;
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
   const TRANSFORM_WORKER_PATH = "transform-worker.js";
+  const TEXT_TRANSFORM_API_BASE_URL = "https://api.kinotch.workers.dev";
   const BUNDLE_OVERRIDE_STORAGE_KEY = "bundleOverrideSettingsV1";
   const DICT_PATH = "dict/";
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
@@ -19,6 +20,7 @@
   const VISIBLE_FLUSH_BUDGET_MS = 8;
   const BACKGROUND_FLUSH_BUDGET_MS = 16;
   const WORKER_BATCH_SIZE = 32;
+  const REMOTE_API_BATCH_SIZE = 256;
   const MAX_RUNS_PER_ROOT_BATCH = 24;
   const MUTATION_DEBOUNCE_MS = 120;
   const RECENT_WRITE_TTL_MS = 400;
@@ -69,6 +71,18 @@
   const RUBY_SOURCE_ATTRIBUTE = "data-jpn-transform-ruby-source";
   const TransformShared = globalThis.TransformShared;
   const TransformEngine = globalThis.TransformEngine;
+  const TextTransformApiClient = globalThis.TextTransformApiClient;
+  const REMOTE_API_PROFILE_IDS = new Set([
+    "surface-normalization",
+    "lexical-replacements",
+    "katakana-long-vowel-abbreviation",
+    "okurigana-abbreviation",
+    "okurigana-abbreviation-stage4",
+    "legacy-kanji",
+    "official-homophone-restoration",
+    "homophone-kanji",
+    "general-character-replacements"
+  ]);
   const SKIP_TAGS = new Set([
     "SCRIPT",
     "STYLE",
@@ -172,6 +186,9 @@
   let nextWorkerRunId = 1;
   let workerBatchQueue = [];
   let workerBatchFlushHandle = null;
+  let remoteApiProfiles = [];
+  let remoteApiFailed = false;
+  let remoteApiInFlight = 0;
   let mutationFlushHandle = null;
   let runtimeMetrics = null;
   let workerStats = {
@@ -194,6 +211,53 @@
     if (DEBUG) {
       console.log("省略変換器:", ...args);
     }
+  };
+
+  const remoteApiClient = typeof TextTransformApiClient?.createTextTransformClient === "function"
+    ? TextTransformApiClient.createTextTransformClient({
+      baseUrl: TEXT_TRANSFORM_API_BASE_URL
+    })
+    : null;
+
+  const hasStageWork = (stage) => {
+    return (Array.isArray(stage?.rules) && stage.rules.length > 0) ||
+      (typeof stage?.runtime_mode === "string" && stage.runtime_mode.trim() !== "");
+  };
+
+  const buildRemoteApiProfiles = (loaded, canonicalLoaded) => {
+    const canonicalById = new Map(
+      (canonicalLoaded?.stages ?? []).map((stage) => [stage.id, stage]),
+    );
+    const profiles = [];
+
+    for (const stage of loaded?.stages ?? []) {
+      if (!REMOTE_API_PROFILE_IDS.has(stage.id)) {
+        if (hasStageWork(stage)) {
+          return [];
+        }
+        continue;
+      }
+
+      const canonicalStage = canonicalById.get(stage.id);
+      if (!canonicalStage || JSON.stringify(stage) !== JSON.stringify(canonicalStage)) {
+        return [];
+      }
+      profiles.push(stage.id);
+    }
+
+    return profiles;
+  };
+
+  const canUseRemoteApiForTransform = () => {
+    return !DEBUG &&
+      !hasDebugTargets() &&
+      !remoteApiFailed &&
+      remoteApiProfiles.length > 0 &&
+      remoteApiClient !== null;
+  };
+
+  const canUseTransformBackend = () => {
+    return canUseRemoteApiForTransform() || canUseWorkerForTransform();
   };
 
   const createRuntimeMetrics = () => ({
@@ -543,6 +607,12 @@
       runtimeMetrics: cloneDebugValue(runtimeMetrics),
       pendingRootCount: pendingRootQueue.size,
       pendingMutationRootCount: pendingMutationRoots.size,
+      remoteApi: {
+        enabled: canUseRemoteApiForTransform(),
+        profiles: [...remoteApiProfiles],
+        failed: remoteApiFailed,
+        inFlight: remoteApiInFlight
+      },
       worker: cloneDebugValue(workerStats),
       matchingRules: collectMatchingRuntimeRules(targets),
       shadowedRules: collectShadowedRuntimeRules(targets),
@@ -1816,6 +1886,25 @@
     }
   };
 
+  const markRemoteApiFailed = (error) => {
+    const message = error?.message ?? `${error ?? "unknown remote API error"}`;
+    remoteApiFailed = true;
+    remoteApiInFlight = 0;
+    workerBatchQueue = [];
+    if (workerBatchFlushHandle !== null) {
+      window.clearTimeout(workerBatchFlushHandle);
+      workerBatchFlushHandle = null;
+    }
+    pendingWorkerRuns.clear();
+    workerStats.pendingRuns = 0;
+    console.warn("省略変換器: Text Transform APIを無効化し既存Workerへ切替", message);
+    if (isRuntimeEnabled()) {
+      pendingRootQueue.clear();
+      cancelRootFlushes();
+      queueProcessableRoots(collectDocumentProcessingRoots(), { priority: "visible", restoreFirst: true });
+    }
+  };
+
   const getOrCreateRunId = (runAnchor) => {
     const existing = runIdByRunAnchor.get(runAnchor);
     if (existing) {
@@ -1826,7 +1915,7 @@
     return runId;
   };
 
-  const applyWorkerTransformResult = (result, revision) => {
+  const applyWorkerTransformResult = (result, revision, backend = "worker") => {
     const state = pendingWorkerRuns.get(result?.runId);
     if (!state) {
       return false;
@@ -1868,7 +1957,9 @@
 
     const transformed = `${result.transformedText ?? ""}`;
     originalTextByRunAnchor.set(runAnchor, state.sourceText);
-    workerStats.completedRuns += 1;
+    if (backend === "worker") {
+      workerStats.completedRuns += 1;
+    }
     mergeRuntimeMetrics(result?.metrics);
     const changed = applyTransformedRunResult(textNodes, currentParts, state.sourceText, transformed, revision);
     if (changed) {
@@ -1976,12 +2067,17 @@
 
   const flushWorkerBatchQueue = () => {
     workerBatchFlushHandle = null;
-    if (!canUseWorkerForTransform() || workerBatchQueue.length === 0) {
+    const useRemoteApi = canUseRemoteApiForTransform();
+    if ((!useRemoteApi && !canUseWorkerForTransform()) || workerBatchQueue.length === 0) {
       return;
     }
 
     while (workerBatchQueue.length > 0) {
-      const runs = workerBatchQueue.splice(0, WORKER_BATCH_SIZE);
+      const runs = workerBatchQueue.splice(0, useRemoteApi ? REMOTE_API_BATCH_SIZE : WORKER_BATCH_SIZE);
+      if (useRemoteApi) {
+        sendRemoteTransformBatch(runs, runtimeRevision);
+        continue;
+      }
       const jobId = nextWorkerJobId++;
       try {
         transformWorker.postMessage({
@@ -2004,8 +2100,36 @@
     workerBatchFlushHandle = window.setTimeout(flushWorkerBatchQueue, 0);
   };
 
+  const sendRemoteTransformBatch = (runs, revision) => {
+    remoteApiInFlight += 1;
+    remoteApiClient.transformBatch(
+      runs.map((run) => run.text),
+      { profile: remoteApiProfiles },
+    ).then((payload) => {
+      if (revision !== runtimeRevision) {
+        return;
+      }
+      if (!Array.isArray(payload?.texts) || payload.texts.length !== runs.length) {
+        throw new Error("Text transform API returned an invalid batch result");
+      }
+
+      for (let index = 0; index < runs.length; index += 1) {
+        applyWorkerTransformResult({
+          runId: runs[index].runId,
+          transformedText: payload.texts[index]
+        }, revision, "remote-api");
+      }
+    }).catch((error) => {
+      if (revision === runtimeRevision) {
+        markRemoteApiFailed(error);
+      }
+    }).finally(() => {
+      remoteApiInFlight = Math.max(remoteApiInFlight - 1, 0);
+    });
+  };
+
   const enqueueWorkerTransformRun = (textNodes, currentParts, sourceText, runAnchor) => {
-    if (!canUseWorkerForTransform()) {
+    if (!canUseTransformBackend()) {
       return false;
     }
 
@@ -2719,6 +2843,7 @@
     ]);
     const runtimeConfiguration = loadRuntimeConfiguration(storedValue);
     const loaded = loadOrderedRules(ruleResources, storedValue);
+    const canonicalLoaded = loadOrderedRules(ruleResources);
     activeRuntimeSettings = runtimeConfiguration.runtimeSettings;
     activeDisabledSites = runtimeConfiguration.disabledSites;
     activePageRubySettings = runtimeConfiguration.pageRubySettings;
@@ -2733,6 +2858,9 @@
     })) : [];
     activeManifestBundleIds = loaded?.manifestBundleIds ?? [];
     activeTransformStages = loaded.stages;
+    remoteApiProfiles = buildRemoteApiProfiles(loaded, canonicalLoaded);
+    remoteApiFailed = false;
+    remoteApiInFlight = 0;
     activeDictionaryOnlyStages = activeTransformStages.filter((stage) => stage.kind === "dictionary-rules");
     activeStringRules = activeTransformStages
       .filter((stage) => stage.kind === "dictionary-rules")

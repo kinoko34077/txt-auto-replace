@@ -28,9 +28,10 @@
 拡張機能のディレクトリ構成を以下に示す。
 
 ```text
-jpn-transform-ext/
+txt-auto-replace/
 ├─ manifest.json    … 拡張機能のメタ情報と読み込むスクリプト定義
 ├─ content.js       … コンテンツスクリプト。ルール読込、変換、動的 DOM 監視を担当
+├─ text-api-client.js … Text Transform APIのbatch呼び出しadapter
 ├─ transform-bundles.json5 … 変換バンドルの読込順と有効状態を定義
 ├─ transforms/
 │  ├─ 10-surface-normalization.json5 … 表層正規化バンドル
@@ -54,6 +55,7 @@ jpn-transform-ext/
 |---|---|
 | **manifest.json** | 拡張機能名・バージョン・必要な権限・読み込むスクリプトを定義する。`content_scripts` にはページ上で実行する JavaScript を指定し、`web_accessible_resources` には外部読み込みを許可するファイルを列挙する。 |
 | **content.js** | ページロード時に実行されるコンテンツスクリプト。変換バンドル定義の読込・形態素解析器初期化・テキストノード変換・動的 DOM 監視を担当する。 |
+| **text-api-client.js** | 非moduleのcontent scriptから共通Text Transform APIを呼び出すadapter。標準bundleのbatch変換にのみ使用する。 |
 | **transform-bundles.json5** | 変換バンドルの順序と有効状態を記述する。拡張機能という大きな箱の中で、どの変換箱をどの順序で適用するかを制御する。 |
 | **options.html / options.js** | 拡張機能の設定ページ。`chrome.storage.local` に保存したバンドル上書き設定を編集し、同じ構造の JSON / YAML として入出力する。 |
 | **transforms/*.json5** | バンドルごとの変換定義ファイル。`token-rules` と `dictionary-rules` の 2 種類を持てる。旧字変換や同音漢字置換のように固定資産化しやすいものを分離して管理する。 |
@@ -63,7 +65,7 @@ jpn-transform-ext/
 
 ### 3.3 処理フロー
 
-1. **拡張機能の読み込み** – Chrome がページを読み込む際、`manifest.json` の `content_scripts` で指定された順にスクリプト（`json5.min.js` → `kuromoji.js` → `content.js`）が注入される。
+1. **拡張機能の読み込み** – Chrome がページを読み込む際、`manifest.json` の `content_scripts` で指定された順にスクリプト（`json5.min.js` → `kuromoji.js` → `transform-shared.js` → `structured-dictionary.js` → `transform-engine.js` → `text-api-client.js` → `content.js`）が注入される。
 2. **バンドル定義読み込み** – `content.js` は `fetch()` で `transform-bundles.json5` を取得し、どの変換箱をどの順序で読むかを決定する。保存済みの override が `chrome.storage.local` に存在する場合は、その内容で既定定義を上書きする。
 3. **個別バンドル読み込み** – `content.js` は有効な `transforms/*.json5` を順に読み込み、各バンドル内のルールを優先順位 (`priority`) の降順に整列する。バンドル同士の適用順は `transform-bundles.json5` の `order` で固定する。
 4. **形態素解析器の初期化** – `kuromoji.builder()` に辞書フォルダを指定してトークナイザを生成する。
@@ -93,6 +95,12 @@ jpn-transform-ext/
 複数トークン一致（`sequence`）では、連続するトークンが順に `surface_form` 等へ一致した場合のみ置換を適用する。複合語や文脈依存語のうち、単純な前後条件より並び自体で管理したほうが安全なものはこの形式で扱う。
 
 `dictionary-rules` では、固定熟語や固定語彙を `phrase_rules` に、単漢字単位の安全な置換を `character_map` に分けて管理する。旧字変換や同音漢字置換は、この形式を基本形とする。
+
+### 3.5 Text Transform API移行
+
+標準bundleのstage定義がAPI側の正本と一致する場合、`content.js` は複数のtext runを `POST /v1/transform/batch` へまとめて送る。API側のprofileは有効な標準stage IDから生成し、ユーザー編集済みのstageやPopup辞書は送信しない。その場合は従来の `transform-worker.js` を使用する。
+
+API応答の件数・順序・現在のruntime revisionを検証してからDOMへ反映する。通信失敗、HTTPエラー、不正応答、revision不一致ではAPI結果を破棄し、ローカルWorkerへ切り替えて対象rootを再処理する。詳細な入力・出力・制約は [`api_migration.md`](./api_migration.md) に記録する。
 
 ## 4. 変換レイヤの設計
 

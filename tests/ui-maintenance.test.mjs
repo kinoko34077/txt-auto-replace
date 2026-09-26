@@ -25,6 +25,14 @@ test('Options dirty tracking includes drag and keyboard state mutations', async 
   assert.match(source, /dictionary-rules|token-rules/);
 });
 
+test('Options transient selection controls do not count as persisted changes', async () => {
+  const source = await read('options-continuity.js');
+
+  assert.match(source, /isTransientSelectionControl/);
+  assert.match(source, /firstElementChild/);
+  assert.match(source, /explorer-row/);
+});
+
 test('Popup mutations share pending rollback handling and delete is confirmed', async () => {
   const source = await read('popup.js');
 

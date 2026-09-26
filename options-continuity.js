@@ -53,9 +53,28 @@
     "tab-sites"
   ]);
 
+  const isTransientSelectionControl = (target) => {
+    if (!(target instanceof Element) || target.tagName !== "INPUT" || target.type !== "checkbox") {
+      return false;
+    }
+    if (target.getAttribute("aria-label") === "全選択") {
+      return true;
+    }
+    if (target.closest(".explorer-row")) {
+      return true;
+    }
+    const toggleLabel = target.closest("label.toggle");
+    if (/^(node)?選択$/.test(`${toggleLabel?.textContent ?? ""}`.trim())) {
+      return true;
+    }
+    const checkCell = target.closest("td.check-col");
+    return Boolean(checkCell && checkCell.parentElement?.firstElementChild === checkCell);
+  };
+
   const isPersistentControl = (target) => {
     if (!(target instanceof Element)) return false;
     if (NON_PERSISTENT_IDS.has(target.id)) return false;
+    if (isTransientSelectionControl(target)) return false;
     if (target.closest("#panel-tokenizer")) return false;
     if (target.classList.contains("grid-search")) return false;
     return Boolean(target.closest("#panel-bundles, #panel-ruby, #panel-katakana-long-vowel, #panel-stage4, #panel-sites, .toolbar, .panel-block"));

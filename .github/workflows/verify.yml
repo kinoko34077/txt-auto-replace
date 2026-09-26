@@ -16,5 +16,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: JavaScript syntax checks
+        run: |
+          node --check popup.js
+          node --check options-continuity.js
       - name: UI maintenance regression tests
         run: node --test tests/ui-maintenance.test.mjs
+      - name: Canonical runtime verification
+        run: node tools/verify_runtime.js

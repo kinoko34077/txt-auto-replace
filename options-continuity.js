@@ -7,7 +7,7 @@
 
   let workingRevision = 0;
   let savedRevision = 0;
-  let saveIntentPending = false;
+  let importIntentPending = false;
 
   const saveStateNode = document.createElement("span");
   saveStateNode.id = "save-state";
@@ -33,7 +33,6 @@
 
   const markSaved = () => {
     savedRevision = workingRevision;
-    saveIntentPending = false;
     refreshDirtyState();
   };
 
@@ -74,8 +73,8 @@
     const button = event.target instanceof Element ? event.target.closest("button") : null;
     if (!button) return;
 
-    if (button.id === "save-all") {
-      saveIntentPending = true;
+    if (button.id === "import-settings") {
+      importIntentPending = true;
       return;
     }
     if (NON_PERSISTENT_IDS.has(button.id)) return;
@@ -95,15 +94,23 @@
   }, true);
 
   const statusObserver = new MutationObserver(() => {
-    if (!saveIntentPending) return;
     const message = statusNode.textContent ?? "";
-    if (statusNode.dataset.type === "success" && /設定を保存しました/.test(message)) {
+    const statusType = statusNode.dataset.type ?? "";
+
+    if ((statusType === "success" || statusType === "warning") && /設定(?:を|は)保存しました/.test(message)) {
+      importIntentPending = false;
       markSaved();
       return;
     }
-    if (statusNode.dataset.type === "error") {
-      saveIntentPending = false;
-      refreshDirtyState();
+
+    if (importIntentPending && statusType === "success" && /を読み込みました/.test(message)) {
+      importIntentPending = false;
+      markDirty();
+      return;
+    }
+
+    if (statusType === "error") {
+      importIntentPending = false;
     }
   });
   statusObserver.observe(statusNode, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["data-type"] });

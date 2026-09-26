@@ -16,6 +16,15 @@ test('Options exposes a persisted-baseline dirty state and unload guard', async 
   assert.match(source, /event\.returnValue\s*=\s*["']{2}/);
 });
 
+test('Options dirty tracking includes drag and keyboard state mutations', async () => {
+  const source = await read('options-continuity.js');
+
+  assert.match(source, /addEventListener\(["']drop["']/);
+  assert.match(source, /addEventListener\(["']keydown["']/);
+  assert.match(source, /有効化\|無効化/);
+  assert.match(source, /dictionary-rules|token-rules/);
+});
+
 test('Popup mutations share pending rollback handling and delete is confirmed', async () => {
   const source = await read('popup.js');
 

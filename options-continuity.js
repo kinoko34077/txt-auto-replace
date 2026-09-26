@@ -1,0 +1,118 @@
+(() => {
+  "use strict";
+
+  const saveAllButton = document.getElementById("save-all");
+  const statusNode = document.getElementById("status");
+  if (!saveAllButton || !statusNode) return;
+
+  let workingRevision = 0;
+  let savedRevision = 0;
+  let saveIntentPending = false;
+
+  const saveStateNode = document.createElement("span");
+  saveStateNode.id = "save-state";
+  saveStateNode.className = "chip";
+  saveStateNode.setAttribute("role", "status");
+  saveStateNode.setAttribute("aria-live", "polite");
+  saveAllButton.insertAdjacentElement("afterend", saveStateNode);
+
+  const isDirty = () => workingRevision !== savedRevision;
+
+  const refreshDirtyState = () => {
+    const dirty = isDirty();
+    saveStateNode.textContent = dirty ? "未保存の変更あり" : "保存済み";
+    saveStateNode.dataset.dirty = dirty ? "true" : "false";
+    saveAllButton.dataset.dirty = dirty ? "true" : "false";
+    saveAllButton.title = dirty ? "未保存の変更を保存します" : "現在の設定は保存済みです";
+  };
+
+  const markDirty = () => {
+    workingRevision += 1;
+    refreshDirtyState();
+  };
+
+  const markSaved = () => {
+    savedRevision = workingRevision;
+    saveIntentPending = false;
+    refreshDirtyState();
+  };
+
+  const NON_PERSISTENT_IDS = new Set([
+    "tokenizer-input",
+    "tokenizer-run",
+    "open-shortcuts",
+    "export-json",
+    "export-yaml",
+    "import-settings",
+    "tab-bundles",
+    "tab-ruby",
+    "tab-katakana-long-vowel",
+    "tab-stage4",
+    "tab-diagnostics",
+    "tab-tokenizer",
+    "tab-hotkeys",
+    "tab-sites"
+  ]);
+
+  const isPersistentControl = (target) => {
+    if (!(target instanceof Element)) return false;
+    if (NON_PERSISTENT_IDS.has(target.id)) return false;
+    if (target.closest("#panel-tokenizer")) return false;
+    if (target.classList.contains("grid-search")) return false;
+    return Boolean(target.closest("#panel-bundles, #panel-ruby, #panel-katakana-long-vowel, #panel-stage4, #panel-sites, .toolbar, .panel-block"));
+  };
+
+  document.addEventListener("input", (event) => {
+    if (isPersistentControl(event.target)) markDirty();
+  }, true);
+
+  document.addEventListener("change", (event) => {
+    if (isPersistentControl(event.target)) markDirty();
+  }, true);
+
+  document.addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest("button") : null;
+    if (!button) return;
+
+    if (button.id === "save-all") {
+      saveIntentPending = true;
+      return;
+    }
+    if (NON_PERSISTENT_IDS.has(button.id)) return;
+    if (button.classList.contains("tab-button") || button.classList.contains("title-button") || button.classList.contains("tree-label") || button.classList.contains("tree-root-button")) return;
+
+    const explicitMutationIds = new Set([
+      "undo-button",
+      "redo-button",
+      "add-bundle",
+      "reload-defaults",
+      "add-current-site"
+    ]);
+    const mutationText = /追加|削除|複製|切り取り|貼り付け|移動|既定値へ戻す|適用|反映/;
+    if (explicitMutationIds.has(button.id) || mutationText.test(button.textContent ?? "")) {
+      queueMicrotask(markDirty);
+    }
+  }, true);
+
+  const statusObserver = new MutationObserver(() => {
+    if (!saveIntentPending) return;
+    const message = statusNode.textContent ?? "";
+    if (statusNode.dataset.type === "success" && /設定を保存しました/.test(message)) {
+      markSaved();
+      return;
+    }
+    if (statusNode.dataset.type === "error") {
+      saveIntentPending = false;
+      refreshDirtyState();
+    }
+  });
+  statusObserver.observe(statusNode, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["data-type"] });
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!isDirty()) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
+  refreshDirtyState();
+})();

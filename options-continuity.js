@@ -61,12 +61,63 @@
     return Boolean(target.closest("#panel-bundles, #panel-ruby, #panel-katakana-long-vowel, #panel-stage4, #panel-sites, .toolbar, .panel-block"));
   };
 
+  const historyControlSignature = () => {
+    const undoButton = document.getElementById("undo-button");
+    const redoButton = document.getElementById("redo-button");
+    return [
+      undoButton?.disabled === true ? "1" : "0",
+      undoButton?.textContent ?? "",
+      redoButton?.disabled === true ? "1" : "0",
+      redoButton?.textContent ?? ""
+    ].join("|");
+  };
+
+  const markDirtyIfHistoryChanged = (beforeSignature) => {
+    queueMicrotask(() => {
+      if (historyControlSignature() !== beforeSignature) {
+        markDirty();
+      }
+    });
+  };
+
   document.addEventListener("input", (event) => {
     if (isPersistentControl(event.target)) markDirty();
   }, true);
 
   document.addEventListener("change", (event) => {
     if (isPersistentControl(event.target)) markDirty();
+  }, true);
+
+  document.addEventListener("drop", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target?.closest("#panel-bundles")) return;
+    markDirtyIfHistoryChanged(historyControlSignature());
+  }, true);
+
+  document.addEventListener("keydown", (event) => {
+    const panelBundles = document.getElementById("panel-bundles");
+    if (!panelBundles || panelBundles.hidden) return;
+
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+
+    const key = `${event.key ?? ""}`.toLowerCase();
+    const modifier = event.ctrlKey || event.metaKey;
+    const trackedShortcut =
+      (modifier && ["z", "y", "x", "v"].includes(key)) ||
+      key === "delete" ||
+      key === "backspace";
+    if (!trackedShortcut) return;
+
+    markDirtyIfHistoryChanged(historyControlSignature());
   }, true);
 
   document.addEventListener("click", (event) => {
@@ -87,7 +138,7 @@
       "reload-defaults",
       "add-current-site"
     ]);
-    const mutationText = /追加|削除|複製|切り取り|貼り付け|移動|既定値へ戻す|適用|反映/;
+    const mutationText = /追加|削除|複製|切り取り|貼り付け|移動|既定値へ戻す|適用|反映|有効化|無効化|dictionary-rules|token-rules/;
     if (explicitMutationIds.has(button.id) || mutationText.test(button.textContent ?? "")) {
       queueMicrotask(markDirty);
     }

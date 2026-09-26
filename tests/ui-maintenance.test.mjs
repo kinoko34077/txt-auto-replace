@@ -5,10 +5,12 @@ import fs from 'node:fs/promises';
 const read = (path) => fs.readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('Options exposes a persisted-baseline dirty state and unload guard', async () => {
-  const [html, source] = await Promise.all([read('options.html'), read('options.js')]);
+  const [html, source] = await Promise.all([read('options.html'), read('options-continuity.js')]);
 
-  assert.match(html, /id="save-state"/);
-  assert.match(source, /savedPayloadSignature/);
+  assert.match(html, /options-continuity\.js/);
+  assert.match(source, /saveStateNode\.id\s*=\s*["']save-state["']/);
+  assert.match(source, /savedRevision/);
+  assert.match(source, /workingRevision/);
   assert.match(source, /refreshDirtyState/);
   assert.match(source, /beforeunload/);
   assert.match(source, /event\.returnValue\s*=\s*["']{2}/);

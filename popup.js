@@ -29,7 +29,8 @@
   const state = {
     payload: {},
     activeTab: null,
-    pageContext: null
+    pageContext: null,
+    operationPending: false
   };
 
   const pageContextNode = document.getElementById("page-context");
@@ -58,6 +59,29 @@
   };
 
   const cloneValue = (value) => JSON.parse(JSON.stringify(value));
+
+  const setOperationPending = (pending) => {
+    state.operationPending = pending;
+    [
+      globalEnabledInput,
+      toggleSiteButton,
+      rubyOpenInput,
+      rubyCloseInput,
+      saveRubyMarkersButton,
+      entryFromInput,
+      entryToInput,
+      entryPriorityInput,
+      entryEnabledInput,
+      entryRegexInput,
+      entryBasicInput,
+      addEntryButton
+    ].forEach((control) => {
+      if (control) control.disabled = pending;
+    });
+    popupEntriesNode.querySelectorAll("button, input").forEach((control) => {
+      control.disabled = pending;
+    });
+  };
 
   const storageGet = async (key) => {
     return new Promise((resolve, reject) => {
@@ -225,10 +249,17 @@
     await storageSet({
       [STORAGE_KEY]: state.payload
     });
-    await sendRuntimeMessage({
-      type: MESSAGE_TYPES.APPLY_SETTINGS_UPDATE,
-      tabId: state.activeTab?.id ?? null
-    });
+
+    let runtimeError = null;
+    try {
+      await sendRuntimeMessage({
+        type: MESSAGE_TYPES.APPLY_SETTINGS_UPDATE,
+        tabId: state.activeTab?.id ?? null
+      });
+    } catch (error) {
+      runtimeError = error;
+    }
+    return { runtimeError };
   };
 
   const getEffectivePageRubyContext = () => {
@@ -260,32 +291,9 @@
     rubyContextNode.textContent = `現在: ${rubyOpenInput.value}${rubyCloseInput.value} / 継承元: ${ruby.source ?? "default"}`;
   };
 
-  const saveCurrentPageRubyMarkers = async () => {
-    const url = `${state.pageContext?.url ?? state.activeTab?.url ?? ""}`.trim();
-    const hostname = `${state.pageContext?.hostname ?? ""}`.trim().toLowerCase();
-    if (!url || !hostname) {
-      setStatus("現在ページの URL を取得できません。", "error");
-      return;
-    }
-
-    const markers = TransformShared.normalizeRubyMarkers({
-      open: rubyOpenInput.value,
-      close: rubyCloseInput.value
-    });
-    rubyOpenInput.value = markers.open;
-    rubyCloseInput.value = markers.close;
-
-    state.payload.page_ruby_settings = normalizePageRubySettings(state.payload.page_ruby_settings);
-    state.payload.page_ruby_settings.url_overrides[url] = { ...markers };
-    state.payload.page_ruby_settings.domain_defaults[hostname] = { ...markers };
-
-    await savePayload();
-    setStatus("ページ別ルビ記号を保存しました。", "success");
-    await reloadState();
-  };
-
   const renderEntries = () => {
     popupEntriesNode.textContent = "";
+    const popupRoot = getPopupRoot();
     const visibleRuleItems = getVisiblePopupRuleItems();
     const selectionText = `${state.pageContext?.selectionText ?? ""}`.trim();
 
@@ -296,9 +304,7 @@
         ? "選択文字列があると、その文字列に一致する Popup 辞書だけ表示します。"
         : "選択文字列に一致する Popup 辞書はありません。";
       popupEntriesNode.appendChild(empty);
-      return;
-      empty.textContent = "Popup 追加語彙はまだありません。";
-      popupEntriesNode.appendChild(empty);
+      setOperationPending(state.operationPending);
       return;
     }
 
@@ -350,33 +356,39 @@
       saveButton.type = "button";
       saveButton.textContent = "更新";
       saveButton.addEventListener("click", async () => {
-        popupRoot.rules[index] = {
-          ...popupRoot.rules[index],
-          from: fromInput.value.trim(),
-          to: toInput.value.trim(),
-          priority: Number.isFinite(Number(priorityInput.value)) ? Number(priorityInput.value) : 90,
-          enabled: enabledInput.checked,
-          regex: regexInput.checked,
-          match_target: basicInput.checked ? "basic_form" : null
-        };
-        await savePayload();
-        setStatus("Popup 語彙を更新しました。", "success");
-        await reloadState();
+        await runPersistedMutation({
+          mutate: () => {
+            popupRoot.rules[index] = {
+              ...popupRoot.rules[index],
+              from: fromInput.value.trim(),
+              to: toInput.value.trim(),
+              priority: Number.isFinite(Number(priorityInput.value)) ? Number(priorityInput.value) : 90,
+              enabled: enabledInput.checked,
+              regex: regexInput.checked,
+              match_target: basicInput.checked ? "basic_form" : null
+            };
+          },
+          successMessage: "Popup 語彙を更新しました。"
+        });
       });
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
       deleteButton.textContent = "削除";
       deleteButton.addEventListener("click", async () => {
-        popupRoot.rules.splice(index, 1);
-        await savePayload();
-        setStatus("Popup 語彙を削除しました。", "success");
-        await reloadState();
+        if (!globalThis.confirm("この Popup 語彙を削除しますか？")) {
+          return;
+        }
+        await runPersistedMutation({
+          mutate: () => popupRoot.rules.splice(index, 1),
+          successMessage: "Popup 語彙を削除しました。"
+        });
       });
       row3.append(saveButton, deleteButton);
 
       wrapper.append(row1, row2, row3);
       popupEntriesNode.appendChild(wrapper);
     });
+    setOperationPending(state.operationPending);
   };
 
   const reloadState = async () => {
@@ -387,6 +399,74 @@
     });
     renderPageContext();
     renderEntries();
+  };
+
+  const runPersistedMutation = async ({ mutate, successMessage, afterPersist }) => {
+    if (state.operationPending) {
+      return false;
+    }
+
+    const previousPayload = cloneValue(state.payload);
+    let runtimeError = null;
+    setOperationPending(true);
+    try {
+      try {
+        mutate();
+        ({ runtimeError } = await savePayload());
+      } catch (error) {
+        console.error(error);
+        state.payload = previousPayload;
+        renderPageContext();
+        renderEntries();
+        setStatus(`保存に失敗したため変更を元に戻しました: ${error.message}`, "error");
+        return false;
+      }
+
+      try {
+        if (typeof afterPersist === "function") {
+          afterPersist();
+        }
+        await reloadState();
+      } catch (error) {
+        console.error(error);
+        setStatus(`${successMessage} 保存は完了しましたが、表示の再読込に失敗しました: ${error.message}`, "error");
+        return true;
+      }
+
+      if (runtimeError) {
+        setStatus(`${successMessage} ただし現在のタブへの反映に失敗しました: ${runtimeError.message}`, "error");
+      } else {
+        setStatus(successMessage, "success");
+      }
+      return true;
+    } finally {
+      setOperationPending(false);
+    }
+  };
+
+  const saveCurrentPageRubyMarkers = async () => {
+    const url = `${state.pageContext?.url ?? state.activeTab?.url ?? ""}`.trim();
+    const hostname = `${state.pageContext?.hostname ?? ""}`.trim().toLowerCase();
+    if (!url || !hostname) {
+      setStatus("現在ページの URL を取得できません。", "error");
+      return;
+    }
+
+    const markers = TransformShared.normalizeRubyMarkers({
+      open: rubyOpenInput.value,
+      close: rubyCloseInput.value
+    });
+    rubyOpenInput.value = markers.open;
+    rubyCloseInput.value = markers.close;
+
+    await runPersistedMutation({
+      mutate: () => {
+        state.payload.page_ruby_settings = normalizePageRubySettings(state.payload.page_ruby_settings);
+        state.payload.page_ruby_settings.url_overrides[url] = { ...markers };
+        state.payload.page_ruby_settings.domain_defaults[hostname] = { ...markers };
+      },
+      successMessage: "ページ別ルビ記号を保存しました。"
+    });
   };
 
   const bindStorageSync = () => {
@@ -414,28 +494,33 @@
       return;
     }
 
-    const popupRoot = getPopupRoot();
-    popupRoot.rules.push({
-      id: `popup-${Date.now().toString(36)}`,
-      from,
-      to,
-      priority: Number.isFinite(Number(entryPriorityInput.value)) ? Number(entryPriorityInput.value) : 90,
-      enabled: entryEnabledInput.checked,
-      regex: entryRegexInput.checked,
-      match_target: entryBasicInput.checked ? "basic_form" : null
+    await runPersistedMutation({
+      mutate: () => {
+        const popupRoot = getPopupRoot();
+        popupRoot.rules.push({
+          id: `popup-${Date.now().toString(36)}`,
+          from,
+          to,
+          priority: Number.isFinite(Number(entryPriorityInput.value)) ? Number(entryPriorityInput.value) : 90,
+          enabled: entryEnabledInput.checked,
+          regex: entryRegexInput.checked,
+          match_target: entryBasicInput.checked ? "basic_form" : null
+        });
+      },
+      afterPersist: () => {
+        entryToInput.value = "";
+      },
+      successMessage: "Popup 語彙を追加しました。"
     });
-
-    await savePayload();
-    entryToInput.value = "";
-    setStatus("Popup 語彙を追加しました。", "success");
-    await reloadState();
   });
 
   globalEnabledInput.addEventListener("change", async () => {
-    state.payload.runtime_settings.globalEnabled = globalEnabledInput.checked;
-    await savePayload();
-    setStatus("拡張全体の有効状態を更新しました。", "success");
-    await reloadState();
+    await runPersistedMutation({
+      mutate: () => {
+        state.payload.runtime_settings.globalEnabled = globalEnabledInput.checked;
+      },
+      successMessage: "拡張全体の有効状態を更新しました。"
+    });
   });
 
   toggleSiteButton.addEventListener("click", async () => {
@@ -445,16 +530,18 @@
       return;
     }
 
-    const domains = new Set(state.payload.disabled_sites.domains);
-    if (domains.has(hostname)) {
-      domains.delete(hostname);
-    } else {
-      domains.add(hostname);
-    }
-    state.payload.disabled_sites.domains = [...domains];
-    await savePayload();
-    setStatus("現在サイトの有効状態を更新しました。", "success");
-    await reloadState();
+    await runPersistedMutation({
+      mutate: () => {
+        const domains = new Set(state.payload.disabled_sites.domains);
+        if (domains.has(hostname)) {
+          domains.delete(hostname);
+        } else {
+          domains.add(hostname);
+        }
+        state.payload.disabled_sites.domains = [...domains];
+      },
+      successMessage: "現在サイトの有効状態を更新しました。"
+    });
   });
 
   toggleTabButton.addEventListener("click", async () => {
@@ -475,12 +562,7 @@
   });
 
   saveRubyMarkersButton.addEventListener("click", async () => {
-    try {
-      await saveCurrentPageRubyMarkers();
-    } catch (error) {
-      console.error(error);
-      setStatus(`ルビ記号の保存に失敗しました: ${error.message}`, "error");
-    }
+    await saveCurrentPageRubyMarkers();
   });
 
   bindStorageSync();

@@ -199,7 +199,7 @@ async function boot() {
   };
   context.globalThis = context;
   vm.runInNewContext(source, context, { filename: 'popup.js' });
-  for (let i = 0; i < 8; i += 1) await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
 
   const all = () => {
     const result = [...elements.values()];

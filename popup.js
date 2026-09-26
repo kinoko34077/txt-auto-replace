@@ -407,27 +407,38 @@
     }
 
     const previousPayload = cloneValue(state.payload);
+    let runtimeError = null;
     setOperationPending(true);
     try {
-      mutate();
-      const { runtimeError } = await savePayload();
-      if (typeof afterPersist === "function") {
-        afterPersist();
+      try {
+        mutate();
+        ({ runtimeError } = await savePayload());
+      } catch (error) {
+        console.error(error);
+        state.payload = previousPayload;
+        renderPageContext();
+        renderEntries();
+        setStatus(`保存に失敗したため変更を元に戻しました: ${error.message}`, "error");
+        return false;
       }
-      await reloadState();
+
+      try {
+        if (typeof afterPersist === "function") {
+          afterPersist();
+        }
+        await reloadState();
+      } catch (error) {
+        console.error(error);
+        setStatus(`${successMessage} 保存は完了しましたが、表示の再読込に失敗しました: ${error.message}`, "error");
+        return true;
+      }
+
       if (runtimeError) {
         setStatus(`${successMessage} ただし現在のタブへの反映に失敗しました: ${runtimeError.message}`, "error");
       } else {
         setStatus(successMessage, "success");
       }
       return true;
-    } catch (error) {
-      console.error(error);
-      state.payload = previousPayload;
-      renderPageContext();
-      renderEntries();
-      setStatus(`保存に失敗したため変更を元に戻しました: ${error.message}`, "error");
-      return false;
     } finally {
       setOperationPending(false);
     }

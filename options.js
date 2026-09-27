@@ -16,6 +16,10 @@
     APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
     OPEN_SHORTCUTS_PAGE: "OPEN_SHORTCUTS_PAGE"
   };
+  const CONTINUITY_EVENT_TYPES = Object.freeze({
+    DIRTY: "settings-dirty",
+    SAVED: "settings-saved"
+  });
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
     skipEditableInputs: false,
     globalEnabled: true,
@@ -73,6 +77,9 @@
       openEditSession: null
     },
     savedPayloadHistory: [],
+    persistence: {
+      savedPayloadSignature: null
+    },
     bundleUi: {
       selectedNodeId: "__all__",
       expandedTreeIds: {},
@@ -2607,6 +2614,34 @@
     };
   };
 
+  const dispatchContinuityEvent = (type, detail = {}) => {
+    if (typeof document === "undefined" || typeof document.dispatchEvent !== "function") {
+      return;
+    }
+    const event = typeof CustomEvent === "function"
+      ? new CustomEvent(type, { detail })
+      : { type, detail };
+    document.dispatchEvent(event);
+  };
+
+  const currentPersistenceSignature = () => JSON.stringify(buildPayload());
+
+  const publishPersistenceState = (detail = {}) => {
+    if (state.persistence.savedPayloadSignature === null) {
+      return;
+    }
+    const dirty = currentPersistenceSignature() !== state.persistence.savedPayloadSignature;
+    dispatchContinuityEvent(
+      dirty ? CONTINUITY_EVENT_TYPES.DIRTY : CONTINUITY_EVENT_TYPES.SAVED,
+      { ...detail, dirty }
+    );
+  };
+
+  const markPersistedPayloadSaved = (payload, detail = {}) => {
+    state.persistence.savedPayloadSignature = JSON.stringify(payload);
+    dispatchContinuityEvent(CONTINUITY_EVENT_TYPES.SAVED, { ...detail, dirty: false });
+  };
+
   const extractStructuredDictionary = (payload, roots) => {
     const source = payload?.structured_dictionary ?? payload?.[STORAGE_KEY]?.structured_dictionary;
     return source
@@ -2696,6 +2731,7 @@
     if (render) {
       renderApp();
     }
+    publishPersistenceState({ label });
     return result;
   };
 
@@ -2707,6 +2743,7 @@
     applyHistorySnapshot(item.beforeSnapshot);
     state.history.redoStack.push(item);
     renderApp();
+    publishPersistenceState({ label: item.label, source: "undo" });
     setStatus(`取り消し: ${item.label}`, "info");
     return true;
   };
@@ -2719,6 +2756,7 @@
     applyHistorySnapshot(item.afterSnapshot);
     state.history.undoStack.push(item);
     renderApp();
+    publishPersistenceState({ label: item.label, source: "redo" });
     setStatus(`やり直し: ${item.label}`, "info");
     return true;
   };
@@ -2763,6 +2801,7 @@
       [STORAGE_KEY]: payload
     });
     await savePayloadHistory(payload);
+    markPersistedPayloadSaved(payload, { source: "save" });
     try {
       await notifyRuntimeSettingsApplied();
       setStatus("設定を保存しました。現在のタブへ反映しました。", "success");
@@ -2806,6 +2845,7 @@
       [STORAGE_KEY]: payload
     });
     await savePayloadHistory(payload);
+    markPersistedPayloadSaved(payload, { source: "save" });
     setStatus("設定を保存しました。表示タブを再読み込みしてください。", "success");
   };
 
@@ -2813,6 +2853,7 @@
     state.roots = cloneValue(state.baseRoots);
     state.runtimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
     renderApp();
+    publishPersistenceState({ label: "既定値へ戻す" });
     setStatus("既定値へ戻しました。", "info");
   };
 
@@ -7297,6 +7338,7 @@
     if (shouldSeedStorage) {
       await storageSet(buildStoragePayload());
     }
+    markPersistedPayloadSaved(buildPayload(), { source: "initialize" });
     renderApp();
     setStatus("設定を読み込みました。", "info");
   };

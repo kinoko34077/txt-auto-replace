@@ -1,18 +1,20 @@
-// transforms/55-homophone-kanji.json5
-// 告示系ではない固定熟語・同音漢字置換バンドル
 {
-  id: "homophone-kanji",
-  label: "同音漢字置換",
-  kind: "dictionary-rules",
-  groups: [
+  "id": "homophone-kanji",
+  "label": "同音漢字置換",
+  "kind": "dictionary-rules",
+  "groups": [
     {
-      id: "default",
-      label: "既定",
-      phrase_rules: {
-        "ドイツ": ["独逸,独乙", 90, true],
+      "id": "default",
+      "label": "既定",
+      "phrase_rules": {
+        "ドイツ": [
+          "独逸,独乙",
+          90,
+          true
+        ]
       },
-      character_map_priority: 10,
-      character_map: {},
-    },
-  ],
+      "character_map_priority": 10,
+      "character_map": {}
+    }
+  ]
 }

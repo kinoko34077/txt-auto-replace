@@ -48,7 +48,7 @@ const loadStages = () => {
   for (const bundle of manifest.bundles || []) {
     bundleFiles[bundle.id] = parseJson5File(path.join(ROOT_DIR, bundle.path));
   }
-  return TransformEngine.loadStagesFromDefinitions(manifest, bundleFiles, {});
+  return TransformEngine.loadStagesFromDefinitions(manifest, bundleFiles, {}).stages;
 };
 
 const buildTokenizer = () => new Promise((resolve, reject) => {

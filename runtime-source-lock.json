@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "1",
+  "sourceRepository": "kinoko34077/japanese-orthography",
+  "coreCommit": "ad54ead84c98b31a733cafa3c88739a1b03aaf27",
+  "artifactPath": "runtime",
+  "runtimeSemanticsVersion": "1",
+  "files": [
+    {
+      "path": "transform-shared.js",
+      "upstreamPath": "runtime/transform-shared.js",
+      "gitBlob": "24518621cb7816f8daee6bc67911a14bed74cac6",
+      "byteLength": 44306
+    },
+    {
+      "path": "transform-engine.js",
+      "upstreamPath": "runtime/transform-engine.js",
+      "gitBlob": "9ed98ce3b8075828ee431ef30cfa7d9bcdd31f49",
+      "byteLength": 107309,
+      "requires": [
+        "transform-shared"
+      ]
+    },
+    {
+      "path": "structured-dictionary.js",
+      "upstreamPath": "runtime/structured-dictionary.js",
+      "gitBlob": "21d9c1bc17b7ceadf29630d10ac3f905b2047883",
+      "byteLength": 21805
+    }
+  ]
+}

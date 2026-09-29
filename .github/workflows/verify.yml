@@ -24,4 +24,7 @@ jobs:
         run: node --test tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs
       - name: Generated fixed rule-pack drift verification
         run: node tools/verify_generated_rule_packs.js
-      - name: Canonical shared runtime drift verification\n        run: node tools/verify_shared_runtime.js\n      - name: Canonical runtime verification\n        run: node tools/verify_runtime.js
+      - name: Canonical shared runtime drift verification
+        run: node tools/verify_shared_runtime.js
+      - name: Canonical runtime verification
+        run: node tools/verify_runtime.js

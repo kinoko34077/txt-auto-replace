@@ -21,6 +21,7 @@ jobs:
           node --check popup.js
           node --check options-continuity.js
           node --check orthography-resolver-adapter.js
+          node --check tools/export-upstream-resolver-bundle.mjs
       - name: UI and migration regression tests
         run: node --test tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs tests/orthography-resolver-shadow.test.mjs
       - name: Generated fixed rule-pack drift verification
@@ -29,3 +30,21 @@ jobs:
         run: node tools/verify_shared_runtime.js
       - name: Canonical runtime verification
         run: node tools/verify_runtime.js
+      - name: Checkout accepted japanese-orthography
+        uses: actions/checkout@v4
+        with:
+          repository: kinoko34077/japanese-orthography
+          ref: 21f4cb0d0fcf29a6327a7ac36a54bd41f524079c
+          path: .phase4-upstream
+      - name: Verify accepted upstream core and build resolver snapshot
+        run: |
+          cd .phase4-upstream
+          npm ci
+          npm run check
+          node --import tsx ../tools/export-upstream-resolver-bundle.mjs ../phase4-generated
+      - name: Upload Phase 4 resolver consumer snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase4-resolver-consumer-snapshot
+          path: phase4-generated
+          if-no-files-found: error

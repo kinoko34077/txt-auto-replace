@@ -17,10 +17,7 @@ const TransformEngine = require(path.join(ROOT, 'transform-engine.js'));
 const Adapter = require(path.join(ROOT, 'orthography-resolver-adapter.js'));
 
 const sha256 = (payload) => createHash('sha256').update(payload).digest('hex');
-const gitBlob = (payload) => createHash('sha1')
-  .update(Buffer.from(`blob ${payload.byteLength}\0`))
-  .update(payload)
-  .digest('hex');
+const gitBlob = (payload) => createHash('sha1').update(Buffer.from(`blob ${payload.byteLength}\0`)).update(payload).digest('hex');
 const parseJson5 = (filePath) => JSON5.parse(fs.readFileSync(filePath, 'utf8'));
 
 const lock = JSON.parse(await readFile(path.join(SNAPSHOT, 'source-lock.json'), 'utf8'));
@@ -43,11 +40,18 @@ for (const entry of lock.runtimeFiles) {
   assert.equal(gitBlob(payload), entry.gitBlob, `${entry.path} gitBlob`);
 }
 
+assert.deepEqual(lock.externalRuntimeDependencies, [{
+  consumerPath: 'transform-shared.js',
+  upstreamPath: 'runtime/transform-shared.js',
+  gitBlob: '24518621cb7816f8daee6bc67911a14bed74cac6'
+}]);
+const consumerSharedBytes = await readFile(path.join(ROOT, lock.externalRuntimeDependencies[0].consumerPath));
+assert.equal(gitBlob(consumerSharedBytes), lock.externalRuntimeDependencies[0].gitBlob, 'consumer shared runtime must equal accepted upstream blob');
+
 const runtimeBundleBytes = await readFile(path.join(SNAPSHOT, lock.runtimeBundle.path));
 assert.equal(runtimeBundleBytes.byteLength, lock.runtimeBundle.byteLength);
 assert.equal(sha256(runtimeBundleBytes), lock.runtimeBundle.sha256);
 assert.deepEqual(lock.runtimeBundle.components, [
-  'runtime/transform-shared.js',
   'runtime/lexical-runtime.js',
   'runtime/historical-native-runtime.js',
   'runtime/historical-sino-runtime.js',
@@ -58,6 +62,7 @@ assert.deepEqual(lock.runtimeBundle.components, [
 
 const sandbox = {};
 sandbox.globalThis = sandbox;
+vm.runInNewContext(consumerSharedBytes.toString('utf8'), sandbox, { filename: 'transform-shared.js' });
 vm.runInNewContext(runtimeBundleBytes.toString('utf8'), sandbox, { filename: lock.runtimeBundle.path });
 const resolverBundle = sandbox.ResolverBundleRuntime.createResolverBundle(artifact);
 assert.equal(resolverBundle.bundleContentId, lock.bundleContentId);
@@ -66,16 +71,8 @@ class LocalFileXMLHttpRequest {
   open(method, url) { this.method = method; this.url = url; this.responseType = 'arraybuffer'; }
   send() {
     fs.readFile(this.url, (error, buffer) => {
-      if (error) {
-        this.status = 404;
-        this.statusText = error.message;
-        if (typeof this.onerror === 'function') this.onerror(error);
-        return;
-      }
-      this.status = 200;
-      this.statusText = 'OK';
-      this.response = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-      if (typeof this.onload === 'function') this.onload();
+      if (error) { this.status = 404; this.statusText = error.message; if (typeof this.onerror === 'function') this.onerror(error); return; }
+      this.status = 200; this.statusText = 'OK'; this.response = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength); if (typeof this.onload === 'function') this.onload();
     });
   }
 }
@@ -83,9 +80,7 @@ global.XMLHttpRequest = LocalFileXMLHttpRequest;
 
 const manifest = parseJson5(path.join(ROOT, 'transform-bundles.json5'));
 const bundleFiles = {};
-for (const definition of manifest.bundles || []) {
-  bundleFiles[definition.id] = parseJson5(path.join(ROOT, definition.path));
-}
+for (const definition of manifest.bundles || []) bundleFiles[definition.id] = parseJson5(path.join(ROOT, definition.path));
 const stages = TransformEngine.loadStagesFromDefinitions(manifest, bundleFiles, {}).stages;
 const plan = TransformEngine.compileRuntimePlan(stages, { revision: 1 });
 const tokenizer = await new Promise((resolve, reject) => {
@@ -114,18 +109,9 @@ assert.equal(taifu.core.output, '颱風');
 const evidence = {
   schemaVersion: '1',
   kind: 'txt-auto-phase4-shadow-evidence',
-  upstream: {
-    repository: lock.sourceRepository,
-    commit: lock.coreCommit,
-    bundleContentId: lock.bundleContentId,
-    lexicalNamespaceId: lock.lexicalNamespaceId,
-    runtimeBundleSha256: lock.runtimeBundle.sha256
-  },
+  upstream: { repository: lock.sourceRepository, commit: lock.coreCommit, bundleContentId: lock.bundleContentId, lexicalNamespaceId: lock.lexicalNamespaceId, runtimeBundleSha256: lock.runtimeBundle.sha256 },
   legacyAuthority: true,
   results
 };
 await writeFile(path.join(SNAPSHOT, 'shadow-evidence.json'), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
-console.log(JSON.stringify({
-  upstream: evidence.upstream,
-  classifications: results.map(({ sourceText, legacyOutput, core, classification }) => ({ sourceText, legacyOutput, coreKind: core.kind, coreOutput: core.output, classification }))
-}, null, 2));
+console.log(JSON.stringify({ upstream: evidence.upstream, classifications: results.map(({ sourceText, legacyOutput, core, classification }) => ({ sourceText, legacyOutput, coreKind: core.kind, coreOutput: core.output, classification })) }, null, 2));

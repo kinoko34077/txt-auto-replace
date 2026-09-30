@@ -8,18 +8,20 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const bridgeSource = fs.readFileSync(path.join(ROOT, 'orthography-transform-bridge.js'), 'utf8');
 
-const loadBridge = ({ initReject = false } = {}) => {
+const loadBridge = ({ initReject = false, authority = {} } = {}) => {
   const observations = [];
-  let initCalls = 0;
+  let shadowInitCalls = 0;
+  let authorityInitCalls = 0;
+  let legacyCalls = 0;
   const engine = {
-    transformTextWithPlan(input) { return `${input}-legacy-plan`; },
-    transformTextWithStages(input) { return `${input}-legacy-stages`; }
+    transformTextWithPlan(input) { legacyCalls += 1; return `${input}-legacy-plan`; },
+    transformTextWithStages(input) { legacyCalls += 1; return `${input}-legacy-stages`; }
   };
   const sandbox = {
     TransformEngine: engine,
     OrthographyShadowRuntime: {
       initialize() {
-        initCalls += 1;
+        shadowInitCalls += 1;
         return initReject ? Promise.reject(new Error('resolver unavailable')) : Promise.resolve();
       },
       observe(sourceText, legacyOutput) {
@@ -27,41 +29,65 @@ const loadBridge = ({ initReject = false } = {}) => {
         return { sourceText, legacyOutput };
       }
     },
+    OrthographyAuthorityRuntime: {
+      initialize() {
+        authorityInitCalls += 1;
+        return initReject ? Promise.reject(new Error('resolver unavailable')) : Promise.resolve();
+      },
+      resolve(sourceText) { return authority[sourceText] ?? null; }
+    },
     Promise
   };
   sandbox.globalThis = sandbox;
   vm.runInNewContext(bridgeSource, sandbox, { filename: 'orthography-transform-bridge.js' });
-  return { sandbox, engine, observations, get initCalls() { return initCalls; } };
+  return {
+    sandbox,
+    engine,
+    observations,
+    get shadowInitCalls() { return shadowInitCalls; },
+    get authorityInitCalls() { return authorityInitCalls; },
+    get legacyCalls() { return legacyCalls; }
+  };
 };
 
-test('bridge returns legacy TransformEngine output byte-for-byte and records shadow observation', async () => {
+test('non-admitted input returns legacy output byte-for-byte and records shadow observation', async () => {
   const runtime = loadBridge();
   await Promise.resolve();
-  const actual = runtime.engine.transformTextWithPlan('学校');
-  assert.equal(actual, '学校-legacy-plan');
-  assert.deepEqual(runtime.observations, [{ sourceText: '学校', legacyOutput: '学校-legacy-plan' }]);
-  assert.equal(runtime.initCalls, 1);
+  const actual = runtime.engine.transformTextWithPlan('今日');
+  assert.equal(actual, '今日-legacy-plan');
+  assert.deepEqual(runtime.observations, [{ sourceText: '今日', legacyOutput: '今日-legacy-plan' }]);
+  assert.equal(runtime.legacyCalls, 1);
+  assert.equal(runtime.shadowInitCalls, 1);
+  assert.equal(runtime.authorityInitCalls, 1);
 });
 
-test('bridge wraps stages path without changing output', () => {
-  const runtime = loadBridge();
-  const actual = runtime.engine.transformTextWithStages('台風');
-  assert.equal(actual, '台風-legacy-stages');
-  assert.deepEqual(runtime.observations, [{ sourceText: '台風', legacyOutput: '台風-legacy-stages' }]);
+test('admitted exact unit bypasses legacy and returns resolver output', () => {
+  const runtime = loadBridge({
+    authority: {
+      学校: { sourceText: '学校', lexicalIdentity: 'unidic-cwj:2025.12:lemma:8098', output: '學校', authority: 'japanese-orthography-resolver' },
+      台風: { sourceText: '台風', lexicalIdentity: 'unidic-cwj:2025.12:lemma:21903', output: '颱風', authority: 'japanese-orthography-resolver' }
+    }
+  });
+  assert.equal(runtime.engine.transformTextWithPlan('学校'), '學校');
+  assert.equal(runtime.engine.transformTextWithStages('台風'), '颱風');
+  assert.equal(runtime.legacyCalls, 0);
+  assert.deepEqual(runtime.observations, []);
 });
 
-test('shadow initialization failure never breaks legacy transform', async () => {
+test('authority initialization failure never breaks legacy transform', async () => {
   const runtime = loadBridge({ initReject: true });
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(runtime.engine.transformTextWithPlan('今日'), '今日-legacy-plan');
+  assert.equal(runtime.legacyCalls, 1);
 });
 
-test('nested TransformEngine calls create one outer observation', () => {
+test('nested TransformEngine calls create one outer fallback observation', () => {
   const observations = [];
+  let nestingLegacyCalls = 0;
   const engine = {
-    transformTextWithStages(input) { return `${input}-inner`; },
-    transformTextWithPlan(input) { return this.transformTextWithStages(`${input}-outer`); }
+    transformTextWithStages(input) { nestingLegacyCalls += 1; return `${input}-inner`; },
+    transformTextWithPlan(input) { nestingLegacyCalls += 1; return this.transformTextWithStages(`${input}-outer`); }
   };
   const sandbox = {
     TransformEngine: engine,
@@ -69,10 +95,15 @@ test('nested TransformEngine calls create one outer observation', () => {
       initialize() { return Promise.resolve(); },
       observe(sourceText, legacyOutput) { observations.push({ sourceText, legacyOutput }); }
     },
+    OrthographyAuthorityRuntime: {
+      initialize() { return Promise.resolve(); },
+      resolve() { return null; }
+    },
     Promise
   };
   sandbox.globalThis = sandbox;
   vm.runInNewContext(bridgeSource, sandbox, { filename: 'orthography-transform-bridge.js' });
   assert.equal(engine.transformTextWithPlan('x'), 'x-outer-inner');
+  assert.equal(nestingLegacyCalls, 2);
   assert.deepEqual(observations, [{ sourceText: 'x', legacyOutput: 'x-outer-inner' }]);
 });

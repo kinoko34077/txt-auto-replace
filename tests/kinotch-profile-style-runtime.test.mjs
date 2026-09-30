@@ -75,6 +75,15 @@ function acceptedArtifact() {
   };
 }
 
+function loadConsumerStages() {
+  const manifest = JSON5.parse(fs.readFileSync(path.join(ROOT, 'transform-bundles.json5'), 'utf8'));
+  const bundleFiles = {};
+  for (const definition of manifest.bundles ?? []) {
+    bundleFiles[definition.id] = JSON5.parse(fs.readFileSync(path.join(ROOT, definition.path), 'utf8'));
+  }
+  return TransformEngine.loadStagesFromDefinitions(manifest, bundleFiles, {}).stages;
+}
+
 test('committed token-style snapshot is pinned to exact accepted upstream generation', () => {
   const lockPath = path.join(ROOT, 'profiles', 'kinotch-token-style', 'source-lock.json');
   const manifestPath = path.join(ROOT, 'profiles', 'kinotch-token-style', 'manifest.json');
@@ -109,6 +118,34 @@ test('verified project style overlay transforms only exact こと tokens', async
   assert.equal(runtime.status().ready, true);
 });
 
+test('verified stage composition transfers only こと authority out of the local lexical stage', async () => {
+  const api = loadRuntimeModule();
+  const runtime = api.createProfileStyleRuntime({ loadArtifact: async () => acceptedArtifact() });
+  await runtime.initialize();
+
+  const originalStages = loadConsumerStages();
+  const composed = runtime.composeStages(originalStages);
+  const lexical = composed.find((stage) => stage.id === 'lexical-replacements');
+  const profile = composed.find((stage) => stage.id === 'kinotch-token-style');
+
+  assert.ok(lexical);
+  assert.ok(profile);
+  assert.equal(lexical.rules.some((rule) => rule.from === 'こと' && rule.to === 'ヿ'), false);
+  assert.equal(lexical.rules.some((rule) => rule.from === 'それ' && rule.to === '其'), true);
+  assert.deepEqual(
+    profile.rules.map(({ from, to, type, priority }) => ({ from, to, type, priority })),
+    [{ from: 'こと', to: 'ヿ', type: 'literal', priority: 100 }]
+  );
+  assert.equal(
+    composed.flatMap((stage) => stage.rules ?? []).filter((rule) => rule.from === 'こと' && rule.to === 'ヿ').length,
+    1
+  );
+  assert.equal(
+    TransformEngine.transformTextWithStages('こと', composed, fakeTokenizerFor('こと')),
+    'ヿ'
+  );
+});
+
 test('profile initialization failure leaves source unchanged so accepted local stage remains fallback', async () => {
   const api = loadRuntimeModule();
   const runtime = api.createProfileStyleRuntime({
@@ -121,11 +158,8 @@ test('profile initialization failure leaves source unchanged so accepted local s
   assert.equal(source, 'こと');
   assert.equal(runtime.status().ready, false);
 
-  const manifest = {
-    bundles: [{ id: 'lexical-replacements', path: 'transforms/20-lexical-replacements.json5', order: 20, enabled: true }]
-  };
-  const bundle = JSON5.parse(fs.readFileSync(path.join(ROOT, 'transforms', '20-lexical-replacements.json5'), 'utf8'));
-  const stages = TransformEngine.loadStagesFromDefinitions(manifest, { 'lexical-replacements': bundle }, {}).stages;
+  const stages = loadConsumerStages();
+  assert.strictEqual(runtime.composeStages(stages), stages);
   assert.equal(TransformEngine.transformTextWithStages(source, stages, tokenizer), 'ヿ');
 });
 

@@ -22,6 +22,7 @@ jobs:
           node --check options-continuity.js
           node --check orthography-resolver-adapter.js
           node --check orthography-resolver-loader.js
+          node --check orthography-authority-runtime.js
           node --check orthography-shadow-runtime.js
           node --check orthography-transform-bridge.js
           node --check tools/export-upstream-resolver-bundle.mjs

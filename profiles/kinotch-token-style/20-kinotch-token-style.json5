@@ -1,0 +1,13 @@
+{
+  "id": "kinotch-token-style",
+  "label": "KiNoTch. token style",
+  "kind": "token-rules",
+  "rules": [
+    {
+      "from": "こと",
+      "to": "ヿ",
+      "type": "literal",
+      "priority": 100
+    }
+  ]
+}

@@ -33,16 +33,17 @@ const artifact = builderModule.buildResolverBundleArtifact({
   safeCharacterSlice
 });
 
-const runtimePaths = [
+const activationRuntimePaths = [
   'runtime/transform-shared.js',
   'runtime/lexical-runtime.js',
   'runtime/historical-native-runtime.js',
   'runtime/historical-sino-runtime.js',
   'runtime/safe-character-runtime.js',
   'runtime/orthography-resolver.js',
-  'runtime/resolver-bundle-runtime.js',
-  'runtime/real-text-evaluation-runtime.js'
+  'runtime/resolver-bundle-runtime.js'
 ];
+const supportRuntimePaths = ['runtime/real-text-evaluation-runtime.js'];
+const runtimePaths = [...activationRuntimePaths, ...supportRuntimePaths];
 
 await mkdir(path.join(outputDir, 'runtime'), { recursive: true });
 const runtimeFiles = [];
@@ -61,6 +62,14 @@ for (const upstreamPath of runtimePaths) {
   });
 }
 
+const runtimeBundlePath = path.join(outputDir, 'resolver-runtime-bundle.js');
+const runtimeBundleParts = [];
+for (const upstreamPath of activationRuntimePaths) {
+  runtimeBundleParts.push(await readFile(path.join(upstreamRoot, upstreamPath), 'utf8'));
+}
+await writeFile(runtimeBundlePath, `${runtimeBundleParts.join('\n')}\n`, 'utf8');
+const runtimeBundleStat = await stat(runtimeBundlePath);
+
 const artifactPath = path.join(outputDir, 'resolver-bundle.json');
 await writeFile(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8');
 const artifactStat = await stat(artifactPath);
@@ -77,6 +86,12 @@ const lock = {
     sha256: await sha256File(artifactPath),
     byteLength: artifactStat.size
   },
+  runtimeBundle: {
+    path: 'resolver-runtime-bundle.js',
+    components: activationRuntimePaths,
+    sha256: await sha256File(runtimeBundlePath),
+    byteLength: runtimeBundleStat.size
+  },
   runtimeFiles
 };
 await writeFile(path.join(outputDir, 'source-lock.json'), `${JSON.stringify(lock, null, 2)}\n`, 'utf8');
@@ -86,5 +101,6 @@ process.stdout.write(`${JSON.stringify({
   bundleContentId: artifact.bundleContentId,
   lexicalNamespaceId: artifact.lexicalArtifact.lexicalNamespaceId,
   runtimeFiles: runtimeFiles.length,
+  runtimeBundleSha256: lock.runtimeBundle.sha256,
   outputDir
 })}\n`);

@@ -36,6 +36,7 @@
         "orthography-resolver-adapter.js",
         "orthography-resolver-loader.js",
         "orthography-shadow-runtime.js",
+        "orthography-authority-runtime.js",
         "structured-dictionary.js",
         "transform-engine.js",
         "orthography-transform-bridge.js",

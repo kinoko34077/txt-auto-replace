@@ -229,3 +229,8 @@ test('playground page is standalone-local and loads the real local transformatio
   assert.match(html, /playground\.js/);
   assert.doesNotMatch(html, /api\.kinotch\.workers\.dev/);
 });
+
+test('playground loads the shared source-locked KiNoTch profile style seam', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'playground.html'), 'utf8');
+  assert.match(html, /kinotch-profile-style-runtime\.js/);
+});

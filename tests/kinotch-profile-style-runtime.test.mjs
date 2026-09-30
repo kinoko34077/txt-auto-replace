@@ -1,0 +1,215 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+const require = createRequire(import.meta.url);
+const JSON5 = require(path.join(ROOT, 'lib', 'json5.min.js'));
+const kuromoji = require(path.join(ROOT, 'lib', 'kuromoji.js'));
+const TransformEngine = require(path.join(ROOT, 'transform-engine.js'));
+
+class LocalFileXMLHttpRequest {
+  open(method, url) {
+    this.method = method;
+    this.url = url;
+    this.responseType = 'arraybuffer';
+  }
+
+  send() {
+    fs.readFile(this.url, (error, buffer) => {
+      if (error) {
+        this.status = 404;
+        this.statusText = error.message;
+        if (typeof this.onerror === 'function') this.onerror(error);
+        return;
+      }
+      this.status = 200;
+      this.statusText = 'OK';
+      this.response = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+      if (typeof this.onload === 'function') this.onload();
+    });
+  }
+}
+
+global.XMLHttpRequest = LocalFileXMLHttpRequest;
+
+const EXPECTED = Object.freeze({
+  upstreamCommit: '5dea2af61646949227c1191886febb6800b12796',
+  canonicalSourceDigest: '0f0d2b4699ad040977fcaf47d528bb5b387515a42edd77e07bad8ebb53b7f877',
+  artifactGeneration: '574f0deeface6dcf8348ef57d42c38a2c2323bce421992676aad2058bb7c6cd1',
+  payloadSha256: 'c3d1f58309b2060d37591ece438fdc3d047025b03d4398ca4f219737b7f424d1',
+  payloadByteLength: 214,
+  manifestSha256: '8eb4a459a1f5de0f2195956f6d3e21ec223fac769d463a709a1711903fc20d6e',
+  manifestByteLength: 884
+});
+
+const sha256 = (buffer) => crypto.createHash('sha256').update(buffer).digest('hex');
+
+function loadRuntimeModule() {
+  return require(path.join(ROOT, 'kinotch-profile-style-runtime.js'));
+}
+
+function buildTokenizer() {
+  return new Promise((resolve, reject) => {
+    kuromoji.builder({ dicPath: path.join(ROOT, 'dict') }).build((error, tokenizer) => {
+      if (error) reject(error);
+      else resolve(tokenizer);
+    });
+  });
+}
+
+function acceptedArtifact() {
+  return {
+    manifest: {
+      artifactSchemaVersion: '1',
+      profileId: 'kinotch-authoring',
+      authority: 'project_profile',
+      responsibility: 'style_render',
+      genericSafety: 'not_implied',
+      packId: 'token-style',
+      buildSourceIdentity: 'canonical-content-addressed',
+      artifactGeneration: EXPECTED.artifactGeneration,
+      canonicalSourceDigest: EXPECTED.canonicalSourceDigest,
+      adoptedSource: {
+        repository: 'kinoko34077/txt-auto-replace',
+        commit: '48ceade01db46af3fad7acfb8743c3d841885c33',
+        path: 'transforms/20-lexical-replacements.json5',
+        blobSha: '32d4acff7532b5dd21d0bab1d1ba414298f27687'
+      },
+      files: [{
+        path: '20-kinotch-token-style.json5',
+        payloadDigest: EXPECTED.payloadSha256,
+        byteLength: EXPECTED.payloadByteLength
+      }]
+    },
+    bundle: {
+      id: 'kinotch-token-style',
+      label: 'KiNoTch. token style',
+      kind: 'token-rules',
+      rules: [{ from: 'こと', to: 'ヿ', type: 'literal', priority: 100 }]
+    }
+  };
+}
+
+function loadConsumerStages() {
+  const manifest = JSON5.parse(fs.readFileSync(path.join(ROOT, 'transform-bundles.json5'), 'utf8'));
+  const bundleFiles = {};
+  for (const definition of manifest.bundles ?? []) {
+    bundleFiles[definition.id] = JSON5.parse(fs.readFileSync(path.join(ROOT, definition.path), 'utf8'));
+  }
+  return TransformEngine.loadStagesFromDefinitions(manifest, bundleFiles, {}).stages;
+}
+
+test('committed token-style snapshot is pinned to exact accepted upstream generation', () => {
+  const lockPath = path.join(ROOT, 'profiles', 'kinotch-token-style', 'source-lock.json');
+  const manifestPath = path.join(ROOT, 'profiles', 'kinotch-token-style', 'manifest.json');
+  const payloadPath = path.join(ROOT, 'profiles', 'kinotch-token-style', '20-kinotch-token-style.json5');
+  const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+  const manifestBytes = fs.readFileSync(manifestPath);
+  const payloadBytes = fs.readFileSync(payloadPath);
+
+  assert.equal(lock.sourceRepository, 'kinoko34077/japanese-orthography');
+  assert.equal(lock.upstreamCommit, EXPECTED.upstreamCommit);
+  assert.equal(lock.artifactGeneration, EXPECTED.artifactGeneration);
+  assert.equal(lock.canonicalSourceDigest, EXPECTED.canonicalSourceDigest);
+  assert.equal(lock.files.manifest.sha256, EXPECTED.manifestSha256);
+  assert.equal(lock.files.payload.sha256, EXPECTED.payloadSha256);
+  assert.equal(manifestBytes.byteLength, EXPECTED.manifestByteLength);
+  assert.equal(payloadBytes.byteLength, EXPECTED.payloadByteLength);
+  assert.equal(sha256(manifestBytes), EXPECTED.manifestSha256);
+  assert.equal(sha256(payloadBytes), EXPECTED.payloadSha256);
+});
+
+test('verified project style artifact activates only after exact identity validation', async () => {
+  const api = loadRuntimeModule();
+  const runtime = api.createProfileStyleRuntime({ loadArtifact: async () => acceptedArtifact() });
+  assert.equal(runtime.status().ready, false);
+  await runtime.initialize();
+  assert.equal(runtime.status().ready, true);
+  assert.equal(runtime.status().artifactGeneration, EXPECTED.artifactGeneration);
+  assert.equal(runtime.status().canonicalSourceDigest, EXPECTED.canonicalSourceDigest);
+});
+
+test('verified stage composition transfers only こと authority out of the local lexical stage', async () => {
+  const api = loadRuntimeModule();
+  const runtime = api.createProfileStyleRuntime({ loadArtifact: async () => acceptedArtifact() });
+  await runtime.initialize();
+
+  const originalStages = loadConsumerStages();
+  const composed = runtime.composeStages(originalStages);
+  const lexical = composed.find((stage) => stage.id === 'lexical-replacements');
+  const profile = composed.find((stage) => stage.id === 'kinotch-token-style');
+
+  assert.ok(lexical);
+  assert.ok(profile);
+  assert.equal(lexical.rules.some((rule) => rule.from === 'こと' && rule.to === 'ヿ'), false);
+  assert.equal(lexical.rules.some((rule) => rule.from === 'それ' && rule.to === '其'), true);
+  assert.deepEqual(
+    profile.rules.map(({ from, to, type, priority }) => ({ from, to, type, priority })),
+    [{ from: 'こと', to: 'ヿ', type: 'literal', priority: 100 }]
+  );
+  assert.equal(
+    composed.flatMap((stage) => stage.rules ?? []).filter((rule) => rule.from === 'こと' && rule.to === 'ヿ').length,
+    1
+  );
+});
+
+test('verified stage composition executes exact-token style through TransformEngine and the real tokenizer', async () => {
+  const api = loadRuntimeModule();
+  const runtime = api.createProfileStyleRuntime({ loadArtifact: async () => acceptedArtifact() });
+  await runtime.initialize();
+
+  const tokenizer = await buildTokenizer();
+  const composed = runtime.composeStages(loadConsumerStages());
+  assert.equal(TransformEngine.transformTextWithStages('こと', composed, tokenizer), 'ヿ');
+  assert.deepEqual(tokenizer.tokenize('ことごと').map((token) => token.surface_form), ['こと', 'ごと']);
+  assert.equal(TransformEngine.transformTextWithStages('ことごと', composed, tokenizer), 'ヿごと');
+});
+
+test('profile initialization failure preserves the accepted local stage authority', async () => {
+  const api = loadRuntimeModule();
+  const runtime = api.createProfileStyleRuntime({
+    loadArtifact: async () => { throw new Error('profile identity mismatch'); }
+  });
+  await assert.rejects(runtime.initialize(), /profile identity mismatch/);
+  assert.equal(runtime.status().ready, false);
+
+  const stages = loadConsumerStages();
+  assert.strictEqual(runtime.composeStages(stages), stages);
+  const lexical = stages.find((stage) => stage.id === 'lexical-replacements');
+  assert.ok(lexical?.rules?.some((rule) => rule.from === 'こと' && rule.to === 'ヿ'));
+});
+
+test('malformed or wrong-identity artifact is rejected before activation', async () => {
+  const api = loadRuntimeModule();
+  const artifact = acceptedArtifact();
+  artifact.manifest.artifactGeneration = '0'.repeat(64);
+  const runtime = api.createProfileStyleRuntime({ loadArtifact: async () => artifact });
+  await assert.rejects(runtime.initialize(), /artifact generation/i);
+  assert.equal(runtime.status().ready, false);
+});
+
+test('extension and localhost load one shared profile artifact/runtime/bridge before transformation consumers', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
+  const scripts = manifest.content_scripts?.[0]?.js ?? [];
+  const artifactIndex = scripts.indexOf('profiles/kinotch-token-style/artifact.js');
+  const runtimeIndex = scripts.indexOf('kinotch-profile-style-runtime.js');
+  const bridgeIndex = scripts.indexOf('kinotch-profile-style-bridge.js');
+  const transformBridgeIndex = scripts.indexOf('orthography-transform-bridge.js');
+  const contentIndex = scripts.indexOf('content.js');
+
+  assert.ok(artifactIndex >= 0);
+  assert.ok(runtimeIndex > artifactIndex);
+  assert.ok(bridgeIndex > runtimeIndex);
+  assert.ok(transformBridgeIndex > bridgeIndex);
+  assert.ok(contentIndex > transformBridgeIndex);
+
+  const html = fs.readFileSync(path.join(ROOT, 'playground.html'), 'utf8');
+  assert.match(html, /profiles\/kinotch-token-style\/artifact\.js/);
+  assert.match(html, /kinotch-profile-style-runtime\.js/);
+  assert.match(html, /kinotch-profile-style-bridge\.js/);
+});

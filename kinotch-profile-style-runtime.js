@@ -48,7 +48,10 @@
       "artifactGeneration",
       "canonicalSourceDigest"
     ]) {
-      if (manifest[key] !== EXPECTED[key]) throw new Error(`KiNoTch profile ${key} mismatch`);
+      if (manifest[key] !== EXPECTED[key]) {
+        const label = key === "artifactGeneration" ? "artifact generation" : key;
+        throw new Error(`KiNoTch profile ${label} mismatch`);
+      }
     }
     if (!exactObject(manifest.adoptedSource, EXPECTED.adoptedSource)) {
       throw new Error("KiNoTch profile adopted source identity mismatch");
@@ -144,6 +147,18 @@
       }
     };
 
+    const normalizeRuntimeRule = (rule) => ({
+      ...rule,
+      enabled: true,
+      from_options: [rule.from],
+      candidates: [rule.to],
+      match_options: null,
+      match_target: null,
+      character_map: null,
+      sequence: null,
+      conditions: { current: undefined, prev: undefined, next: undefined }
+    });
+
     const composeStages = (stages) => {
       if (!active || !Array.isArray(stages)) return stages;
       const lexicalIndex = stages.findIndex((stage) => stage?.id === "lexical-replacements");
@@ -156,7 +171,7 @@
         rule?.to === "ヿ" &&
         (rule?.type === undefined || rule?.type === "literal")
       ));
-      const profileRules = active.bundle.rules.map((rule) => ({ ...rule }));
+      const profileRules = active.bundle.rules.map(normalizeRuntimeRule);
       const profileStage = {
         ...lexical,
         id: active.bundle.id,

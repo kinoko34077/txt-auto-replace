@@ -5,15 +5,20 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function (Loader, Adapter) {
   "use strict";
 
-  const HISTORY_LIMIT = 32;
   let adapter = null;
   let initPromise = null;
-  const history = [];
+  let observationCount = 0;
+  let classifications = Object.create(null);
+
+  const metrics = () => Object.freeze({
+    total: observationCount,
+    classifications: Object.freeze({ ...classifications })
+  });
 
   const status = () => Object.freeze({
     loader: typeof Loader?.snapshot === "function" ? Loader.snapshot() : { status: "unavailable" },
     ready: adapter !== null,
-    observations: history.length
+    observations: observationCount
   });
 
   const initialize = async (options = {}) => {
@@ -37,13 +42,16 @@
   const observe = (sourceText, legacyOutput, options = {}) => {
     if (!adapter) return null;
     const result = adapter.evaluateWithLegacyOutput(sourceText, legacyOutput, options);
-    history.push(result);
-    if (history.length > HISTORY_LIMIT) history.splice(0, history.length - HISTORY_LIMIT);
+    observationCount += 1;
+    const key = `${result.classification ?? "unknown"}`;
+    classifications[key] = (classifications[key] ?? 0) + 1;
     return result;
   };
 
-  const observations = () => history.slice();
-  const clear = () => { history.length = 0; };
+  const clear = () => {
+    observationCount = 0;
+    classifications = Object.create(null);
+  };
 
-  return Object.freeze({ HISTORY_LIMIT, initialize, observe, observations, status, clear });
+  return Object.freeze({ initialize, observe, metrics, status, clear });
 });

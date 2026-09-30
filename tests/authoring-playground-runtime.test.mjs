@@ -3,23 +3,78 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+const require = createRequire(import.meta.url);
+const JSON5 = require(path.join(ROOT, 'lib', 'json5.min.js'));
+const kuromoji = require(path.join(ROOT, 'lib', 'kuromoji.js'));
+const TransformEngine = require(path.join(ROOT, 'transform-engine.js'));
+
+function source(name) {
+  return fs.readFileSync(path.join(ROOT, name), 'utf8');
+}
 
 function loadRuntime({ authority, engine }) {
-  const source = fs.readFileSync(path.join(ROOT, 'authoring-playground-runtime.js'), 'utf8');
+  const runtimeSource = source('authoring-playground-runtime.js');
   const sandbox = {
     OrthographyAuthorityRuntime: authority,
     TransformEngine: engine,
   };
   sandbox.globalThis = sandbox;
-  vm.runInNewContext(source, sandbox, { filename: 'authoring-playground-runtime.js' });
+  vm.runInNewContext(runtimeSource, sandbox, { filename: 'authoring-playground-runtime.js' });
   return sandbox.AuthoringPlaygroundRuntime;
 }
 
 function fakeTokenizer() {
   return { tokenize(text) { return [{ surface_form: text }]; } };
+}
+
+function loadRealAuthority() {
+  const resolverSandbox = {};
+  resolverSandbox.globalThis = resolverSandbox;
+  vm.runInNewContext(source('transform-shared.js'), resolverSandbox, { filename: 'transform-shared.js' });
+  for (const file of [
+    'lexical-runtime.js',
+    'historical-native-runtime.js',
+    'historical-sino-runtime.js',
+    'safe-character-runtime.js'
+  ]) {
+    vm.runInNewContext(source(`orthography-core/runtime/${file}`), resolverSandbox, { filename: file });
+  }
+  vm.runInNewContext(source('orthography-core/runtime/orthography-resolver.js'), resolverSandbox, { filename: 'orthography-resolver.js' });
+  vm.runInNewContext(source('orthography-core/runtime/resolver-bundle-runtime.js'), resolverSandbox, { filename: 'resolver-bundle-runtime.js' });
+  const artifact = JSON.parse(source('orthography-core/resolver-bundle.json'));
+  const bundle = resolverSandbox.ResolverBundleRuntime.createResolverBundle(artifact);
+
+  const authoritySandbox = {
+    OrthographyResolverLoader: {
+      async load() { return bundle; },
+      snapshot() { return { status: 'ready' }; }
+    }
+  };
+  authoritySandbox.globalThis = authoritySandbox;
+  vm.runInNewContext(source('orthography-authority-runtime.js'), authoritySandbox, { filename: 'orthography-authority-runtime.js' });
+  return authoritySandbox.OrthographyAuthorityRuntime;
+}
+
+function loadStages() {
+  const manifest = JSON5.parse(source('transform-bundles.json5'));
+  const bundleFiles = {};
+  for (const bundle of manifest.bundles ?? []) {
+    bundleFiles[bundle.id] = JSON5.parse(source(bundle.path));
+  }
+  return TransformEngine.loadStagesFromDefinitions(manifest, bundleFiles, {}).stages;
+}
+
+function buildTokenizer() {
+  return new Promise((resolve, reject) => {
+    kuromoji.builder({ dicPath: path.join(ROOT, 'dict') }).build((error, tokenizer) => {
+      if (error) reject(error);
+      else resolve(tokenizer);
+    });
+  });
 }
 
 test('comparison reports exact match and first mismatch deterministically', () => {
@@ -108,6 +163,26 @@ test('resolver initialization failure fails closed while legacy/profile transfor
   assert.equal(result.coreOutput, '奇跡');
   assert.equal(result.output, '奇蹟');
   assert.equal(result.resolver.ready, false);
+});
+
+test('real local authoring pipeline transforms a representative mixed sentence end to end', async () => {
+  const tokenizer = await buildTokenizer();
+  const runtimeApi = loadRuntime({ authority: loadRealAuthority(), engine: TransformEngine });
+  const runtime = runtimeApi.createAuthoringRuntime({ stages: loadStages(), tokenizer });
+  const init = await runtime.initialize();
+  assert.equal(init.resolverReady, true);
+
+  const input = '学校の台風。それをやっぱり分かることは奇跡だ。';
+  const expected = '學校の颱風｡其を矢ッ張分るヿは奇蹟だ｡';
+  const result = runtime.transform(input, { expected });
+
+  assert.equal(result.coreOutput, '學校の颱風。それをやっぱり分かることは奇跡だ。');
+  assert.equal(result.output, expected);
+  assert.equal(result.comparison.matches, true);
+  assert.equal(result.resolver.metrics.delta.delegated, 2);
+  assert.ok(result.stageTrace.some((entry) => entry.stageId === 'surface-normalization'));
+  assert.ok(result.stageTrace.some((entry) => entry.stageId === 'lexical-replacements'));
+  assert.ok(result.stageTrace.some((entry) => entry.stageId === 'official-homophone-restoration'));
 });
 
 test('playground page is standalone-local and loads the real local transformation assets', () => {

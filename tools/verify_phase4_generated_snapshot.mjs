@@ -43,20 +43,22 @@ for (const entry of lock.runtimeFiles) {
   assert.equal(gitBlob(payload), entry.gitBlob, `${entry.path} gitBlob`);
 }
 
+const runtimeBundleBytes = await readFile(path.join(SNAPSHOT, lock.runtimeBundle.path));
+assert.equal(runtimeBundleBytes.byteLength, lock.runtimeBundle.byteLength);
+assert.equal(sha256(runtimeBundleBytes), lock.runtimeBundle.sha256);
+assert.deepEqual(lock.runtimeBundle.components, [
+  'runtime/transform-shared.js',
+  'runtime/lexical-runtime.js',
+  'runtime/historical-native-runtime.js',
+  'runtime/historical-sino-runtime.js',
+  'runtime/safe-character-runtime.js',
+  'runtime/orthography-resolver.js',
+  'runtime/resolver-bundle-runtime.js'
+]);
+
 const sandbox = {};
 sandbox.globalThis = sandbox;
-for (const file of [
-  'transform-shared.js',
-  'lexical-runtime.js',
-  'historical-native-runtime.js',
-  'historical-sino-runtime.js',
-  'safe-character-runtime.js',
-  'orthography-resolver.js',
-  'resolver-bundle-runtime.js'
-]) {
-  const source = await readFile(path.join(SNAPSHOT, 'runtime', file), 'utf8');
-  vm.runInNewContext(source, sandbox, { filename: file });
-}
+vm.runInNewContext(runtimeBundleBytes.toString('utf8'), sandbox, { filename: lock.runtimeBundle.path });
 const resolverBundle = sandbox.ResolverBundleRuntime.createResolverBundle(artifact);
 assert.equal(resolverBundle.bundleContentId, lock.bundleContentId);
 
@@ -92,7 +94,7 @@ const tokenizer = await new Promise((resolve, reject) => {
 const legacyTransform = (input) => TransformEngine.transformTextWithPlan(input, plan, tokenizer, {});
 const adapter = Adapter.createAdapter({ resolverBundle, legacyTransform });
 
-const cases = ['学校', '今日', '未知語', '台風'];
+const cases = ['学校', '今日', '未知語', '台風', '思う', '味わおう', '買う', '合う'];
 const results = cases.map((sourceText) => adapter.evaluate(sourceText));
 const second = cases.map((sourceText) => adapter.evaluate(sourceText));
 assert.deepEqual(JSON.parse(JSON.stringify(results)), JSON.parse(JSON.stringify(second)), 'shadow evidence must be deterministic');
@@ -116,7 +118,8 @@ const evidence = {
     repository: lock.sourceRepository,
     commit: lock.coreCommit,
     bundleContentId: lock.bundleContentId,
-    lexicalNamespaceId: lock.lexicalNamespaceId
+    lexicalNamespaceId: lock.lexicalNamespaceId,
+    runtimeBundleSha256: lock.runtimeBundle.sha256
   },
   legacyAuthority: true,
   results

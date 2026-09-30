@@ -22,6 +22,7 @@ jobs:
           node --check options-continuity.js
           node --check orthography-resolver-adapter.js
           node --check tools/export-upstream-resolver-bundle.mjs
+          node --check tools/verify_phase4_generated_snapshot.mjs
       - name: UI and migration regression tests
         run: node --test tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs tests/orthography-resolver-shadow.test.mjs
       - name: Generated fixed rule-pack drift verification
@@ -42,6 +43,8 @@ jobs:
           npm ci
           npm run check
           node --import tsx ../tools/export-upstream-resolver-bundle.mjs ../phase4-generated
+      - name: Verify real resolver snapshot and shadow evidence
+        run: node tools/verify_phase4_generated_snapshot.mjs phase4-generated
       - name: Upload Phase 4 resolver consumer snapshot
         uses: actions/upload-artifact@v4
         with:

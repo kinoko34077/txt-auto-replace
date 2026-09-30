@@ -76,3 +76,34 @@ test('nested TransformEngine calls create one outer observation', () => {
   assert.equal(engine.transformTextWithPlan('x'), 'x-outer-inner');
   assert.deepEqual(observations, [{ sourceText: 'x', legacyOutput: 'x-outer-inner' }]);
 });
+
+test('authority preprocessing runs before the legacy engine and shadow still observes original source', async () => {
+  const observations = [];
+  const preprocessed = [];
+  const engine = {
+    transformTextWithPlan(input) { return `${input}-legacy`; }
+  };
+  const sandbox = {
+    TransformEngine: engine,
+    OrthographyAuthorityRuntime: {
+      initialize() { return Promise.resolve(); },
+      preprocess(sourceText, tokenizer) {
+        preprocessed.push({ sourceText, tokenizer });
+        return sourceText === '学校' ? '學校' : sourceText;
+      }
+    },
+    OrthographyShadowRuntime: {
+      initialize() { return Promise.resolve(); },
+      observe(sourceText, legacyOutput) { observations.push({ sourceText, legacyOutput }); }
+    },
+    Promise
+  };
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(bridgeSource, sandbox, { filename: 'orthography-transform-bridge.js' });
+  await Promise.resolve();
+  const tokenizer = { tokenize() { return []; } };
+  const actual = engine.transformTextWithPlan('学校', {}, tokenizer, {});
+  assert.equal(actual, '學校-legacy');
+  assert.deepEqual(preprocessed, [{ sourceText: '学校', tokenizer }]);
+  assert.deepEqual(observations, [{ sourceText: '学校', legacyOutput: '學校-legacy' }]);
+});

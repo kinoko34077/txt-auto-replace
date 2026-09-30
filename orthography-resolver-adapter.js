@@ -22,15 +22,15 @@
     return legacyChanged ? "legacy-changed/core-resolved" : "legacy-unchanged/core-resolved";
   };
 
-  const createAdapter = ({ resolverBundle, legacyTransform }) => {
+  const createAdapter = ({ resolverBundle, legacyTransform = null }) => {
     if (!resolverBundle || typeof resolverBundle !== "object") throw new TypeError("Missing resolver bundle");
     const resolveUnit = requireFn(resolverBundle.resolveUnit, "resolverBundle.resolveUnit").bind(resolverBundle);
     const render = requireFn(resolverBundle.render, "resolverBundle.render").bind(resolverBundle);
-    const runLegacy = requireFn(legacyTransform, "legacyTransform");
+    const runLegacy = legacyTransform == null ? null : requireFn(legacyTransform, "legacyTransform");
 
-    const evaluate = (sourceText, options = {}) => {
+    const evaluateWithLegacyOutput = (sourceText, legacyOutput, options = {}) => {
       const source = `${sourceText ?? ""}`;
-      const legacyOutput = runLegacy(source);
+      const authoritative = `${legacyOutput ?? ""}`;
       let coreUnit = null;
       let coreOutput = null;
       let coreError = null;
@@ -44,11 +44,11 @@
       }
       const classification = coreError
         ? "core-error"
-        : classify({ sourceText: source, legacyOutput, coreUnit, coreOutput });
+        : classify({ sourceText: source, legacyOutput: authoritative, coreUnit, coreOutput });
       return Object.freeze({
         sourceText: source,
-        authoritativeOutput: legacyOutput,
-        legacyOutput,
+        authoritativeOutput: authoritative,
+        legacyOutput: authoritative,
         core: Object.freeze({
           kind: coreUnit?.kind ?? (coreError ? "error" : "unresolved"),
           output: coreOutput,
@@ -59,9 +59,16 @@
       });
     };
 
+    const evaluate = (sourceText, options = {}) => {
+      if (!runLegacy) throw new TypeError("Missing legacyTransform for evaluate(sourceText)");
+      const source = `${sourceText ?? ""}`;
+      return evaluateWithLegacyOutput(source, runLegacy(source), options);
+    };
+
     return Object.freeze({
       bundleContentId: resolverBundle.bundleContentId ?? null,
-      evaluate
+      evaluate,
+      evaluateWithLegacyOutput
     });
   };
 

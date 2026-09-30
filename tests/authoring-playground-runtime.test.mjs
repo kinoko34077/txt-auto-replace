@@ -190,7 +190,7 @@ test('resolver initialization failure fails closed while legacy/profile transfor
   assert.equal(result.resolver.ready, false);
 });
 
-test('real local authoring pipeline exposes current output and the first ideal-form gap', async () => {
+test('real local authoring pipeline matches the current ideal-form example', async () => {
   const tokenizer = await buildTokenizer();
   const runtimeApi = loadRuntime({ authority: loadRealAuthority(), engine: TransformEngine });
   const runtime = runtimeApi.createAuthoringRuntime({ stages: loadStages(), tokenizer });
@@ -199,21 +199,16 @@ test('real local authoring pipeline exposes current output and the first ideal-f
 
   const input = '学校の台風。それをやっぱり分かることは奇跡だ。';
   const expected = '學校の颱風｡其を矢ッ張分るヿは奇蹟だ｡';
-  const currentOutput = '學校の颱風｡其を矢ッ張分るヿは畸蹟だ｡';
   const result = runtime.transform(input, { expected });
 
   assert.equal(result.coreOutput, '學校の颱風。それをやっぱり分かることは奇跡だ。');
-  assert.equal(result.output, currentOutput);
-  assert.equal(result.comparison.matches, false);
-  assert.equal(result.comparison.firstDifference.line, 1);
-  assert.equal(result.comparison.firstDifference.column, 16);
-  assert.equal(result.comparison.firstDifference.actual, '畸');
-  assert.equal(result.comparison.firstDifference.expected, '奇');
+  assert.equal(result.output, expected);
+  assert.equal(result.comparison.matches, true);
+  assert.equal(result.comparison.firstDifference, null);
   assert.equal(result.resolver.metrics.delta.delegated, 2);
   assert.ok(result.stageTrace.some((entry) => entry.stageId === 'surface-normalization'));
   assert.ok(result.stageTrace.some((entry) => entry.stageId === 'lexical-replacements'));
   assert.ok(result.stageTrace.some((entry) => entry.stageId === 'official-homophone-restoration'));
-  assert.ok(result.stageTrace.some((entry) => entry.stageId === 'general-character-replacements'));
 });
 
 test('playground page is standalone-local and loads the real local transformation assets', () => {

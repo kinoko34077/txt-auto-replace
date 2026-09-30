@@ -20,8 +20,9 @@ jobs:
         run: |
           node --check popup.js
           node --check options-continuity.js
-      - name: UI maintenance regression tests
-        run: node --test tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs
+          node --check orthography-resolver-adapter.js
+      - name: UI and migration regression tests
+        run: node --test tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs tests/orthography-resolver-shadow.test.mjs
       - name: Generated fixed rule-pack drift verification
         run: node tools/verify_generated_rule_packs.js
       - name: Canonical shared runtime drift verification

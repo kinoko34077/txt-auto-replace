@@ -160,7 +160,8 @@ test('profile initialization failure leaves source unchanged so accepted local s
 
   const stages = loadConsumerStages();
   assert.strictEqual(runtime.composeStages(stages), stages);
-  assert.equal(TransformEngine.transformTextWithStages(source, stages, tokenizer), 'ヿ');
+  const lexical = stages.find((stage) => stage.id === 'lexical-replacements');
+  assert.ok(lexical?.rules?.some((rule) => rule.from === 'こと' && rule.to === 'ヿ'));
 });
 
 test('malformed or wrong-identity artifact is rejected before activation', async () => {

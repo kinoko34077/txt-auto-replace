@@ -21,10 +21,12 @@ jobs:
           node --check popup.js
           node --check options-continuity.js
           node --check orthography-resolver-adapter.js
+          node --check orthography-resolver-loader.js
+          node --check orthography-shadow-runtime.js
           node --check tools/export-upstream-resolver-bundle.mjs
           node --check tools/verify_phase4_generated_snapshot.mjs
       - name: UI and migration regression tests
-        run: node --test tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs tests/orthography-resolver-shadow.test.mjs
+        run: node --test tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs tests/orthography-resolver-shadow.test.mjs tests/orthography-resolver-loader.test.mjs
       - name: Generated fixed rule-pack drift verification
         run: node tools/verify_generated_rule_packs.js
       - name: Canonical shared runtime drift verification

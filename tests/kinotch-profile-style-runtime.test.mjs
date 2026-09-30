@@ -53,21 +53,6 @@ function loadRuntimeModule() {
   return require(path.join(ROOT, 'kinotch-profile-style-runtime.js'));
 }
 
-function fakeTokenizerFor(source) {
-  const surfaces = source === 'こと'
-    ? ['こと']
-    : source === 'ことごと'
-      ? ['ことごと']
-      : source === '学校のこと'
-        ? ['学校', 'の', 'こと']
-        : [source];
-  return {
-    tokenize() {
-      return surfaces.map((surface_form) => ({ surface_form }));
-    }
-  };
-}
-
 function buildTokenizer() {
   return new Promise((resolve, reject) => {
     kuromoji.builder({ dicPath: path.join(ROOT, 'dict') }).build((error, tokenizer) => {
@@ -139,18 +124,14 @@ test('committed token-style snapshot is pinned to exact accepted upstream genera
   assert.equal(sha256(payloadBytes), EXPECTED.payloadSha256);
 });
 
-test('verified project style overlay transforms only exact こと tokens', async () => {
+test('verified project style artifact activates only after exact identity validation', async () => {
   const api = loadRuntimeModule();
-  const runtime = api.createProfileStyleRuntime({
-    loadArtifact: async () => acceptedArtifact()
-  });
+  const runtime = api.createProfileStyleRuntime({ loadArtifact: async () => acceptedArtifact() });
+  assert.equal(runtime.status().ready, false);
   await runtime.initialize();
-
-  assert.equal(runtime.preprocess('こと', fakeTokenizerFor('こと')), 'ヿ');
-  assert.equal(runtime.preprocess('ことごと', fakeTokenizerFor('ことごと')), 'ことごと');
-  assert.equal(runtime.preprocess('学校のこと', fakeTokenizerFor('学校のこと')), '学校のヿ');
-  assert.equal(runtime.metrics().delegated, 2);
   assert.equal(runtime.status().ready, true);
+  assert.equal(runtime.status().artifactGeneration, EXPECTED.artifactGeneration);
+  assert.equal(runtime.status().canonicalSourceDigest, EXPECTED.canonicalSourceDigest);
 });
 
 test('verified stage composition transfers only こと authority out of the local lexical stage', async () => {
@@ -177,7 +158,7 @@ test('verified stage composition transfers only こと authority out of the loca
   );
 });
 
-test('verified stage composition executes exact-token style through the real tokenizer', async () => {
+test('verified stage composition executes exact-token style through TransformEngine and the real tokenizer', async () => {
   const api = loadRuntimeModule();
   const runtime = api.createProfileStyleRuntime({ loadArtifact: async () => acceptedArtifact() });
   await runtime.initialize();
@@ -189,16 +170,12 @@ test('verified stage composition executes exact-token style through the real tok
   assert.equal(TransformEngine.transformTextWithStages('ことごと', composed, tokenizer), 'ヿごと');
 });
 
-test('profile initialization failure leaves source unchanged so accepted local stage remains fallback', async () => {
+test('profile initialization failure preserves the accepted local stage authority', async () => {
   const api = loadRuntimeModule();
   const runtime = api.createProfileStyleRuntime({
     loadArtifact: async () => { throw new Error('profile identity mismatch'); }
   });
   await assert.rejects(runtime.initialize(), /profile identity mismatch/);
-
-  const tokenizer = fakeTokenizerFor('こと');
-  const source = runtime.preprocess('こと', tokenizer);
-  assert.equal(source, 'こと');
   assert.equal(runtime.status().ready, false);
 
   const stages = loadConsumerStages();
@@ -213,7 +190,7 @@ test('malformed or wrong-identity artifact is rejected before activation', async
   artifact.manifest.artifactGeneration = '0'.repeat(64);
   const runtime = api.createProfileStyleRuntime({ loadArtifact: async () => artifact });
   await assert.rejects(runtime.initialize(), /artifact generation/i);
-  assert.equal(runtime.preprocess('こと', fakeTokenizerFor('こと')), 'こと');
+  assert.equal(runtime.status().ready, false);
 });
 
 test('extension and localhost load one shared profile artifact/runtime/bridge before transformation consumers', () => {

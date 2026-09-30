@@ -33,13 +33,6 @@ const artifact = JSON.parse(artifactBytes.toString('utf8'));
 assert.equal(artifact.bundleContentId, lock.bundleContentId);
 assert.equal(artifact.lexicalArtifact.lexicalNamespaceId, lock.lexicalNamespaceId);
 
-for (const entry of lock.runtimeFiles) {
-  const payload = await readFile(path.join(SNAPSHOT, entry.path));
-  assert.equal(payload.byteLength, entry.byteLength, `${entry.path} byteLength`);
-  assert.equal(sha256(payload), entry.sha256, `${entry.path} sha256`);
-  assert.equal(gitBlob(payload), entry.gitBlob, `${entry.path} gitBlob`);
-}
-
 assert.deepEqual(lock.externalRuntimeDependencies, [{
   consumerPath: 'transform-shared.js',
   upstreamPath: 'runtime/transform-shared.js',
@@ -48,22 +41,29 @@ assert.deepEqual(lock.externalRuntimeDependencies, [{
 const consumerSharedBytes = await readFile(path.join(ROOT, lock.externalRuntimeDependencies[0].consumerPath));
 assert.equal(gitBlob(consumerSharedBytes), lock.externalRuntimeDependencies[0].gitBlob, 'consumer shared runtime must equal accepted upstream blob');
 
-const runtimeBundleBytes = await readFile(path.join(SNAPSHOT, lock.runtimeBundle.path));
-assert.equal(runtimeBundleBytes.byteLength, lock.runtimeBundle.byteLength);
-assert.equal(sha256(runtimeBundleBytes), lock.runtimeBundle.sha256);
-assert.deepEqual(lock.runtimeBundle.components, [
+const expectedRuntimeOrder = [
   'runtime/lexical-runtime.js',
   'runtime/historical-native-runtime.js',
   'runtime/historical-sino-runtime.js',
   'runtime/safe-character-runtime.js',
   'runtime/orthography-resolver.js',
   'runtime/resolver-bundle-runtime.js'
-]);
+];
+assert.deepEqual(lock.runtimeFiles.map((entry) => entry.upstreamPath), expectedRuntimeOrder);
+for (const entry of lock.runtimeFiles) {
+  const payload = await readFile(path.join(SNAPSHOT, entry.path));
+  assert.equal(payload.byteLength, entry.byteLength, `${entry.path} byteLength`);
+  assert.equal(sha256(payload), entry.sha256, `${entry.path} sha256`);
+  assert.equal(gitBlob(payload), entry.gitBlob, `${entry.path} gitBlob`);
+}
 
 const sandbox = {};
 sandbox.globalThis = sandbox;
 vm.runInNewContext(consumerSharedBytes.toString('utf8'), sandbox, { filename: 'transform-shared.js' });
-vm.runInNewContext(runtimeBundleBytes.toString('utf8'), sandbox, { filename: lock.runtimeBundle.path });
+for (const entry of lock.runtimeFiles) {
+  const payload = await readFile(path.join(SNAPSHOT, entry.path), 'utf8');
+  vm.runInNewContext(payload, sandbox, { filename: entry.path });
+}
 const resolverBundle = sandbox.ResolverBundleRuntime.createResolverBundle(artifact);
 assert.equal(resolverBundle.bundleContentId, lock.bundleContentId);
 
@@ -109,7 +109,7 @@ assert.equal(taifu.core.output, '颱風');
 const evidence = {
   schemaVersion: '1',
   kind: 'txt-auto-phase4-shadow-evidence',
-  upstream: { repository: lock.sourceRepository, commit: lock.coreCommit, bundleContentId: lock.bundleContentId, lexicalNamespaceId: lock.lexicalNamespaceId, runtimeBundleSha256: lock.runtimeBundle.sha256 },
+  upstream: { repository: lock.sourceRepository, commit: lock.coreCommit, bundleContentId: lock.bundleContentId, lexicalNamespaceId: lock.lexicalNamespaceId },
   legacyAuthority: true,
   results
 };

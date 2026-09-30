@@ -171,3 +171,24 @@ test('malformed or wrong-identity artifact is rejected before activation', async
   await assert.rejects(runtime.initialize(), /artifact generation/i);
   assert.equal(runtime.preprocess('こと', fakeTokenizerFor('こと')), 'こと');
 });
+
+test('extension and localhost load one shared profile artifact/runtime/bridge before transformation consumers', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
+  const scripts = manifest.content_scripts?.[0]?.js ?? [];
+  const artifactIndex = scripts.indexOf('profiles/kinotch-token-style/artifact.js');
+  const runtimeIndex = scripts.indexOf('kinotch-profile-style-runtime.js');
+  const bridgeIndex = scripts.indexOf('kinotch-profile-style-bridge.js');
+  const transformBridgeIndex = scripts.indexOf('orthography-transform-bridge.js');
+  const contentIndex = scripts.indexOf('content.js');
+
+  assert.ok(artifactIndex >= 0);
+  assert.ok(runtimeIndex > artifactIndex);
+  assert.ok(bridgeIndex > runtimeIndex);
+  assert.ok(transformBridgeIndex > bridgeIndex);
+  assert.ok(contentIndex > transformBridgeIndex);
+
+  const html = fs.readFileSync(path.join(ROOT, 'playground.html'), 'utf8');
+  assert.match(html, /profiles\/kinotch-token-style\/artifact\.js/);
+  assert.match(html, /kinotch-profile-style-runtime\.js/);
+  assert.match(html, /kinotch-profile-style-bridge\.js/);
+});

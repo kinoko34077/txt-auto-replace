@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "1",
+  "kind": "japanese-orthography-resolver-consumer-snapshot",
+  "sourceRepository": "kinoko34077/japanese-orthography",
+  "coreCommit": "21f4cb0d0fcf29a6327a7ac36a54bd41f524079c",
+  "bundleContentId": "d326f3d2b94d761844923fbc8a2c6dd3fb60359a2ff98e92f4a4a7adf6360c8d",
+  "lexicalNamespaceId": "6aba6e8a20610ece73a028ed4dd9e64aefaaff3eec3f9a8bb56fd33c3bdfb144",
+  "artifact": {
+    "path": "resolver-bundle.json",
+    "sha256": "4feed79caf65e3c4ece9b593e1589e5b27c90a043ef5520d3f4cf6a340ee8ec0",
+    "byteLength": 14480
+  },
+  "externalRuntimeDependencies": [
+    {
+      "consumerPath": "transform-shared.js",
+      "upstreamPath": "runtime/transform-shared.js",
+      "gitBlob": "24518621cb7816f8daee6bc67911a14bed74cac6"
+    }
+  ],
+  "runtimeFiles": [
+    {
+      "path": "runtime/lexical-runtime.js",
+      "upstreamPath": "runtime/lexical-runtime.js",
+      "gitBlob": "e15a8d2e33420e283ce4a15c7113062fa636fe4d",
+      "sha256": "6ef7c987f5a3348d780276ce522d51f6732cc439dfa3391587b23003770edd4f",
+      "byteLength": 4756
+    },
+    {
+      "path": "runtime/historical-native-runtime.js",
+      "upstreamPath": "runtime/historical-native-runtime.js",
+      "gitBlob": "4e4bd5ed7f6ccddbb6e0b0c3296898c6493ce67a",
+      "sha256": "c4c2dc410586dfcbe94ec7e5daffd23f49e63e10167291b2682e7f519a6f89b0",
+      "byteLength": 5222
+    },
+    {
+      "path": "runtime/historical-sino-runtime.js",
+      "upstreamPath": "runtime/historical-sino-runtime.js",
+      "gitBlob": "f8f4a6ccdb8d8160e249a70c20c7471ed88656c6",
+      "sha256": "e6ec98c0760d9a7c1265f2a43476d0fa225fb9d0e456b97fe364b05df12200ea",
+      "byteLength": 5910
+    },
+    {
+      "path": "runtime/safe-character-runtime.js",
+      "upstreamPath": "runtime/safe-character-runtime.js",
+      "gitBlob": "8c72fbfaf19a1db09b2395fa24e5eb1280e50b48",
+      "sha256": "c160976749a3464c23c32dc8ef11c037afc1a94bce62ff832b975046861acedb",
+      "byteLength": 4487
+    },
+    {
+      "path": "runtime/orthography-resolver.js",
+      "upstreamPath": "runtime/orthography-resolver.js",
+      "gitBlob": "51c091162ed516366edad2ed7cea73a8c1a4ce8f",
+      "sha256": "ac4dcc59c46f50408fb361af77327aac769ec7fa6fc1c769698340d98ddef3be",
+      "byteLength": 14816
+    },
+    {
+      "path": "runtime/resolver-bundle-runtime.js",
+      "upstreamPath": "runtime/resolver-bundle-runtime.js",
+      "gitBlob": "0ab5be4e75d9a07b9bb05875f1a32ee9cadbb69a",
+      "sha256": "66b8aa940b75ffe1c88c4382777757f0e59ebacf04c51a7e3cf1c3267e42dc85",
+      "byteLength": 14332
+    }
+  ]
+}

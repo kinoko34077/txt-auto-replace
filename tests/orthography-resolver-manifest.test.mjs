@@ -19,6 +19,7 @@ const expectedSequence = [
   'orthography-resolver-adapter.js',
   'orthography-resolver-loader.js',
   'orthography-shadow-runtime.js',
+  'orthography-authority-runtime.js',
   'structured-dictionary.js',
   'transform-engine.js',
   'orthography-transform-bridge.js',
@@ -26,10 +27,10 @@ const expectedSequence = [
   'content.js'
 ];
 
-test('Phase 4 resolver dependencies load before bridge and content runtime', () => {
+test('Phase 4 resolver and authority dependencies load before bridge and content runtime', () => {
   const positions = expectedSequence.map((entry) => scripts.indexOf(entry));
   assert.ok(positions.every((position) => position >= 0), `missing script: ${expectedSequence[positions.findIndex((position) => position < 0)]}`);
-  assert.deepEqual([...positions].sort((a, b) => a - b), positions, 'resolver/bridge scripts must preserve dependency order');
+  assert.deepEqual([...positions].sort((a, b) => a - b), positions, 'resolver/authority/bridge scripts must preserve dependency order');
 });
 
 test('resolver artifact is exposed without adding extension permissions', () => {

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <title>KiNoTch. 表記復元 Playground</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --surface: color-mix(in srgb, Canvas 94%, CanvasText 6%);
+      --border: color-mix(in srgb, CanvasText 18%, transparent);
+      --muted: color-mix(in srgb, CanvasText 62%, transparent);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    header { padding: 28px max(20px, calc((100vw - 1180px) / 2)); border-bottom: 1px solid var(--border); }
+    header h1 { margin: 0 0 6px; font-size: clamp(22px, 4vw, 34px); }
+    header p { margin: 0; color: var(--muted); }
+    main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 56px; }
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    button { border: 1px solid var(--border); border-radius: 9px; padding: 9px 14px; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: default; }
+    .status { margin-left: auto; color: var(--muted); font-size: 13px; }
+    .status[data-kind="ok"], #comparisonStatus[data-kind="ok"] { color: #16803a; }
+    .status[data-kind="warn"], #comparisonStatus[data-kind="warn"] { color: #a15d00; }
+    .status[data-kind="error"] { color: #b42318; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+    .panel h2 { font-size: 16px; margin: 0 0 10px; }
+    .panel p { color: var(--muted); font-size: 13px; margin: -4px 0 10px; }
+    textarea { width: 100%; min-height: 310px; resize: vertical; border: 1px solid var(--border); border-radius: 10px; padding: 13px; background: Canvas; color: CanvasText; font: 16px/1.75 ui-monospace, "BIZ UDPGothic", monospace; }
+    #outputText { min-height: 310px; }
+    .comparison { margin-top: 16px; }
+    #comparisonStatus { margin: 0; font-size: 14px; }
+    details { margin-top: 16px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+    summary { cursor: pointer; font-weight: 650; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.55; margin: 12px 0 0; color: var(--muted); }
+    .note { margin-top: 16px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 760px) {
+      .grid { grid-template-columns: 1fr; }
+      .status { width: 100%; margin-left: 0; }
+      textarea, #outputText { min-height: 240px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>KiNoTch. 表記復元 Playground</h1>
+    <p>通常表記の文章を、現在の generic resolver ＋ KiNoTch. 向けローカル変換規則で直接試すための localhost 用画面。</p>
+  </header>
+  <main>
+    <div class="toolbar">
+      <button id="transformBtn" type="button" disabled>変換</button>
+      <button id="copyBtn" type="button" disabled>結果をコピー</button>
+      <button id="sampleBtn" type="button">公開テスト例</button>
+      <span id="runtimeStatus" class="status">初期化待ち</span>
+    </div>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>入力</h2>
+        <p>新字体・通常表記の歌詞や文章を貼り付ける。</p>
+        <textarea id="sourceText" spellcheck="false">学校の台風。それをやっぱり分かることは奇跡だ。</textarea>
+      </section>
+
+      <section class="panel">
+        <h2>変換結果</h2>
+        <p>現在のローカル規則を通した最終出力。編集はせず、そのままコピー可能。</p>
+        <textarea id="outputText" spellcheck="false" readonly></textarea>
+      </section>
+
+      <section class="panel">
+        <h2>期待する形（任意）</h2>
+        <p>理想形がある場合だけ貼る。空欄なら比較しない。</p>
+        <textarea id="expectedText" spellcheck="false">學校の颱風｡其を矢ッ張分るヿは奇蹟だ｡</textarea>
+      </section>
+
+      <section class="panel">
+        <h2>比較</h2>
+        <p>全文を自動修正せず、最初の不一致位置と文字数差を示す。</p>
+        <div class="comparison"><p id="comparisonStatus">未実行</p></div>
+        <details>
+          <summary>変換経路を見る</summary>
+          <pre id="traceOutput">未実行</pre>
+        </details>
+      </section>
+    </div>
+
+    <p class="note">この画面はローカル静的サーバー上で動作し、外部APIへ変換本文を送信しない。未公開歌詞はブラウザ内で入力して使用し、リポジトリfixtureへ自動保存しない。</p>
+  </main>
+
+  <script src="lib/json5.min.js"></script>
+  <script src="lib/kuromoji.js"></script>
+  <script src="transform-shared.js"></script>
+  <script src="orthography-core/runtime/lexical-runtime.js"></script>
+  <script src="orthography-core/runtime/historical-native-runtime.js"></script>
+  <script src="orthography-core/runtime/historical-sino-runtime.js"></script>
+  <script src="orthography-core/runtime/safe-character-runtime.js"></script>
+  <script src="orthography-core/runtime/orthography-resolver.js"></script>
+  <script src="orthography-core/runtime/resolver-bundle-runtime.js"></script>
+  <script src="orthography-resolver-loader.js"></script>
+  <script src="orthography-authority-runtime.js"></script>
+  <script src="transform-engine.js"></script>
+  <script src="authoring-playground-runtime.js"></script>
+  <script src="playground.js"></script>
+</body>
+</html>

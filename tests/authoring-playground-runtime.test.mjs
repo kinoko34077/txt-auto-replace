@@ -77,7 +77,8 @@ test('authoring runtime applies resolver authority before one compiled legacy/pr
     before: '學校',
     after: '學校｡',
   }]);
-  assert.equal(calls[1][0], 'engine:compile');
+  assert.equal(calls[0][0], 'engine:compile');
+  assert.equal(calls[1], 'authority:init');
   assert.equal(calls[2][0], 'authority:preprocess');
   assert.equal(calls[3][0], 'engine:transform');
 });

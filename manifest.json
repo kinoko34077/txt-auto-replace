@@ -4,7 +4,7 @@
   "version": "1.6",
   "manifest_version": 3,
   "permissions": ["storage", "tabs"],
-    "host_permissions": ["<all_urls>", "https://api.kinotch.workers.dev/*"],
+  "host_permissions": ["<all_urls>", "https://api.kinotch.workers.dev/*"],
   "options_page": "options.html",
   "action": {
     "default_popup": "popup.html"
@@ -27,8 +27,18 @@
         "lib/json5.min.js",
         "lib/kuromoji.js",
         "transform-shared.js",
+        "orthography-core/runtime/lexical-runtime.js",
+        "orthography-core/runtime/historical-native-runtime.js",
+        "orthography-core/runtime/historical-sino-runtime.js",
+        "orthography-core/runtime/safe-character-runtime.js",
+        "orthography-core/runtime/orthography-resolver.js",
+        "orthography-core/runtime/resolver-bundle-runtime.js",
+        "orthography-resolver-adapter.js",
+        "orthography-resolver-loader.js",
+        "orthography-shadow-runtime.js",
         "structured-dictionary.js",
         "transform-engine.js",
+        "orthography-transform-bridge.js",
         "text-api-client.js",
         "content.js"
       ],
@@ -43,6 +53,7 @@
         "transform-shared.js",
         "structured-dictionary.js",
         "transform-engine.js",
+        "orthography-core/resolver-bundle.json",
         "lib/kuromoji.js",
         "transforms/**",
         "dict/**"

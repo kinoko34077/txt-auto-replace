@@ -185,7 +185,8 @@ test('verified stage composition executes exact-token style through the real tok
   const tokenizer = await buildTokenizer();
   const composed = runtime.composeStages(loadConsumerStages());
   assert.equal(TransformEngine.transformTextWithStages('こと', composed, tokenizer), 'ヿ');
-  assert.equal(TransformEngine.transformTextWithStages('ことごと', composed, tokenizer), 'ことごと');
+  assert.deepEqual(tokenizer.tokenize('ことごと').map((token) => token.surface_form), ['こと', 'ごと']);
+  assert.equal(TransformEngine.transformTextWithStages('ことごと', composed, tokenizer), 'ヿごと');
 });
 
 test('profile initialization failure leaves source unchanged so accepted local stage remains fallback', async () => {

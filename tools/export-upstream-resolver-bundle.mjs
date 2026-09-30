@@ -7,6 +7,19 @@ import { pathToFileURL } from 'node:url';
 const upstreamRoot = process.cwd();
 const outputDir = path.resolve(process.argv[2] ?? '../phase4-generated');
 const sourceRepository = 'kinoko34077/japanese-orthography';
+const externalRuntimeDependencies = [
+  { consumerPath: 'transform-shared.js', upstreamPath: 'runtime/transform-shared.js' }
+];
+const activationRuntimePaths = [
+  'runtime/lexical-runtime.js',
+  'runtime/historical-native-runtime.js',
+  'runtime/historical-sino-runtime.js',
+  'runtime/safe-character-runtime.js',
+  'runtime/orthography-resolver.js',
+  'runtime/resolver-bundle-runtime.js'
+];
+const supportRuntimePaths = ['runtime/real-text-evaluation-runtime.js'];
+const runtimePaths = [...externalRuntimeDependencies.map((entry) => entry.upstreamPath), ...activationRuntimePaths, ...supportRuntimePaths];
 
 const json = async (relativePath) => JSON.parse(await readFile(path.join(upstreamRoot, relativePath), 'utf8'));
 const git = (...args) => execFileSync('git', args, { cwd: upstreamRoot, encoding: 'utf8' }).trim();
@@ -22,28 +35,7 @@ const [lexicalSource, nativeSlice, sinoSlice, contextualBindingSlice, contextual
   json('data/packs/contextual-kanji/merged-tai.json'),
   json('data/deterministic/safe-character-first-slice.json')
 ]);
-
-const artifact = builderModule.buildResolverBundleArtifact({
-  lexicalSource,
-  nativeSlice,
-  sinoSlice,
-  contextualBindingSlice,
-  contextualManifest,
-  contextualTaiPack,
-  safeCharacterSlice
-});
-
-const activationRuntimePaths = [
-  'runtime/transform-shared.js',
-  'runtime/lexical-runtime.js',
-  'runtime/historical-native-runtime.js',
-  'runtime/historical-sino-runtime.js',
-  'runtime/safe-character-runtime.js',
-  'runtime/orthography-resolver.js',
-  'runtime/resolver-bundle-runtime.js'
-];
-const supportRuntimePaths = ['runtime/real-text-evaluation-runtime.js'];
-const runtimePaths = [...activationRuntimePaths, ...supportRuntimePaths];
+const artifact = builderModule.buildResolverBundleArtifact({ lexicalSource, nativeSlice, sinoSlice, contextualBindingSlice, contextualManifest, contextualTaiPack, safeCharacterSlice });
 
 await mkdir(path.join(outputDir, 'runtime'), { recursive: true });
 const runtimeFiles = [];
@@ -53,20 +45,12 @@ for (const upstreamPath of runtimePaths) {
   const targetPath = path.join(outputDir, 'runtime', basename);
   await copyFile(sourcePath, targetPath);
   const fileStat = await stat(targetPath);
-  runtimeFiles.push({
-    path: `runtime/${basename}`,
-    upstreamPath,
-    gitBlob: git('rev-parse', `HEAD:${upstreamPath}`),
-    sha256: await sha256File(targetPath),
-    byteLength: fileStat.size
-  });
+  runtimeFiles.push({ path: `runtime/${basename}`, upstreamPath, gitBlob: git('rev-parse', `HEAD:${upstreamPath}`), sha256: await sha256File(targetPath), byteLength: fileStat.size });
 }
 
 const runtimeBundlePath = path.join(outputDir, 'resolver-runtime-bundle.js');
 const runtimeBundleParts = [];
-for (const upstreamPath of activationRuntimePaths) {
-  runtimeBundleParts.push(await readFile(path.join(upstreamRoot, upstreamPath), 'utf8'));
-}
+for (const upstreamPath of activationRuntimePaths) runtimeBundleParts.push(await readFile(path.join(upstreamRoot, upstreamPath), 'utf8'));
 await writeFile(runtimeBundlePath, `${runtimeBundleParts.join('\n')}\n`, 'utf8');
 const runtimeBundleStat = await stat(runtimeBundlePath);
 
@@ -81,26 +65,10 @@ const lock = {
   coreCommit,
   bundleContentId: artifact.bundleContentId,
   lexicalNamespaceId: artifact.lexicalArtifact.lexicalNamespaceId,
-  artifact: {
-    path: 'resolver-bundle.json',
-    sha256: await sha256File(artifactPath),
-    byteLength: artifactStat.size
-  },
-  runtimeBundle: {
-    path: 'resolver-runtime-bundle.js',
-    components: activationRuntimePaths,
-    sha256: await sha256File(runtimeBundlePath),
-    byteLength: runtimeBundleStat.size
-  },
+  artifact: { path: 'resolver-bundle.json', sha256: await sha256File(artifactPath), byteLength: artifactStat.size },
+  externalRuntimeDependencies: externalRuntimeDependencies.map((entry) => ({ ...entry, gitBlob: git('rev-parse', `HEAD:${entry.upstreamPath}`) })),
+  runtimeBundle: { path: 'resolver-runtime-bundle.js', components: activationRuntimePaths, sha256: await sha256File(runtimeBundlePath), byteLength: runtimeBundleStat.size },
   runtimeFiles
 };
 await writeFile(path.join(outputDir, 'source-lock.json'), `${JSON.stringify(lock, null, 2)}\n`, 'utf8');
-
-process.stdout.write(`${JSON.stringify({
-  coreCommit,
-  bundleContentId: artifact.bundleContentId,
-  lexicalNamespaceId: artifact.lexicalArtifact.lexicalNamespaceId,
-  runtimeFiles: runtimeFiles.length,
-  runtimeBundleSha256: lock.runtimeBundle.sha256,
-  outputDir
-})}\n`);
+process.stdout.write(`${JSON.stringify({ coreCommit, bundleContentId: artifact.bundleContentId, lexicalNamespaceId: artifact.lexicalArtifact.lexicalNamespaceId, runtimeFiles: runtimeFiles.length, runtimeBundleSha256: lock.runtimeBundle.sha256, outputDir })}\n`);

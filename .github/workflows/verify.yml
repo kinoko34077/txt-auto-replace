@@ -25,13 +25,17 @@ jobs:
           node --check orthography-authority-runtime.js
           node --check orthography-shadow-runtime.js
           node --check orthography-transform-bridge.js
+          node --check kinotch-profile-style-runtime.js
+          node --check kinotch-profile-style-bridge.js
           node --check authoring-playground-runtime.js
           node --check playground.js
           node --check tools/export-upstream-resolver-bundle.mjs
+          node --check tools/export-upstream-token-style.mjs
           node --check tools/verify_phase4_generated_snapshot.mjs
           node --check tools/verify_phase4_resolver_snapshot.mjs
+          node --check tools/verify_phase45b_profile_snapshot.mjs
       - name: UI and migration regression tests
-        run: node --test tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs tests/orthography-resolver-shadow.test.mjs tests/orthography-resolver-loader.test.mjs tests/orthography-transform-bridge.test.mjs tests/orthography-resolver-manifest.test.mjs tests/orthography-authority-runtime.test.mjs tests/authoring-playground-runtime.test.mjs
+        run: node --test tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs tests/orthography-resolver-shadow.test.mjs tests/orthography-resolver-loader.test.mjs tests/orthography-transform-bridge.test.mjs tests/orthography-resolver-manifest.test.mjs tests/orthography-authority-runtime.test.mjs tests/authoring-playground-runtime.test.mjs tests/kinotch-profile-style-runtime.test.mjs tests/kinotch-profile-style-bridge.test.mjs
       - name: Generated fixed rule-pack drift verification
         run: node tools/verify_generated_rule_packs.js
       - name: Canonical shared runtime drift verification
@@ -40,6 +44,8 @@ jobs:
         run: node tools/verify_runtime.js
       - name: Verify committed resolver snapshot
         run: node tools/verify_phase4_resolver_snapshot.mjs
+      - name: Verify committed KiNoTch token-style snapshot
+        run: node tools/verify_phase45b_profile_snapshot.mjs
       - name: Checkout accepted japanese-orthography
         uses: actions/checkout@v4
         with:
@@ -67,3 +73,20 @@ jobs:
           name: phase4-resolver-consumer-snapshot
           path: phase4-generated
           if-no-files-found: error
+      - name: Checkout accepted Phase 4.5B japanese-orthography profile source
+        uses: actions/checkout@v4
+        with:
+          repository: kinoko34077/japanese-orthography
+          ref: 5dea2af61646949227c1191886febb6800b12796
+          path: .phase45b-upstream
+      - name: Independently regenerate accepted KiNoTch token-style artifact
+        run: |
+          cd .phase45b-upstream
+          npm ci
+          node --import tsx ../tools/export-upstream-token-style.mjs ../phase45b-generated
+      - name: Prove committed KiNoTch token-style snapshot equals exact upstream generation
+        run: |
+          cmp phase45b-generated/manifest.json profiles/kinotch-token-style/manifest.json
+          cmp phase45b-generated/20-kinotch-token-style.json5 profiles/kinotch-token-style/20-kinotch-token-style.json5
+          cmp phase45b-generated/artifact.js profiles/kinotch-token-style/artifact.js
+          cmp phase45b-generated/source-lock.json profiles/kinotch-token-style/source-lock.json

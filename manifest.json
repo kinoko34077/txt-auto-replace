@@ -37,8 +37,11 @@
         "orthography-resolver-loader.js",
         "orthography-authority-runtime.js",
         "orthography-shadow-runtime.js",
+        "profiles/kinotch-token-style/artifact.js",
+        "kinotch-profile-style-runtime.js",
         "structured-dictionary.js",
         "transform-engine.js",
+        "kinotch-profile-style-bridge.js",
         "orthography-transform-bridge.js",
         "text-api-client.js",
         "content.js"

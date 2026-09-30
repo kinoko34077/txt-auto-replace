@@ -81,13 +81,21 @@
     let active = null;
     let initPromise = null;
     let lastError = null;
-    let delegated = 0;
 
     const activate = (artifact) => {
       active = validateArtifact(artifact);
       lastError = null;
       return active;
     };
+
+    if (Object.prototype.hasOwnProperty.call(options, "artifact") && options.artifact !== undefined) {
+      try {
+        activate(options.artifact);
+      } catch (error) {
+        active = null;
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+    }
 
     const initialize = async () => {
       if (active) return active;
@@ -113,40 +121,6 @@
       canonicalSourceDigest: active?.manifest?.canonicalSourceDigest ?? null
     });
 
-    const metrics = () => Object.freeze({ delegated });
-
-    const preprocess = (sourceValue, tokenizer) => {
-      const source = `${sourceValue ?? ""}`;
-      if (!active || !tokenizer || typeof tokenizer.tokenize !== "function") return source;
-      try {
-        const tokens = tokenizer.tokenize(source);
-        if (!Array.isArray(tokens)) return source;
-        let cursor = 0;
-        let output = "";
-        let localDelegated = 0;
-        const rule = active.bundle.rules[0];
-        for (const token of tokens) {
-          const surface = `${token?.surface_form ?? ""}`;
-          if (!surface) continue;
-          const index = source.indexOf(surface, cursor);
-          if (index < cursor) return source;
-          output += source.slice(cursor, index);
-          if (surface === rule.from) {
-            output += rule.to;
-            localDelegated += 1;
-          } else {
-            output += surface;
-          }
-          cursor = index + surface.length;
-        }
-        output += source.slice(cursor);
-        delegated += localDelegated;
-        return output;
-      } catch {
-        return source;
-      }
-    };
-
     const normalizeRuntimeRule = (rule) => ({
       ...rule,
       enabled: true,
@@ -171,42 +145,27 @@
         rule?.to === "ヿ" &&
         (rule?.type === undefined || rule?.type === "literal")
       ));
-      const profileRules = active.bundle.rules.map(normalizeRuntimeRule);
       const profileStage = {
         ...lexical,
         id: active.bundle.id,
         label: active.bundle.label,
         kind: active.bundle.kind,
-        rules: profileRules
+        rules: active.bundle.rules.map(normalizeRuntimeRule)
       };
       const composed = stages.slice();
       composed.splice(lexicalIndex, 1, { ...lexical, rules: filteredRules }, profileStage);
       return composed;
     };
 
-    const clear = () => {
-      delegated = 0;
-    };
-
-    return Object.freeze({ initialize, activate, preprocess, composeStages, status, metrics, clear });
+    return Object.freeze({ initialize, composeStages, status });
   };
 
   const runtime = createProfileStyleRuntime({ artifact: PackagedArtifact });
-  if (PackagedArtifact) {
-    try {
-      runtime.activate(PackagedArtifact);
-    } catch {
-      // Keep the accepted local lexical stage authoritative when packaged profile verification fails.
-    }
-  }
 
   return Object.freeze({
     createProfileStyleRuntime,
     initialize: runtime.initialize,
-    preprocess: runtime.preprocess,
     composeStages: runtime.composeStages,
-    status: runtime.status,
-    metrics: runtime.metrics,
-    clear: runtime.clear
+    status: runtime.status
   });
 });

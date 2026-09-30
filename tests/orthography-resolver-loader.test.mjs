@@ -51,18 +51,25 @@ test('resolver loader fails closed and exposes error state', async () => {
   assert.equal(status.bundle, null);
 });
 
-test('shadow runtime uses precomputed legacy output without replacing it', async () => {
+test('shadow runtime uses precomputed legacy output and retains aggregate metrics only', async () => {
   const sandbox = loadRuntime({ fetchImpl: async () => ({ ok: true, async json() { return { bundle: { output: '學校' } }; } }) });
   await sandbox.OrthographyShadowRuntime.initialize();
   const result = sandbox.OrthographyShadowRuntime.observe('学校', '學校');
   assert.equal(result.authoritativeOutput, '學校');
   assert.equal(result.core.output, '學校');
   assert.equal(sandbox.OrthographyShadowRuntime.status().ready, true);
-  assert.equal(sandbox.OrthographyShadowRuntime.observations().length, 1);
+  assert.equal(sandbox.OrthographyShadowRuntime.status().observations, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.OrthographyShadowRuntime.metrics())), {
+    total: 1,
+    classifications: { 'legacy-changed/core-resolved': 1 }
+  });
+  assert.equal(typeof sandbox.OrthographyShadowRuntime.observations, 'undefined', 'raw page text history must not be retained/exposed');
 });
 
-test('shadow runtime is a no-op before resolver activation and bounds history', () => {
+test('shadow runtime is a no-op before resolver activation and clear resets aggregate metrics', () => {
   const sandbox = loadRuntime();
   assert.equal(sandbox.OrthographyShadowRuntime.observe('学校', '學校'), null);
-  assert.equal(sandbox.OrthographyShadowRuntime.observations().length, 0);
+  assert.equal(sandbox.OrthographyShadowRuntime.metrics().total, 0);
+  sandbox.OrthographyShadowRuntime.clear();
+  assert.equal(sandbox.OrthographyShadowRuntime.metrics().total, 0);
 });

@@ -47,7 +47,7 @@ for (const upstreamPath of activationRuntimePaths) {
 }
 
 const artifactPath = path.join(outputDir, 'resolver-bundle.json');
-await writeFile(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8');
+await writeFile(artifactPath, `${JSON.stringify(artifact)}\n`, 'utf8');
 const artifactStat = await stat(artifactPath);
 const coreCommit = git('rev-parse', 'HEAD');
 const lock = {

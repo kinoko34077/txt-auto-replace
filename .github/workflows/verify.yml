@@ -23,16 +23,20 @@ jobs:
           node --check orthography-resolver-adapter.js
           node --check orthography-resolver-loader.js
           node --check orthography-shadow-runtime.js
+          node --check orthography-transform-bridge.js
           node --check tools/export-upstream-resolver-bundle.mjs
           node --check tools/verify_phase4_generated_snapshot.mjs
+          node --check tools/verify_phase4_resolver_snapshot.mjs
       - name: UI and migration regression tests
-        run: node --test tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs tests/orthography-resolver-shadow.test.mjs tests/orthography-resolver-loader.test.mjs
+        run: node --test tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs tests/orthography-resolver-shadow.test.mjs tests/orthography-resolver-loader.test.mjs tests/orthography-transform-bridge.test.mjs tests/orthography-resolver-manifest.test.mjs
       - name: Generated fixed rule-pack drift verification
         run: node tools/verify_generated_rule_packs.js
       - name: Canonical shared runtime drift verification
         run: node tools/verify_shared_runtime.js
       - name: Canonical runtime verification
         run: node tools/verify_runtime.js
+      - name: Verify committed resolver snapshot
+        run: node tools/verify_phase4_resolver_snapshot.mjs
       - name: Checkout accepted japanese-orthography
         uses: actions/checkout@v4
         with:
@@ -45,6 +49,13 @@ jobs:
           npm ci
           npm run check
           node --import tsx ../tools/export-upstream-resolver-bundle.mjs ../phase4-generated
+      - name: Prove committed snapshot equals exact generated upstream snapshot
+        run: |
+          cmp phase4-generated/resolver-bundle.json orthography-core/resolver-bundle.json
+          cmp phase4-generated/source-lock.json orthography-core/source-lock.json
+          for file in lexical-runtime.js historical-native-runtime.js historical-sino-runtime.js safe-character-runtime.js orthography-resolver.js resolver-bundle-runtime.js; do
+            cmp "phase4-generated/runtime/$file" "orthography-core/runtime/$file"
+          done
       - name: Verify real resolver snapshot and shadow evidence
         run: node tools/verify_phase4_generated_snapshot.mjs phase4-generated
       - name: Upload Phase 4 resolver consumer snapshot

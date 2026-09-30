@@ -35,6 +35,7 @@
         "orthography-core/runtime/resolver-bundle-runtime.js",
         "orthography-resolver-adapter.js",
         "orthography-resolver-loader.js",
+        "orthography-authority-runtime.js",
         "orthography-shadow-runtime.js",
         "structured-dictionary.js",
         "transform-engine.js",

@@ -9,7 +9,33 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const require = createRequire(import.meta.url);
 const JSON5 = require(path.join(ROOT, 'lib', 'json5.min.js'));
+const kuromoji = require(path.join(ROOT, 'lib', 'kuromoji.js'));
 const TransformEngine = require(path.join(ROOT, 'transform-engine.js'));
+
+class LocalFileXMLHttpRequest {
+  open(method, url) {
+    this.method = method;
+    this.url = url;
+    this.responseType = 'arraybuffer';
+  }
+
+  send() {
+    fs.readFile(this.url, (error, buffer) => {
+      if (error) {
+        this.status = 404;
+        this.statusText = error.message;
+        if (typeof this.onerror === 'function') this.onerror(error);
+        return;
+      }
+      this.status = 200;
+      this.statusText = 'OK';
+      this.response = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+      if (typeof this.onload === 'function') this.onload();
+    });
+  }
+}
+
+global.XMLHttpRequest = LocalFileXMLHttpRequest;
 
 const EXPECTED = Object.freeze({
   upstreamCommit: '5dea2af61646949227c1191886febb6800b12796',
@@ -40,6 +66,15 @@ function fakeTokenizerFor(source) {
       return surfaces.map((surface_form) => ({ surface_form }));
     }
   };
+}
+
+function buildTokenizer() {
+  return new Promise((resolve, reject) => {
+    kuromoji.builder({ dicPath: path.join(ROOT, 'dict') }).build((error, tokenizer) => {
+      if (error) reject(error);
+      else resolve(tokenizer);
+    });
+  });
 }
 
 function acceptedArtifact() {
@@ -140,10 +175,17 @@ test('verified stage composition transfers only こと authority out of the loca
     composed.flatMap((stage) => stage.rules ?? []).filter((rule) => rule.from === 'こと' && rule.to === 'ヿ').length,
     1
   );
-  assert.equal(
-    TransformEngine.transformTextWithStages('こと', composed, fakeTokenizerFor('こと')),
-    'ヿ'
-  );
+});
+
+test('verified stage composition executes exact-token style through the real tokenizer', async () => {
+  const api = loadRuntimeModule();
+  const runtime = api.createProfileStyleRuntime({ loadArtifact: async () => acceptedArtifact() });
+  await runtime.initialize();
+
+  const tokenizer = await buildTokenizer();
+  const composed = runtime.composeStages(loadConsumerStages());
+  assert.equal(TransformEngine.transformTextWithStages('こと', composed, tokenizer), 'ヿ');
+  assert.equal(TransformEngine.transformTextWithStages('ことごと', composed, tokenizer), 'ことごと');
 });
 
 test('profile initialization failure leaves source unchanged so accepted local stage remains fallback', async () => {

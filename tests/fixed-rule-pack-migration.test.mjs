@@ -133,3 +133,13 @@ test('generated snapshots preserve existing loader/runtime behavior', async () =
     }
   }
 });
+
+test('Phase 4.5B consumer packages the accepted source-locked token-style overlay', () => {
+  const required = [
+    'transforms/kinotch-token-style/source-lock.json',
+    'transforms/kinotch-token-style/manifest.json',
+    'transforms/kinotch-token-style/20-kinotch-token-style.json5',
+  ];
+  const missing = required.filter((relativePath) => !fs.existsSync(path.join(ROOT_DIR, relativePath)));
+  assert.deepEqual(missing, [], `missing source-locked token-style package: ${missing.join(', ')}`);
+});

@@ -12,6 +12,31 @@ const JSON5 = require(path.join(ROOT, 'lib', 'json5.min.js'));
 const kuromoji = require(path.join(ROOT, 'lib', 'kuromoji.js'));
 const TransformEngine = require(path.join(ROOT, 'transform-engine.js'));
 
+class LocalFileXMLHttpRequest {
+  open(method, url) {
+    this.method = method;
+    this.url = url;
+    this.responseType = 'arraybuffer';
+  }
+
+  send() {
+    fs.readFile(this.url, (error, buffer) => {
+      if (error) {
+        this.status = 404;
+        this.statusText = error.message;
+        if (typeof this.onerror === 'function') this.onerror(error);
+        return;
+      }
+      this.status = 200;
+      this.statusText = 'OK';
+      this.response = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+      if (typeof this.onload === 'function') this.onload();
+    });
+  }
+}
+
+global.XMLHttpRequest = LocalFileXMLHttpRequest;
+
 function source(name) {
   return fs.readFileSync(path.join(ROOT, name), 'utf8');
 }

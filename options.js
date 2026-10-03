@@ -473,7 +473,7 @@
   };
 
   const getEntryResolvedRulePath = (entry) => {
-    if (!entry || !`${entry.from ?? ""}`.trim() || !`${entry.to ?? ""}`.trim()) {
+    if (!entry || !`${entry.from ?? ""}`.trim() || typeof entry.to !== "string") {
       return "review";
     }
     if (getEntryRegexIssue(entry)) {
@@ -2166,6 +2166,22 @@
     URL.revokeObjectURL(url);
   };
 
+  const requireReplacementString = (entry, fromLabel = "") => {
+    if (
+      !entry ||
+      !Object.prototype.hasOwnProperty.call(entry, "to") ||
+      typeof entry.to !== "string"
+    ) {
+      const label = `${fromLabel || entry?.from || ""}`.trim();
+      throw new TypeError(
+        label
+          ? `Invalid replacement for "${label}": to must be a string.`
+          : "Invalid replacement: to must be a string."
+      );
+    }
+    return entry.to.trim();
+  };
+
   const normalizeEntryFromObject = (entry, fallbackPriority = 90) => {
     if (!entry || typeof entry !== "object") {
       return null;
@@ -2181,10 +2197,10 @@
     const from = `${entry.from ?? sequenceLabel ?? ""}`.trim();
     const fromOptions = getNormalizedEntryFromOptions(entry.from_options ?? entry.from, isRegexEntry, sequenceLabel);
     const displayFrom = isRegexEntry ? from : stringifyFromOptions(fromOptions, from);
-    const to = `${entry.to ?? ""}`.trim();
     if (!displayFrom) {
       return null;
     }
+    const to = requireReplacementString(entry, displayFrom);
 
     const inferredType = inferEntryType(entry);
     const regexIssue = detectRegexEntryIssue(entry, from, to);
@@ -2519,7 +2535,7 @@
     const serialized = {
       id: `${entry.id ?? createEntryId()}`.trim() || `entry-${index + 1}`,
       from: serializedFrom,
-      to: `${entry.to ?? ""}`.trim(),
+      to: requireReplacementString(entry, serializedFrom),
       priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || 0,
       enabled: entry.enabled !== false,
       regex: isRegexEntry
@@ -2588,7 +2604,7 @@
 
     const serializedEntries = node.entries
       .map((entry, index) => serializeEntry(entry, index))
-      .filter((entry) => entry.from && entry.to);
+      .filter((entry) => entry.from);
 
     if (base.kind === "token-rules") {
       base.rules = serializedEntries;

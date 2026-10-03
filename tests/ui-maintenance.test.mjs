@@ -142,7 +142,8 @@ test('Options preserves empty-string deletion rules and rejects malformed replac
     `
   globalThis.__optionsIssue25Test = {
     normalizeEntryFromObject,
-    serializeNode
+    serializeNode,
+    getEntryResolvedRulePath
   };
 })();`
   );
@@ -190,10 +191,11 @@ test('Options preserves empty-string deletion rules and rejects malformed replac
   context.globalThis = context;
 
   vm.runInNewContext(instrumented, context, { filename: 'options.js' });
-  const { normalizeEntryFromObject, serializeNode } = context.__optionsIssue25Test;
+  const { normalizeEntryFromObject, serializeNode, getEntryResolvedRulePath } = context.__optionsIssue25Test;
 
   const deletionRule = normalizeEntryFromObject({ id: 'delete-x', from: 'X', to: '' });
   assert.equal(deletionRule.to, '');
+  assert.notEqual(getEntryResolvedRulePath(deletionRule), 'review');
 
   const node = {
     id: 'root',

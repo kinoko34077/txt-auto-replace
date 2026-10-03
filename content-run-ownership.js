@@ -47,6 +47,29 @@
     };
   };
 
+  const resolveTransformSource = (ownership, currentText) => {
+    const record = normalizeOwnership(ownership);
+    if (!record) {
+      return {
+        sourceText: typeof currentText === "string" ? currentText : "",
+        clearOwnership: false,
+        owned: false
+      };
+    }
+    if (currentText === record.transformedText) {
+      return {
+        sourceText: record.sourceText,
+        clearOwnership: false,
+        owned: true
+      };
+    }
+    return {
+      sourceText: typeof currentText === "string" ? currentText : "",
+      clearOwnership: true,
+      owned: false
+    };
+  };
+
   const restoreOwnedTextRun = (textNodes, ownership, adapters = {}) => {
     if (!Array.isArray(textNodes) || textNodes.length === 0) {
       return {
@@ -97,6 +120,7 @@
 
   const api = Object.freeze({
     evaluateRestore,
+    resolveTransformSource,
     restoreOwnedTextRun
   });
 

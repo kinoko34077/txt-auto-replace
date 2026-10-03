@@ -473,7 +473,7 @@
   };
 
   const getEntryResolvedRulePath = (entry) => {
-    if (!entry || !`${entry.from ?? ""}`.trim() || !`${entry.to ?? ""}`.trim()) {
+    if (!entry || !`${entry.from ?? ""}`.trim() || typeof entry.to !== "string") {
       return "review";
     }
     if (getEntryRegexIssue(entry)) {

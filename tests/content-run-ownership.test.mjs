@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const {
   evaluateRestore,
+  resolveTransformSource,
   restoreOwnedTextRun
 } = require("../content-run-ownership.js");
 
@@ -26,6 +27,24 @@ test("restore decision permits write only while live text is extension-owned", (
   assert.deepEqual(evaluateRestore(ownership, "A"), {
     decision: "already-source",
     sourceText: "A"
+  });
+});
+
+test("reapply source selection keeps A for owned B and adopts external C", () => {
+  assert.deepEqual(resolveTransformSource(ownership, "B"), {
+    sourceText: "A",
+    clearOwnership: false,
+    owned: true
+  });
+  assert.deepEqual(resolveTransformSource(ownership, "C"), {
+    sourceText: "C",
+    clearOwnership: true,
+    owned: false
+  });
+  assert.deepEqual(resolveTransformSource(null, "C"), {
+    sourceText: "C",
+    clearOwnership: false,
+    owned: false
   });
 });
 

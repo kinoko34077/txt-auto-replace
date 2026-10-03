@@ -133,3 +133,99 @@ test('Operations manual keeps live apply guidance for Options save', async () =>
   assert.match(section, /現在のタブ.*即時|即時.*現在のタブ/);
   assert.doesNotMatch(section, /保存後は変換対象のタブを再読み込みする/);
 });
+
+
+test('Options preserves empty-string deletion rules and rejects malformed replacement outputs', async () => {
+  const source = await read('options.js');
+  const instrumented = source.replace(
+    /\n  normalizeUiTree\(document\.body\);\n\n  initialize\(\)\.catch\([\s\S]*?\n  \}\);\n\}\)\(\);\s*$/,
+    `
+  globalThis.__optionsIssue25Test = {
+    normalizeEntryFromObject,
+    serializeNode
+  };
+})();`
+  );
+  assert.notEqual(instrumented, source, 'Options test hook injection must match the current bootstrap tail');
+
+  class FakeElement {
+    constructor() {
+      this.listeners = new Map();
+      this.dataset = {};
+      this.tagName = 'DIV';
+      this.isContentEditable = false;
+    }
+    addEventListener(type, callback) {
+      const callbacks = this.listeners.get(type) ?? [];
+      callbacks.push(callback);
+      this.listeners.set(type, callbacks);
+    }
+  }
+
+  const document = {
+    body: new FakeElement(),
+    getElementById() {
+      return new FakeElement();
+    },
+    addEventListener() {},
+  };
+  const structuredDictionary = {
+    createEmptyDictionary: () => ({}),
+    normalizeDictionary: (value) => value ?? {},
+    createFromRoots: () => ({}),
+    synchronizeBindingsFromRoots: (dictionary) => ({ dictionary, issues: [] }),
+  };
+  const context = {
+    console,
+    document,
+    window: { addEventListener() {} },
+    HTMLElement: FakeElement,
+    Element: FakeElement,
+    Node: { ELEMENT_NODE: 1, TEXT_NODE: 3 },
+    NodeFilter: { SHOW_ELEMENT: 1, SHOW_TEXT: 4 },
+    MutationObserver: class { observe() {} },
+    StructuredDictionary: structuredDictionary,
+    globalThis: null,
+  };
+  context.globalThis = context;
+
+  vm.runInNewContext(instrumented, context, { filename: 'options.js' });
+  const { normalizeEntryFromObject, serializeNode } = context.__optionsIssue25Test;
+
+  const deletionRule = normalizeEntryFromObject({ id: 'delete-x', from: 'X', to: '' });
+  assert.equal(deletionRule.to, '');
+
+  const node = {
+    id: 'root',
+    label: 'Root',
+    kind: 'dictionary-rules',
+    enabled: true,
+    settings: null,
+    entries: [deletionRule],
+    children: [],
+  };
+  const serialized = serializeNode(node, 1);
+  assert.equal(serialized.entries.length, 1);
+  assert.equal(serialized.entries[0].from, 'X');
+  assert.equal(serialized.entries[0].to, '');
+
+  node.label = 'Unrelated label edit';
+  const serializedAfterUnrelatedEdit = serializeNode(node, 1);
+  assert.equal(serializedAfterUnrelatedEdit.entries.length, 1);
+  assert.equal(serializedAfterUnrelatedEdit.entries[0].to, '');
+
+  assert.throws(
+    () => normalizeEntryFromObject({ id: 'missing-to', from: 'X' }),
+    /to.*string/i
+  );
+  assert.throws(
+    () => normalizeEntryFromObject({ id: 'numeric-to', from: 'X', to: 123 }),
+    /to.*string/i
+  );
+
+  deletionRule.to = null;
+  assert.throws(
+    () => serializeNode(node, 1),
+    /to.*string/i
+  );
+});

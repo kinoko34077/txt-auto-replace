@@ -564,7 +564,7 @@
       return null;
     }
     return stableStringify({
-      to: `${entry.to ?? ""}`.trim(),
+      to: requireReplacementString(entry, serializedFrom),
       priority: Number.isFinite(Number(entry.priority)) ? Number(entry.priority) : 0,
       enabled: entry.enabled !== false,
       type: `${entry.type ?? ""}`.trim() || null,
@@ -2166,6 +2166,22 @@
     URL.revokeObjectURL(url);
   };
 
+  const requireReplacementString = (entry, fromLabel = "") => {
+    if (
+      !entry ||
+      !Object.prototype.hasOwnProperty.call(entry, "to") ||
+      typeof entry.to !== "string"
+    ) {
+      const label = `${fromLabel || entry?.from || ""}`.trim();
+      throw new TypeError(
+        label
+          ? `Invalid replacement for "${label}": to must be a string.`
+          : "Invalid replacement: to must be a string."
+      );
+    }
+    return entry.to.trim();
+  };
+
   const normalizeEntryFromObject = (entry, fallbackPriority = 90) => {
     if (!entry || typeof entry !== "object") {
       return null;
@@ -2181,10 +2197,10 @@
     const from = `${entry.from ?? sequenceLabel ?? ""}`.trim();
     const fromOptions = getNormalizedEntryFromOptions(entry.from_options ?? entry.from, isRegexEntry, sequenceLabel);
     const displayFrom = isRegexEntry ? from : stringifyFromOptions(fromOptions, from);
-    const to = `${entry.to ?? ""}`.trim();
     if (!displayFrom) {
       return null;
     }
+    const to = requireReplacementString(entry, displayFrom);
 
     const inferredType = inferEntryType(entry);
     const regexIssue = detectRegexEntryIssue(entry, from, to);
@@ -2588,7 +2604,7 @@
 
     const serializedEntries = node.entries
       .map((entry, index) => serializeEntry(entry, index))
-      .filter((entry) => entry.from && entry.to);
+      .filter((entry) => entry.from);
 
     if (base.kind === "token-rules") {
       base.rules = serializedEntries;

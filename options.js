@@ -564,7 +564,7 @@
       return null;
     }
     return stableStringify({
-      to: requireReplacementString(entry, serializedFrom),
+      to: `${entry.to ?? ""}`.trim(),
       priority: Number.isFinite(Number(entry.priority)) ? Number(entry.priority) : 0,
       enabled: entry.enabled !== false,
       type: `${entry.type ?? ""}`.trim() || null,
@@ -2535,7 +2535,7 @@
     const serialized = {
       id: `${entry.id ?? createEntryId()}`.trim() || `entry-${index + 1}`,
       from: serializedFrom,
-      to: `${entry.to ?? ""}`.trim(),
+      to: requireReplacementString(entry, serializedFrom),
       priority: Number.isFinite(entry.priority) ? entry.priority : Number(entry.priority) || 0,
       enabled: entry.enabled !== false,
       regex: isRegexEntry

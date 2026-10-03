@@ -2298,10 +2298,9 @@
       return false;
     }
     const ownership = ownedTextByRunAnchor.get(runAnchor) ?? null;
-    const sourceText = ownership && current === ownership.transformedText
-      ? ownership.sourceText
-      : current;
-    if (ownership && current !== ownership.transformedText) {
+    const sourceDecision = ContentRunOwnership.resolveTransformSource(ownership, current);
+    const sourceText = sourceDecision.sourceText;
+    if (sourceDecision.clearOwnership) {
       ownedTextByRunAnchor.delete(runAnchor);
       clearRunState(runAnchor);
     }

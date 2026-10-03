@@ -44,6 +44,7 @@
         "kinotch-profile-style-bridge.js",
         "orthography-transform-bridge.js",
         "text-api-client.js",
+        "content-run-ownership.js",
         "content.js"
       ],
       "run_at": "document_idle"

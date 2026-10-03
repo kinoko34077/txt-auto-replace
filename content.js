@@ -72,6 +72,7 @@
   const TransformShared = globalThis.TransformShared;
   const TransformEngine = globalThis.TransformEngine;
   const TextTransformApiClient = globalThis.TextTransformApiClient;
+  const ContentRunOwnership = globalThis.ContentRunOwnership;
   const REMOTE_API_PROFILE_IDS = new Set([
     "surface-normalization",
     "lexical-replacements",
@@ -142,7 +143,7 @@
     "U"
   ]);
 
-  const originalTextByRunAnchor = new WeakMap();
+  const ownedTextByRunAnchor = new WeakMap();
   let nodeStateCache = new WeakMap();
   const runIdByRunAnchor = new WeakMap();
   const pendingWorkerRuns = new Map();
@@ -205,6 +206,10 @@
 
   if (!TransformEngine) {
     throw new Error("TransformEngine が未読込です。manifest.json の content_scripts の順序を確認してください。");
+  }
+
+  if (!ContentRunOwnership) {
+    throw new Error("ContentRunOwnership が未読込です。manifest.json の content_scripts の順序を確認してください。");
   }
 
   const log = (...args) => {
@@ -1234,6 +1239,7 @@
           renderedStyles: rendering.styles,
           rejectedStyles: rendering.rejectedStyles ?? null
         });
+        ownedTextByRunAnchor.delete(firstNode);
         setRunState(firstNode, {
           sourceText,
           transformedText: transformed,
@@ -1255,6 +1261,7 @@
           renderedStyles: rendering.styles,
           rejectedStyles: rendering.rejectedStyles ?? null
         });
+        ownedTextByRunAnchor.delete(firstNode);
         setRunState(firstNode, {
           sourceText,
           transformedText: transformed,
@@ -1276,6 +1283,7 @@
           renderedStyles: rendering.styles,
           rejectedStyles: rendering.rejectedStyles ?? null
         });
+        ownedTextByRunAnchor.delete(firstNode);
         setRunState(firstNode, {
           sourceText,
           transformedText: transformed,
@@ -1293,6 +1301,15 @@
     }
 
     if (transformed === currentParts.join("")) {
+      if (sourceText !== transformed) {
+        ownedTextByRunAnchor.set(firstNode, {
+          sourceText,
+          transformedText: transformed,
+          revision
+        });
+      } else {
+        ownedTextByRunAnchor.delete(firstNode);
+      }
       setRunState(firstNode, {
         sourceText,
         transformedText: transformed,
@@ -1303,6 +1320,11 @@
 
     redistributeTransformedText(textNodes, currentParts, transformed);
     markRecentWriteForRun(textNodes);
+    ownedTextByRunAnchor.set(firstNode, {
+      sourceText,
+      transformedText: transformed,
+      revision
+    });
     setRunState(firstNode, {
       sourceText,
       transformedText: transformed,
@@ -1956,7 +1978,6 @@
     }
 
     const transformed = `${result.transformedText ?? ""}`;
-    originalTextByRunAnchor.set(runAnchor, state.sourceText);
     if (backend === "worker") {
       workerStats.completedRuns += 1;
     }
@@ -2223,21 +2244,22 @@
     }
 
     const runAnchor = textNodes[0];
-    const original = originalTextByRunAnchor.get(runAnchor);
-    if (typeof original !== "string") {
-      return false;
-    }
+    const ownership = ownedTextByRunAnchor.get(runAnchor) ?? null;
+    const result = ContentRunOwnership.restoreOwnedTextRun(textNodes, ownership, {
+      readNodeValue: readNodeValueSafely,
+      redistribute: redistributeTransformedText
+    });
 
-    const currentParts = textNodes.map((node) => readNodeValueSafely(node));
-    const current = currentParts.join("");
-    if (current === original) {
+    if (result.clearOwnership) {
+      ownedTextByRunAnchor.delete(runAnchor);
       clearRunState(runAnchor);
+    }
+
+    if (!result.restored) {
       return false;
     }
 
-    redistributeTransformedText(textNodes, currentParts, original);
     markRecentWriteForRun(textNodes);
-    clearRunState(runAnchor);
     return true;
   };
 
@@ -2275,11 +2297,13 @@
     if (runState?.revision === runtimeRevision && current === lastProcessed) {
       return false;
     }
-    const storedOriginal = originalTextByRunAnchor.get(runAnchor);
-    const sourceText = lastProcessed !== undefined && current === lastProcessed && typeof storedOriginal === "string"
-      ? storedOriginal
-      : current;
-    originalTextByRunAnchor.set(runAnchor, sourceText);
+    const ownership = ownedTextByRunAnchor.get(runAnchor) ?? null;
+    const sourceDecision = ContentRunOwnership.resolveTransformSource(ownership, current);
+    const sourceText = sourceDecision.sourceText;
+    if (sourceDecision.clearOwnership) {
+      ownedTextByRunAnchor.delete(runAnchor);
+      clearRunState(runAnchor);
+    }
 
     if (enqueueWorkerTransformRun(textNodes, currentParts, sourceText, runAnchor)) {
       return true;

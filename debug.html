@@ -285,8 +285,8 @@
         </section>
 
         <section>
-            <h2>12. Runtime Debug Viewer</h2>
-            <p class="note">content script が document 属性へ書き出した runtime snapshot と transform debug を、このページ上で直接確認します。</p>
+            <h2>12. Legacy DOM Debug Boundary Test</h2>
+            <p class="note">この欄は旧DOM debug属性をページ側から操作する負のテストです。production content scriptはこの属性を権限源として扱わず、runtime snapshot・設定・rule情報を共有DOMへ書き出しません。privileged診断はextension-owned runtime message経路でのみ取得します。</p>
             <div class="debug-toolbar">
                 <label for="debugTargetInput">確認する from</label>
                 <input id="debugTargetInput" type="text" value="Bluetooth, ない, よい, いま" />

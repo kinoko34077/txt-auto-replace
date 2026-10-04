@@ -20,6 +20,7 @@ jobs:
         run: |
           node --check popup.js
           node --check content-run-ownership.js
+          node --check remote-api-compatibility.js
           node --check content.js
           node --check options-continuity.js
           node --check orthography-resolver-adapter.js
@@ -37,7 +38,7 @@ jobs:
           node --check tools/verify_phase4_resolver_snapshot.mjs
           node --check tools/verify_phase45b_profile_snapshot.mjs
       - name: UI and migration regression tests
-        run: node --test tests/content-run-ownership.test.mjs tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs tests/orthography-resolver-shadow.test.mjs tests/orthography-resolver-loader.test.mjs tests/orthography-transform-bridge.test.mjs tests/orthography-resolver-manifest.test.mjs tests/orthography-authority-runtime.test.mjs tests/authoring-playground-runtime.test.mjs tests/kinotch-profile-style-runtime.test.mjs tests/kinotch-profile-style-bridge.test.mjs tests/phase45b-ki-semantic-override.test.mjs
+        run: node --test tests/content-run-ownership.test.mjs tests/ui-maintenance.test.mjs tests/popup-persistence.test.mjs tests/fixed-rule-pack-migration.test.mjs tests/orthography-resolver-shadow.test.mjs tests/orthography-resolver-loader.test.mjs tests/orthography-transform-bridge.test.mjs tests/orthography-resolver-manifest.test.mjs tests/orthography-authority-runtime.test.mjs tests/authoring-playground-runtime.test.mjs tests/kinotch-profile-style-runtime.test.mjs tests/kinotch-profile-style-bridge.test.mjs tests/phase45b-ki-semantic-override.test.mjs tests/remote-api-compatibility.test.mjs
       - name: Generated fixed rule-pack drift verification
         run: node tools/verify_generated_rule_packs.js
       - name: Canonical shared runtime drift verification

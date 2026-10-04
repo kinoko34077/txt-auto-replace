@@ -18,6 +18,7 @@ API利用は次の条件をすべて満たす場合に限る。
 2. 有効なstageが共通APIで対応するbundle IDだけで構成されている。
 3. 有効なstageの定義が同梱された標準定義と一致している。
 4. `text-api-client.js` が利用可能である。
+5. API応答の `profile` 順序、`ruleSetVersion`、`ruleSetHash` が同梱標準rule-setの固定identityと一致する。
 
 ユーザーがbundle、Group、Entry、Popup辞書を変更した場合は、変換結果の再現性を優先して既存のローカルWorkerを使用する。
 
@@ -25,13 +26,13 @@ API利用は次の条件をすべて満たす場合に限る。
 
 - URL: `POST https://api.kinotch.workers.dev/v1/transform/batch`
 - 入力: `{ texts: string[], profile: string[] }`
-- 出力: `{ texts: string[], profile: string[], engineVersion: string }`
+- 出力: `{ texts: string[], profile: string[], engineVersion: string, ruleSetVersion: string, ruleSetHash: string }`
 - 順序: 出力 `texts` は入力 `texts` と同じ順序
 - 制限: 1 batch 256件以下、合計20万文字以下
 
 ## 状態とfallback
 
-標準bundleではAPIを優先し、通信失敗、HTTPエラー、不正なbatch応答が発生したページではAPIを無効化してローカルWorkerへ切り替える。切り替え時は処理対象rootを再キューし、既に変換済みの文字列を復元してから再実行する。
+標準bundleではAPIを優先し、通信失敗、HTTPエラー、不正なbatch応答、profile/rule-set identity不一致が発生したページではAPIを無効化してローカルWorkerへ切り替える。切り替え時は処理対象rootを再キューし、既に変換済みの文字列を復元してから再実行する。
 
 カスタムbundleでは最初からAPIを使わず、従来どおりローカルWorkerで実行する。デバッグモードも同様にローカル実行とする。
 
@@ -47,7 +48,8 @@ API利用条件を満たす標準bundleでは、変換対象として収集し�
 
 ## 受入条件
 
-- 標準bundleでAPIが返した `texts` が同じrunへ同じ順序で反映される。
+- 標準bundleでAPIが返した `profile` 順序・`ruleSetVersion`・`ruleSetHash` が同梱identityと一致するときだけ、`texts` が同じrunへ同じ順序で反映される。
+- profile/rule-set identity不一致時はDOMへremote結果を適用せず、復元後にローカルWorkerへfallbackする。
 - API障害後にローカルWorkerへ切り替わり、ページ変換が継続する。
 - カスタムbundle、Popup辞書、デバッグ対象ではAPIへ送信されない。
 - 既存のruby DOM処理、MutationObserver、設定反映、Undo/Redoに影響しない。

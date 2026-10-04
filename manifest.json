@@ -45,6 +45,7 @@
         "orthography-transform-bridge.js",
         "text-api-client.js",
         "remote-api-compatibility.js",
+        "debug-runtime-channel.js",
         "content-run-ownership.js",
         "content.js"
       ],

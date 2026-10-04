@@ -12,10 +12,6 @@
   const BUNDLE_OVERRIDE_STORAGE_KEY = "bundleOverrideSettingsV1";
   const DICT_PATH = "dict/";
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
-  const DEBUG_TARGETS_ATTRIBUTE = "data-jpn-transform-debug-targets";
-  const DEBUG_LAST_ATTRIBUTE = "data-jpn-transform-last-debug";
-  const DEBUG_HISTORY_ATTRIBUTE = "data-jpn-transform-debug-history";
-  const DEBUG_RUNTIME_ATTRIBUTE = "data-jpn-transform-runtime-snapshot";
   const VISIBLE_ROOT_MARGIN_PX = 320;
   const VISIBLE_FLUSH_BUDGET_MS = 8;
   const BACKGROUND_FLUSH_BUDGET_MS = 16;
@@ -46,6 +42,7 @@
     APPLY_SETTINGS_UPDATE: "APPLY_SETTINGS_UPDATE",
     GET_PAGE_CONTEXT: "GET_PAGE_CONTEXT",
     GET_TAB_RUNTIME_STATE: "GET_TAB_RUNTIME_STATE",
+    SET_RUNTIME_DEBUG_TARGETS: "SET_RUNTIME_DEBUG_TARGETS",
     GET_RUNTIME_DEBUG_SNAPSHOT: "GET_RUNTIME_DEBUG_SNAPSHOT"
   };
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
@@ -72,6 +69,7 @@
   const TransformShared = globalThis.TransformShared;
   const TransformEngine = globalThis.TransformEngine;
   const TextTransformApiClient = globalThis.TextTransformApiClient;
+  const DebugRuntimeChannel = globalThis.DebugRuntimeChannel;
   const ContentRunOwnership = globalThis.ContentRunOwnership;
   const REMOTE_API_PROFILE_IDS = new Set([
     "surface-normalization",
@@ -211,6 +209,12 @@
   if (!ContentRunOwnership) {
     throw new Error("ContentRunOwnership が未読込です。manifest.json の content_scripts の順序を確認してください。");
   }
+
+  if (!DebugRuntimeChannel?.createDebugAuthority) {
+    throw new Error("DebugRuntimeChannel が未読込です。manifest.json の content_scripts の順序を確認してください。");
+  }
+
+  const debugAuthority = DebugRuntimeChannel.createDebugAuthority(document);
 
   const log = (...args) => {
     if (DEBUG) {
@@ -408,18 +412,6 @@
     }
     globalThis.__jpnTransformDebugHistory = history;
 
-    try {
-      const root = document.documentElement;
-      if (!root) {
-        return;
-      }
-
-      root.setAttribute(DEBUG_LAST_ATTRIBUTE, JSON.stringify(payload));
-      root.setAttribute(DEBUG_HISTORY_ATTRIBUTE, JSON.stringify(history));
-    } catch (error) {
-      console.error("transform debug publish failed", error);
-    }
-
     publishRuntimeDebugSnapshot();
   };
 
@@ -439,35 +431,15 @@
     )];
   };
 
-  const getDebugTargetsFromDocument = () => {
-    try {
-      const raw = document.documentElement?.getAttribute(DEBUG_TARGETS_ATTRIBUTE) ?? "";
-      return raw
-        .split(",")
-        .map((target) => target.trim())
-        .filter(Boolean);
-    } catch (error) {
-      return [];
-    }
-  };
+  const getDebugTargets = () => debugAuthority.getTargets();
 
-  const hasDebugTargets = () => {
-    return getDebugTargetsFromDocument().length > 0;
-  };
+  const hasDebugTargets = () => debugAuthority.hasTargets();
 
   const clearPublishedDebugState = () => {
-    try {
-      const root = document.documentElement;
-      if (!root) {
-        return;
-      }
-
-      root.removeAttribute(DEBUG_LAST_ATTRIBUTE);
-      root.removeAttribute(DEBUG_HISTORY_ATTRIBUTE);
-      root.removeAttribute(DEBUG_RUNTIME_ATTRIBUTE);
-    } catch (error) {
-      console.error("runtime debug clear failed", error);
-    }
+    debugAuthority.clearLegacyDomState();
+    globalThis.__jpnTransformLastDebug = null;
+    globalThis.__jpnTransformDebugHistory = [];
+    globalThis.__jpnTransformRuntimeSnapshot = null;
   };
 
   const collectMatchingRuntimeRules = (targets) => {
@@ -627,7 +599,7 @@
     };
   };
 
-  const publishRuntimeDebugSnapshot = (targets = getDebugTargetsFromDocument(), options = {}) => {
+  const publishRuntimeDebugSnapshot = (targets = getDebugTargets(), options = {}) => {
     const normalizedTargets = normalizeDebugTargetList(targets);
     const { force = false } = options;
     if (!force && normalizedTargets.length === 0) {
@@ -635,20 +607,9 @@
       return null;
     }
 
-    try {
-      const root = document.documentElement;
-      if (!root) {
-        return null;
-      }
-
-      const snapshot = buildRuntimeDebugSnapshot(normalizedTargets);
-      globalThis.__jpnTransformRuntimeSnapshot = snapshot;
-      root.setAttribute(DEBUG_RUNTIME_ATTRIBUTE, JSON.stringify(snapshot));
-      return snapshot;
-    } catch (error) {
-      console.error("runtime debug publish failed", error);
-      return null;
-    }
+    const snapshot = buildRuntimeDebugSnapshot(normalizedTargets);
+    globalThis.__jpnTransformRuntimeSnapshot = snapshot;
+    return snapshot;
   };
 
   const describeNodeSafely = (node) => {
@@ -2385,7 +2346,7 @@
       }
 
       activeTokenizer = tokenizer;
-      publishRuntimeDebugSnapshot(getDebugTargetsFromDocument());
+      publishRuntimeDebugSnapshot(getDebugTargets());
       if (reapply && isRuntimeEnabled()) {
         recompileActiveRuntimePlan();
         resetRuntimeProcessingState();
@@ -2832,33 +2793,6 @@
     window.addEventListener("resize", requestRefresh, { passive: true });
   };
 
-  const observeDebugTargetChanges = () => {
-    const root = document.documentElement;
-    if (!root) {
-      return;
-    }
-
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === "attributes" && mutation.attributeName === DEBUG_TARGETS_ATTRIBUTE) {
-          const targets = getDebugTargetsFromDocument();
-          if (targets.length > 0) {
-            warmMainThreadTokenizer();
-            publishRuntimeDebugSnapshot(targets, { force: true });
-          } else {
-            clearPublishedDebugState();
-          }
-          return;
-        }
-      }
-    });
-
-    observer.observe(root, {
-      attributes: true,
-      attributeFilter: [DEBUG_TARGETS_ATTRIBUTE]
-    });
-  };
-
   const refreshRuntimeState = async (options = {}) => {
     const { reapply = true } = options;
     const [storedValue, ruleResources, tabState] = await Promise.all([
@@ -2908,7 +2842,7 @@
     if ((!workerConfigured && runtimeRequiresTokenizer()) || shouldWarmMainThreadTokenizer()) {
       warmMainThreadTokenizer({ reapply });
     }
-    publishRuntimeDebugSnapshot(getDebugTargetsFromDocument());
+    publishRuntimeDebugSnapshot(getDebugTargets());
 
     if (!reapply) {
       return;
@@ -2967,10 +2901,30 @@
       return false;
     }
 
+    if (message.type === MESSAGE_TYPES.SET_RUNTIME_DEBUG_TARGETS) {
+      const targets = debugAuthority.setTargets(message.targets);
+      lastTransformDebug = null;
+      lastRubyDebug = null;
+      globalThis.__jpnTransformLastDebug = null;
+      globalThis.__jpnTransformDebugHistory = [];
+      debugAuthority.clearLegacyDomState();
+
+      if (targets.length > 0) {
+        warmMainThreadTokenizer();
+        publishRuntimeDebugSnapshot(targets, { force: true });
+      } else {
+        clearPublishedDebugState();
+      }
+
+      sendResponse({ ok: true, targets });
+      return false;
+    }
+
     if (message.type === MESSAGE_TYPES.GET_RUNTIME_DEBUG_SNAPSHOT) {
+      const targets = message.targets === undefined ? getDebugTargets() : message.targets;
       sendResponse({
         ok: true,
-        snapshot: buildRuntimeDebugSnapshot(message.targets)
+        snapshot: buildRuntimeDebugSnapshot(targets)
       });
       return false;
     }
@@ -3007,7 +2961,6 @@
     bindRuntimeSynchronization();
     bindEditableLifecycle();
     bindViewportRefresh();
-    observeDebugTargetChanges();
     const initialRoots = collectDocumentProcessingRoots();
     log("対象 root 数", initialRoots.length);
     queueProcessableRoots(initialRoots);

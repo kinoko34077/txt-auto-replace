@@ -2130,14 +2130,15 @@
       if (revision !== runtimeRevision) {
         return;
       }
-      if (!Array.isArray(payload?.texts) || payload.texts.length !== runs.length) {
-        throw new Error("Text transform API returned an invalid batch result");
-      }
+      const compatibleTexts = RemoteApiCompatibility.validateRemoteBatchResponse(payload, {
+        requestedProfiles: remoteApiProfiles,
+        expectedTextCount: runs.length,
+      });
 
       for (let index = 0; index < runs.length; index += 1) {
         applyWorkerTransformResult({
           runId: runs[index].runId,
-          transformedText: payload.texts[index]
+          transformedText: compatibleTexts[index]
         }, revision, "remote-api");
       }
     }).catch((error) => {

@@ -20,6 +20,7 @@ jobs:
         run: |
           node --check popup.js
           node --check content-run-ownership.js
+          node --check remote-api-compatibility.js
           node --check content.js
           node --check options-continuity.js
           node --check orthography-resolver-adapter.js

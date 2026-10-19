@@ -127,6 +127,7 @@
   const runtimeGlobalEnabledInput = document.getElementById("runtime-global-enabled");
   const runtimeRemoteEnabledInput = document.getElementById("runtime-remote-enabled");
   const runtimeRemoteAddCurrentButton = document.getElementById("runtime-remote-add-current");
+  const runtimeRemoteDomainInput = document.getElementById("runtime-remote-domain");
   const runtimeRemoteSitesRoot = document.getElementById("runtime-remote-sites");
   const runtimeSkipEditableInput = document.getElementById("runtime-skip-editable");
   const tokenizerInput = document.getElementById("tokenizer-input");

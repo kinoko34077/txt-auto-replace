@@ -166,6 +166,7 @@
   let activeTokenizer = null;
   let activeRuntimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
   let remotePolicyPending = true;
+  let remotePolicyGeneration = 0;
   let activeDisabledSites = { ...DEFAULT_DISABLED_SITES };
   let activePageRubySettings = { ...DEFAULT_PAGE_RUBY_SETTINGS };
   let activePopupBundleId = DEFAULT_POPUP_BUNDLE_ID;
@@ -2807,11 +2808,15 @@
 
   const refreshRuntimeState = async (options = {}) => {
     const { reapply = true } = options;
+    const thisPolicyGeneration = ++remotePolicyGeneration;
+    remotePolicyPending = true;
     const [storedValue, ruleResources, tabState] = await Promise.all([
       loadStoredSettingsPayload(),
       loadOrderedRuleResources(),
       loadTabRuntimeState()
     ]);
+    // Do not let an earlier async refresh restore a revoked remote policy.
+    if (thisPolicyGeneration !== remotePolicyGeneration) return;
     const runtimeConfiguration = loadRuntimeConfiguration(storedValue);
     const loaded = loadOrderedRules(ruleResources, storedValue);
     const canonicalLoaded = loadOrderedRules(ruleResources);

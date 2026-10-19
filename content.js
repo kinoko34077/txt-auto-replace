@@ -10,6 +10,7 @@
   const TRANSFORM_WORKER_PATH = "transform-worker.js";
   const TEXT_TRANSFORM_API_BASE_URL = "https://api.kinotch.workers.dev";
   const BUNDLE_OVERRIDE_STORAGE_KEY = "bundleOverrideSettingsV1";
+  const REMOTE_CONSENT_STORAGE_KEY = "remoteProcessingConsentV1";
   const DICT_PATH = "dict/";
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
   const VISIBLE_ROOT_MARGIN_PX = 320;
@@ -48,6 +49,7 @@
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
     skipEditableInputs: false,
     globalEnabled: true,
+    remoteProcessing: Object.freeze({ enabled: false, allowedDomains: Object.freeze([]) }),
     ruby: Object.freeze({
       enabled: true,
       hidden: false,
@@ -69,6 +71,7 @@
   const TransformShared = globalThis.TransformShared;
   const TransformEngine = globalThis.TransformEngine;
   const TextTransformApiClient = globalThis.TextTransformApiClient;
+  const RemotePrivacyPolicy = globalThis.RemotePrivacyPolicy;
   const DebugRuntimeChannel = globalThis.DebugRuntimeChannel;
   const ContentRunOwnership = globalThis.ContentRunOwnership;
   const REMOTE_API_PROFILE_IDS = new Set([
@@ -163,6 +166,8 @@
   let activeStringRules = [];
   let activeTokenizer = null;
   let activeRuntimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
+  let remotePolicyPending = true;
+  let remotePolicyGeneration = 0;
   let activeDisabledSites = { ...DEFAULT_DISABLED_SITES };
   let activePageRubySettings = { ...DEFAULT_PAGE_RUBY_SETTINGS };
   let activePopupBundleId = DEFAULT_POPUP_BUNDLE_ID;
@@ -258,7 +263,9 @@
   };
 
   const canUseRemoteApiForTransform = () => {
-    return !DEBUG &&
+    return remotePolicyPending !== true &&
+      RemotePrivacyPolicy?.permits(activeRuntimeSettings.remoteProcessing, location.protocol, location.hostname) === true &&
+      !DEBUG &&
       !hasDebugTargets() &&
       !remoteApiFailed &&
       remoteApiProfiles.length > 0 &&
@@ -634,6 +641,7 @@
     return {
       skipEditableInputs: value?.skipEditableInputs === true,
       globalEnabled: value?.globalEnabled !== false,
+      remoteProcessing: RemotePrivacyPolicy?.normalize(value?.remoteProcessing) ?? { enabled: false, allowedDomains: [] },
       ruby: TransformShared.normalizeRubyRuntimeSettings(value?.ruby)
     };
   };
@@ -1688,21 +1696,27 @@
     }
 
     return new Promise((resolve, reject) => {
-      chrome.storage.local.get([BUNDLE_OVERRIDE_STORAGE_KEY], (result) => {
+      chrome.storage.local.get([BUNDLE_OVERRIDE_STORAGE_KEY, REMOTE_CONSENT_STORAGE_KEY], (result) => {
         const runtimeError = chrome.runtime?.lastError;
         if (runtimeError) {
           reject(runtimeError);
           return;
         }
 
-        resolve(result?.[BUNDLE_OVERRIDE_STORAGE_KEY] ?? {});
+        resolve({ ...(result?.[BUNDLE_OVERRIDE_STORAGE_KEY] ?? {}),
+          __remoteConsent: result?.[REMOTE_CONSENT_STORAGE_KEY] });
       });
     });
   };
 
   const loadRuntimeConfiguration = (storedValue = {}) => {
     return {
-      runtimeSettings: normalizeRuntimeSettings(storedValue?.runtime_settings),
+      runtimeSettings: {
+        ...normalizeRuntimeSettings(storedValue?.runtime_settings),
+        // Consent is authoritative only in the dedicated storage key.
+        // No old bundle, import, Popup, or unrelated settings save grants it.
+        remoteProcessing: RemotePrivacyPolicy.normalize(storedValue?.__remoteConsent)
+      },
       disabledSites: normalizeDisabledSites(storedValue?.disabled_sites),
       popupBundleId: `${storedValue?.popup_bundle_id ?? DEFAULT_POPUP_BUNDLE_ID}`.trim() || DEFAULT_POPUP_BUNDLE_ID,
       pageRubySettings: normalizePageRubySettings(storedValue?.page_ruby_settings)
@@ -2083,12 +2097,14 @@
   };
 
   const sendRemoteTransformBatch = (runs, revision) => {
+    // Called synchronously only from the checked remote branch in
+    // flushWorkerBatchQueue; never requeue inside that loop.
     remoteApiInFlight += 1;
     remoteApiClient.transformBatch(
       runs.map((run) => run.text),
       { profile: remoteApiProfiles },
     ).then((payload) => {
-      if (revision !== runtimeRevision) {
+      if (revision !== runtimeRevision || remotePolicyPending || !canUseRemoteApiForTransform()) {
         return;
       }
       const compatibleTexts = RemoteApiCompatibility.validateRemoteBatchResponse(payload, {
@@ -2795,11 +2811,15 @@
 
   const refreshRuntimeState = async (options = {}) => {
     const { reapply = true } = options;
+    const thisPolicyGeneration = ++remotePolicyGeneration;
+    remotePolicyPending = true;
     const [storedValue, ruleResources, tabState] = await Promise.all([
       loadStoredSettingsPayload(),
       loadOrderedRuleResources(),
       loadTabRuntimeState()
     ]);
+    // Do not let an earlier async refresh restore a revoked remote policy.
+    if (thisPolicyGeneration !== remotePolicyGeneration) return;
     const runtimeConfiguration = loadRuntimeConfiguration(storedValue);
     const loaded = loadOrderedRules(ruleResources, storedValue);
     const canonicalLoaded = loadOrderedRules(ruleResources);
@@ -2829,6 +2849,7 @@
       .flatMap((stage) => stage.rules);
     activeTabDisabled = tabState.tabDisabled === true;
     runtimeRevision += 1;
+    remotePolicyPending = false;
     activeCompiledPlan = TransformEngine.compileRuntimePlan(activeTransformStages, {
       revision: runtimeRevision
     });
@@ -2894,6 +2915,7 @@
     }
 
     if (message.type === MESSAGE_TYPES.APPLY_SETTINGS_UPDATE) {
+      remotePolicyPending = true;
       sendResponse({ ok: true });
       refreshRuntimeState({ reapply: true }).catch((error) => {
         console.error("runtime refresh failed", error);
@@ -2935,10 +2957,12 @@
   const bindRuntimeSynchronization = () => {
     if (chrome?.storage?.onChanged) {
       chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName !== "local" || !changes[BUNDLE_OVERRIDE_STORAGE_KEY]) {
+        if (areaName !== "local" ||
+            (!changes[BUNDLE_OVERRIDE_STORAGE_KEY] && !changes[REMOTE_CONSENT_STORAGE_KEY])) {
           return;
         }
 
+        remotePolicyPending = true;
         refreshRuntimeState({ reapply: true }).catch((error) => {
           console.error("runtime refresh failed", error);
         });

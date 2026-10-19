@@ -7559,26 +7559,21 @@
     setStatus("外部API送信設定を変更しました。保存後、許可サイトの開いているタブにも反映されます。", "info");
   });
 
-  runtimeRemoteAddCurrentButton?.addEventListener("click", async () => {
-    try {
-      const tab = await getActiveTab();
-      const pageUrl = new URL(tab?.url ?? "");
-      const domain = RemotePrivacyPolicy.normalizeHostname(pageUrl.hostname);
-      if (pageUrl.protocol !== "https:" || !domain) {
-        setStatus("HTTPSページのみ登録できます。", "warning");
-        return;
-      }
-      runTrackedMutation("remote: サイト追加", () => {
-        const existing = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
-        state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize({
-          ...existing,
-          allowedDomains: [...existing.allowedDomains, domain]
-        });
-      });
-      setStatus(domain + " を許可候補に追加しました。外部送信するには全体の明示許可もONにして保存してください。", "info");
-    } catch (error) {
-      setStatus("現在サイトを取得できません: " + error.message, "warning");
+  runtimeRemoteAddCurrentButton?.addEventListener("click", () => {
+    const domain = RemotePrivacyPolicy.normalizeHostname(runtimeRemoteDomainInput?.value ?? "");
+    if (!domain) {
+      setStatus("HTTPSサイトのホスト名だけを入力してください（例: example.com）。", "warning");
+      return;
     }
+    runTrackedMutation("remote: サイト追加", () => {
+      const existing = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
+      state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize({
+        ...existing,
+        allowedDomains: [...existing.allowedDomains, domain]
+      });
+    });
+    if (runtimeRemoteDomainInput) runtimeRemoteDomainInput.value = "";
+    setStatus(domain + " を許可候補に追加しました。外部送信するには明示許可をONにして保存してください。", "info");
   });
 
   openShortcutsButton?.addEventListener("click", async () => {

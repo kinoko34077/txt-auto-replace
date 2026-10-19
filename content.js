@@ -10,6 +10,7 @@
   const TRANSFORM_WORKER_PATH = "transform-worker.js";
   const TEXT_TRANSFORM_API_BASE_URL = "https://api.kinotch.workers.dev";
   const BUNDLE_OVERRIDE_STORAGE_KEY = "bundleOverrideSettingsV1";
+  const REMOTE_CONSENT_STORAGE_KEY = "remoteProcessingConsentV1";
   const DICT_PATH = "dict/";
   const DEFAULT_POPUP_BUNDLE_ID = "popup-quick-replacements";
   const VISIBLE_ROOT_MARGIN_PX = 320;
@@ -1695,21 +1696,27 @@
     }
 
     return new Promise((resolve, reject) => {
-      chrome.storage.local.get([BUNDLE_OVERRIDE_STORAGE_KEY], (result) => {
+      chrome.storage.local.get([BUNDLE_OVERRIDE_STORAGE_KEY, REMOTE_CONSENT_STORAGE_KEY], (result) => {
         const runtimeError = chrome.runtime?.lastError;
         if (runtimeError) {
           reject(runtimeError);
           return;
         }
 
-        resolve(result?.[BUNDLE_OVERRIDE_STORAGE_KEY] ?? {});
+        resolve({ ...(result?.[BUNDLE_OVERRIDE_STORAGE_KEY] ?? {}),
+          __remoteConsent: result?.[REMOTE_CONSENT_STORAGE_KEY] });
       });
     });
   };
 
   const loadRuntimeConfiguration = (storedValue = {}) => {
     return {
-      runtimeSettings: normalizeRuntimeSettings(storedValue?.runtime_settings),
+      runtimeSettings: {
+        ...normalizeRuntimeSettings(storedValue?.runtime_settings),
+        // Consent is authoritative only in the dedicated storage key.
+        // No old bundle, import, Popup, or unrelated settings save grants it.
+        remoteProcessing: RemotePrivacyPolicy.normalize(storedValue?.__remoteConsent)
+      },
       disabledSites: normalizeDisabledSites(storedValue?.disabled_sites),
       popupBundleId: `${storedValue?.popup_bundle_id ?? DEFAULT_POPUP_BUNDLE_ID}`.trim() || DEFAULT_POPUP_BUNDLE_ID,
       pageRubySettings: normalizePageRubySettings(storedValue?.page_ruby_settings)
@@ -2950,7 +2957,8 @@
   const bindRuntimeSynchronization = () => {
     if (chrome?.storage?.onChanged) {
       chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName !== "local" || !changes[BUNDLE_OVERRIDE_STORAGE_KEY]) {
+        if (areaName !== "local" ||
+            (!changes[BUNDLE_OVERRIDE_STORAGE_KEY] && !changes[REMOTE_CONSENT_STORAGE_KEY])) {
           return;
         }
 

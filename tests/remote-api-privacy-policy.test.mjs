@@ -91,14 +91,22 @@ test("stale Options tab cannot silently regrant after another tab revokes", () =
   assert.equal(fresh.reason, "EXPLICIT_CONSENT_EDIT");
 });
 
-test("popup and options saves preserve the current consent boundary", () => {
-  const popup = source("popup.js");
-  assert.match(popup, /remoteProcessing: value\?\.remoteProcessing/);
-  assert.match(popup, /latest\?\.runtime_settings\?\.remoteProcessing/);
+test("only explicit Options edits can write dedicated consent key", () => {
   const options = source("options.js");
-  assert.match(options, /preparePayloadWithCurrentConsent\(\)/);
-  assert.match(options, /RemotePrivacyPolicy\.reconcileForSave\(/);
-  assert.match(options, /state\.remoteConsentBaseline = RemotePrivacyPolicy\.normalize/);
+  const content = source("content.js");
+  const popup = source("popup.js");
+  const background = source("background.js");
+  const key = "remoteProcessingConsentV1";
+  assert.ok(options.includes(key) && content.includes(key));
+  assert.ok(!popup.includes(key) && !background.includes(key));
+  assert.match(options, /consentChange: decision\.reason === "EXPLICIT_CONSENT_EDIT"/);
+  assert.match(options, /if \(consentChange\)/);
+  assert.match(options, /\[REMOTE_CONSENT_STORAGE_KEY\]/);
+  assert.match(options, /const bundle = RemotePrivacyPolicy\.redactForExport\(payload\)/);
+  assert.match(content, /REMOTE_CONSENT_STORAGE_KEY\]/);
+  assert.match(content, /RemotePrivacyPolicy\.normalize\(storedValue\?\.__remoteConsent\)/);
+  assert.doesNotMatch(popup, /remoteProcessing/);
+  assert.doesNotMatch(background, /remoteProcessing/);
   assert.match(options, /const activeConsent = RemotePrivacyPolicy\.normalize/);
 });
 

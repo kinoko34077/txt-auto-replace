@@ -117,9 +117,6 @@ const normalizeRuntimeSettings = (value) => {
   return {
     skipEditableInputs: value?.skipEditableInputs === true,
     globalEnabled: value?.globalEnabled !== false,
-    // Preserve site consent on shortcut toggles. Content policy normalizes and
-    // independently fail-closes it before any remote request.
-    remoteProcessing: value?.remoteProcessing ?? { enabled: false, allowedDomains: [] },
     ruby: normalizeRubyRuntimeSettings(value?.ruby)
   };
 };

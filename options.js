@@ -57,6 +57,7 @@
     structuredDictionary: StructuredDictionary.createEmptyDictionary(),
     structuredSyncIssues: [],
     runtimeSettings: { ...DEFAULT_RUNTIME_SETTINGS },
+    remoteConsentBaseline: { enabled: false, allowedDomains: [] },
     disabledSites: { ...DEFAULT_DISABLED_SITES },
     pageRubySettings: { ...DEFAULT_PAGE_RUBY_SETTINGS },
     popupBundleId: DEFAULT_POPUP_BUNDLE_ID,
@@ -2701,7 +2702,10 @@
     state.structuredDictionary = StructuredDictionary.normalizeDictionary(
       snapshot.structuredDictionary ?? StructuredDictionary.createFromRoots(state.roots)
     );
+    // Undo/Redo must not silently grant or revoke consent via an old history snapshot.
+    const activeConsent = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
     state.runtimeSettings = cloneValue(snapshot.runtimeSettings ?? DEFAULT_RUNTIME_SETTINGS);
+    state.runtimeSettings.remoteProcessing = activeConsent;
     state.disabledSites = cloneValue(snapshot.disabledSites ?? DEFAULT_DISABLED_SITES);
     state.pageRubySettings = cloneValue(snapshot.pageRubySettings ?? DEFAULT_PAGE_RUBY_SETTINGS);
     state.popupBundleId = `${snapshot.popupBundleId ?? DEFAULT_POPUP_BUNDLE_ID}`.trim() || DEFAULT_POPUP_BUNDLE_ID;
@@ -2816,14 +2820,31 @@
     state.structuredDictionary = extractStructuredDictionary(payload, state.roots);
   };
 
-  const saveAllAndNotify = async () => {
+  const preparePayloadWithCurrentConsent = async () => {
     const payload = buildPayload();
+    const persistedPayload = await storageGet(STORAGE_KEY);
+    const latestConsent = RemotePrivacyPolicy.normalize(persistedPayload?.runtime_settings?.remoteProcessing);
+    const decision = RemotePrivacyPolicy.reconcileForSave(
+      state.remoteConsentBaseline,
+      payload.runtime_settings.remoteProcessing,
+      latestConsent
+    );
+    if (!decision.ok) {
+      throw new Error("他のタブで外部送信許可が変更されました。設定画面を再読み込みし、許可状態を確認してください。");
+    }
+    payload.runtime_settings.remoteProcessing = decision.policy;
+    return payload;
+  };
+
+  const saveAllAndNotify = async () => {
+    const payload = await preparePayloadWithCurrentConsent();
     applyPersistedPayloadToState(payload);
     renderApp();
     await storageSet({
       [STORAGE_KEY]: payload
     });
     await savePayloadHistory(payload);
+    state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(payload.runtime_settings.remoteProcessing);
     markPersistedPayloadSaved(payload, { source: "save" });
     try {
       await notifyRuntimeSettingsApplied();
@@ -2861,13 +2882,14 @@
   };
 
   const saveAll = async () => {
-    const payload = buildPayload();
+    const payload = await preparePayloadWithCurrentConsent();
     applyPersistedPayloadToState(payload);
     renderApp();
     await storageSet({
       [STORAGE_KEY]: payload
     });
     await savePayloadHistory(payload);
+    state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(payload.runtime_settings.remoteProcessing);
     markPersistedPayloadSaved(payload, { source: "save" });
     setStatus("設定を保存しました。表示タブを再読み込みしてください。", "success");
   };
@@ -7373,6 +7395,7 @@
     state.baseRoots = cloneValue(baseRoots);
     state.roots = currentRoots;
     state.runtimeSettings = extractRuntimeSettings(storedPayload);
+    state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
     state.disabledSites = extractDisabledSites(storedPayload);
     state.pageRubySettings = extractPageRubySettings(storedPayload);
     state.popupBundleId = extractPopupBundleId(storedPayload);

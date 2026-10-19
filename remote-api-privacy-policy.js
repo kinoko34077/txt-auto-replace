@@ -43,7 +43,18 @@
     if (!same(baseline, current)) return { ok: false, policy: current, reason: "CONCURRENT_CONSENT_CHANGE" };
     return { ok: true, policy: proposed, reason: "EXPLICIT_CONSENT_EDIT" };
   };
-  const api = Object.freeze({ normalize, normalizeHostname, permits, preserveConsentOnImport, same, reconcileForSave });
+  // Shared configuration exports are not a consent transport or a list of
+  // private hostnames; keep the original state untouched.
+  const redactForExport = (payload) => {
+    const copy = { ...payload };
+    if (copy.runtime_settings && typeof copy.runtime_settings === "object") {
+      const settings = { ...copy.runtime_settings };
+      delete settings.remoteProcessing;
+      copy.runtime_settings = settings;
+    }
+    return copy;
+  };
+  const api = Object.freeze({ normalize, normalizeHostname, permits, preserveConsentOnImport, same, reconcileForSave, redactForExport });
   globalThis.RemotePrivacyPolicy = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })();

@@ -55,6 +55,25 @@ test("invalid domain and wildcards are not silently admitted", () => {
   assert.deepEqual(out.allowedDomains, ["example.com"]);
 });
 
+test("imported settings never silently grant remote permission", () => {
+  const untrustedImported = {
+    globalEnabled: true,
+    remoteProcessing: { enabled: true, allowedDomains: ["private.example"] },
+  };
+  const defaultUser = policy.preserveConsentOnImport(untrustedImported, undefined);
+  assert.deepEqual(defaultUser.remoteProcessing, { enabled: false, allowedDomains: [] });
+  assert.equal(policy.permits(defaultUser.remoteProcessing, "https:", "private.example"), false);
+  const existingUser = policy.preserveConsentOnImport(untrustedImported, {
+    enabled: true, allowedDomains: ["user-approved.example"],
+  });
+  assert.deepEqual(existingUser.remoteProcessing, {
+    enabled: true, allowedDomains: ["user-approved.example"],
+  });
+  assert.equal(policy.permits(existingUser.remoteProcessing, "https:", "private.example"), false);
+  assert.equal(policy.permits(existingUser.remoteProcessing, "https:", "user-approved.example"), true);
+  assert.match(source("options.js"), /RemotePrivacyPolicy\\.preserveConsentOnImport\\(/);
+});
+
 test("content source performs consent check at both selection and send boundary", () => {
   const src = source("content.js");
   const selection = src.slice(src.indexOf("const canUseRemoteApiForTransform ="), src.indexOf("const canUseTransformBackend ="));

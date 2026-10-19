@@ -95,5 +95,13 @@ test("privacy module loads before content and options, visible UI is explicit", 
   assert.ok(html.indexOf('src="remote-api-privacy-policy.js"') < html.indexOf('src="options.js"'));
   assert.match(html, /runtime-remote-enabled/);
   assert.match(html, /runtime-remote-add-current/);
-  assert.match(source("options.js"), /RemotePrivacyPolicy\.normalize\(value\?\.remoteProcessing\)/);
+  assert.match(html, /runtime-remote-domain/);
+  const options = source("options.js");
+  assert.match(options, /RemotePrivacyPolicy\.normalize\(value\?\.remoteProcessing\)/);
+  const siteConsent = options.slice(
+    options.indexOf('runtimeRemoteAddCurrentButton?.addEventListener("click"'),
+    options.indexOf('openShortcutsButton?.addEventListener')
+  );
+  assert.match(siteConsent, /RemotePrivacyPolicy\.normalizeHostname\(runtimeRemoteDomainInput/);
+  assert.doesNotMatch(siteConsent, /getActiveTab\(/);
 });

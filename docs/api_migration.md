@@ -20,7 +20,7 @@ API利用は次の条件をすべて満たす場合に限る。
 4. `text-api-client.js` が利用可能である。
 5. ユーザーがオプションで外部送信を明示許可している（既定OFF）。
 6. **現在のHTTPSサイトのホスト名**が個別に許可されている（完全一致・サブドメインへ自動拡張しない）。
-5. API応答の `profile` 順序、`ruleSetVersion`、`ruleSetHash` が同梱標準rule-setの固定identityと一致する。
+7. API応答の `profile` 順序、`ruleSetVersion`、`ruleSetHash` が同梱標準rule-setの固定identityと一致する。
 
 ユーザーがbundle、Group、Entry、Popup辞書を変更した場合は、変換結果の再現性を優先して既存のローカルWorkerを使用する。
 

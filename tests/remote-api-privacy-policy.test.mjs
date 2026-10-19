@@ -71,7 +71,7 @@ test("imported settings never silently grant remote permission", () => {
   });
   assert.equal(policy.permits(existingUser.remoteProcessing, "https:", "private.example"), false);
   assert.equal(policy.permits(existingUser.remoteProcessing, "https:", "user-approved.example"), true);
-  assert.match(source("options.js"), /RemotePrivacyPolicy\\.preserveConsentOnImport\\(/);
+  assert.ok(source("options.js").includes("RemotePrivacyPolicy.preserveConsentOnImport("));
 });
 
 test("content source performs consent check at both selection and send boundary", () => {

@@ -23,6 +23,7 @@
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
     skipEditableInputs: false,
     globalEnabled: true,
+    remoteProcessing: Object.freeze({ enabled: false, allowedDomains: Object.freeze([]) }),
     ruby: Object.freeze({
       enabled: true,
       hidden: false,
@@ -41,6 +42,7 @@
   });
   const UiStrings = globalThis.ExtensionUiStrings;
   const TransformShared = globalThis.TransformShared;
+  const RemotePrivacyPolicy = globalThis.RemotePrivacyPolicy;
   const TransformEngine = globalThis.TransformEngine;
   const StructuredDictionary = globalThis.StructuredDictionary;
 
@@ -123,6 +125,9 @@
   const exportYamlButton = document.getElementById("export-yaml");
   const importFileInput = document.getElementById("import-file");
   const runtimeGlobalEnabledInput = document.getElementById("runtime-global-enabled");
+  const runtimeRemoteEnabledInput = document.getElementById("runtime-remote-enabled");
+  const runtimeRemoteAddCurrentButton = document.getElementById("runtime-remote-add-current");
+  const runtimeRemoteSitesRoot = document.getElementById("runtime-remote-sites");
   const runtimeSkipEditableInput = document.getElementById("runtime-skip-editable");
   const tokenizerInput = document.getElementById("tokenizer-input");
   const tokenizerRunButton = document.getElementById("tokenizer-run");
@@ -735,6 +740,7 @@
     return {
       skipEditableInputs: value?.skipEditableInputs === true,
       globalEnabled: value?.globalEnabled !== false,
+      remoteProcessing: RemotePrivacyPolicy.normalize(value?.remoteProcessing),
       ruby: TransformShared.normalizeRubyRuntimeSettings(value?.ruby)
     };
   };
@@ -7142,6 +7148,33 @@
   const renderRuntimeSettings = () => {
     runtimeGlobalEnabledInput.checked = state.runtimeSettings.globalEnabled !== false;
     runtimeSkipEditableInput.checked = state.runtimeSettings.skipEditableInputs === true;
+    const policy = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
+    runtimeRemoteEnabledInput.checked = policy.enabled;
+    runtimeRemoteSitesRoot.textContent = "";
+    for (const domain of policy.allowedDomains) {
+      const row = document.createElement("div");
+      row.className = "simple-row";
+      const label = document.createElement("span");
+      label.textContent = domain;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "ghost";
+      remove.textContent = "許可を削除";
+      remove.setAttribute("aria-label", domain + " のリモート許可を削除");
+      remove.addEventListener("click", () => {
+        runTrackedMutation("リモート許可サイト削除", () => {
+          state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize({
+            ...state.runtimeSettings.remoteProcessing,
+            allowedDomains: policy.allowedDomains.filter((item) => item !== domain)
+          });
+        });
+      });
+      row.append(label, remove);
+      runtimeRemoteSitesRoot.appendChild(row);
+    }
+    if (!policy.allowedDomains.length) {
+      runtimeRemoteSitesRoot.textContent = "許可サイト未登録（全サイトでローカル処理）";
+    }
   };
 
   const renderHotkeys = () => {
@@ -7507,6 +7540,38 @@
       state.runtimeSettings.globalEnabled = runtimeGlobalEnabledInput.checked;
     }, { render: false });
     setStatus("拡張全体の有効状態を更新しました。保存すると即時反映されます。", "info");
+  });
+
+  runtimeRemoteEnabledInput?.addEventListener("change", () => {
+    runTrackedMutation("remote: 明示許可", () => {
+      state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize({
+        ...state.runtimeSettings.remoteProcessing,
+        enabled: runtimeRemoteEnabledInput.checked
+      });
+    }, { render: false });
+    setStatus("外部API送信設定を変更しました。保存後、許可サイトの開いているタブにも反映されます。", "info");
+  });
+
+  runtimeRemoteAddCurrentButton?.addEventListener("click", async () => {
+    try {
+      const tab = await getActiveTab();
+      const pageUrl = new URL(tab?.url ?? "");
+      const domain = RemotePrivacyPolicy.normalizeHostname(pageUrl.hostname);
+      if (pageUrl.protocol !== "https:" || !domain) {
+        setStatus("HTTPSページのみ登録できます。", "warning");
+        return;
+      }
+      runTrackedMutation("remote: サイト追加", () => {
+        const existing = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
+        state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize({
+          ...existing,
+          allowedDomains: [...existing.allowedDomains, domain]
+        });
+      });
+      setStatus(domain + " を許可候補に追加しました。外部送信するには全体の明示許可もONにして保存してください。", "info");
+    } catch (error) {
+      setStatus("現在サイトを取得できません: " + error.message, "warning");
+    }
   });
 
   openShortcutsButton?.addEventListener("click", async () => {

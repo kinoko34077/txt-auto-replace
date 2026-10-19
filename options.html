@@ -377,8 +377,11 @@
         </label>
         <p>許可サイトでは変換対象の本文テキストが外部の api.kinotch.workers.dev へ送信されます。HTML全体ではなく本文の文字列断片が対象です。許可していないサイトではローカル処理します。</p>
         <div class="panel-actions">
-          <button id="runtime-remote-add-current" type="button" class="secondary">現在のHTTPSサイトをリモート処理対象に追加</button>
+          <label for="runtime-remote-domain">許可するHTTPSサイトのホスト名</label>
+          <input id="runtime-remote-domain" type="text" inputmode="url" autocomplete="off" placeholder="example.com" aria-describedby="runtime-remote-domain-help">
+          <button id="runtime-remote-add-current" type="button" class="secondary">このサイトを許可リストへ追加</button>
         </div>
+        <p id="runtime-remote-domain-help">サイトのホスト名だけを指定します。サブドメインは個別指定です。登録後、上の明示許可をONにして設定を保存してください。</p>
         <div id="runtime-remote-sites" class="simple-list" aria-label="リモート処理を許可したサイト"></div>
       </div>
     </section>

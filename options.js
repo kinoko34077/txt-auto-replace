@@ -2844,13 +2844,15 @@
     // A rule/Popup/background save can never carry remote consent because
     // the bundle and saved history deliberately omit it.
     const bundle = RemotePrivacyPolicy.redactForExport(payload);
-    await storageSet({ [STORAGE_KEY]: bundle });
     if (consentChange) {
-      // Only a deliberate consent edit from Options can write this key.
+      // Minimize cross-tab race: commit small explicit consent first, rather
+      // than after a potentially large dictionary write and render.
       await storageSet({
         [REMOTE_CONSENT_STORAGE_KEY]: payload.runtime_settings.remoteProcessing
       });
     }
+    // Bulk persistence never carries authority to re-enable remote text egress.
+    await storageSet({ [STORAGE_KEY]: bundle });
     // Advance baseline after the actual consent write, *before* later
     // history/UI operations which might fail independently.
     state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(

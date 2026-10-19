@@ -2090,12 +2090,8 @@
   };
 
   const sendRemoteTransformBatch = (runs, revision) => {
-    // Re-evaluate permission immediately before transmission.
-    if (!canUseRemoteApiForTransform()) {
-      workerBatchQueue.push(...runs);
-      scheduleWorkerBatchFlush();
-      return;
-    }
+    // Called synchronously only from the checked remote branch in
+    // flushWorkerBatchQueue; never requeue inside that loop.
     remoteApiInFlight += 1;
     remoteApiClient.transformBatch(
       runs.map((run) => run.text),

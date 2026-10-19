@@ -7327,10 +7327,9 @@
       // on external transmission from somebody else's shared settings file.
       const currentRemoteConsent = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
       state.roots = importedRoots;
-      state.runtimeSettings = {
-        ...extractRuntimeSettings(parsed),
-        remoteProcessing: currentRemoteConsent
-      };
+      state.runtimeSettings = RemotePrivacyPolicy.preserveConsentOnImport(
+        extractRuntimeSettings(parsed), currentRemoteConsent
+      );
       state.disabledSites = extractDisabledSites(parsed);
       state.pageRubySettings = extractPageRubySettings(parsed);
       state.popupBundleId = extractPopupBundleId(parsed);

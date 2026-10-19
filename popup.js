@@ -155,9 +155,6 @@
     return {
       skipEditableInputs: value?.skipEditableInputs === true,
       globalEnabled: value?.globalEnabled !== false,
-      // Popup does not authorize remote transmission; preserve the saved
-      // consent rather than dropping it from the normalized payload.
-      remoteProcessing: value?.remoteProcessing ?? { enabled: false, allowedDomains: [] },
       ruby: TransformShared.normalizeRubyRuntimeSettings(value?.ruby)
     };
   };
@@ -249,11 +246,6 @@
   };
 
   const savePayload = async () => {
-    // Popup never edits remote consent. Re-read current policy before saving
-    // the full settings bundle so an old popup cannot resurrect old consent.
-    const latest = await storageGet(STORAGE_KEY);
-    state.payload.runtime_settings.remoteProcessing =
-      latest?.runtime_settings?.remoteProcessing ?? { enabled: false, allowedDomains: [] };
     await storageSet({
       [STORAGE_KEY]: state.payload
     });

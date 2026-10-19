@@ -7322,8 +7322,15 @@
 
     runTrackedMutation(`置換読込: ${fileName}`, () => {
       const importedRoots = normalizeImportedRoots(parsed);
+      // Imported JSON/YAML is configuration data, not an explicit consent grant.
+      // Retain this installation's current remote policy; do not silently turn
+      // on external transmission from somebody else's shared settings file.
+      const currentRemoteConsent = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
       state.roots = importedRoots;
-      state.runtimeSettings = extractRuntimeSettings(parsed);
+      state.runtimeSettings = {
+        ...extractRuntimeSettings(parsed),
+        remoteProcessing: currentRemoteConsent
+      };
       state.disabledSites = extractDisabledSites(parsed);
       state.pageRubySettings = extractPageRubySettings(parsed);
       state.popupBundleId = extractPopupBundleId(parsed);
@@ -7331,7 +7338,7 @@
       ensurePopupBundleRoot(state.roots);
       state.structuredDictionary = extractStructuredDictionary(parsed, state.roots);
     });
-    setStatus(`${fileName} を読み込みました。`, "success");
+    setStatus(`${fileName} を読み込みました。外部APIへの送信許可は読み込まず、現在の許可設定を維持しました。`, "success");
   };
 
   const initialize = async () => {

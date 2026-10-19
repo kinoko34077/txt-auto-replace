@@ -48,6 +48,7 @@
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
     skipEditableInputs: false,
     globalEnabled: true,
+    remoteProcessing: Object.freeze({ enabled: false, allowedDomains: Object.freeze([]) }),
     ruby: Object.freeze({
       enabled: true,
       hidden: false,
@@ -69,6 +70,7 @@
   const TransformShared = globalThis.TransformShared;
   const TransformEngine = globalThis.TransformEngine;
   const TextTransformApiClient = globalThis.TextTransformApiClient;
+  const RemotePrivacyPolicy = globalThis.RemotePrivacyPolicy;
   const DebugRuntimeChannel = globalThis.DebugRuntimeChannel;
   const ContentRunOwnership = globalThis.ContentRunOwnership;
   const REMOTE_API_PROFILE_IDS = new Set([
@@ -163,6 +165,7 @@
   let activeStringRules = [];
   let activeTokenizer = null;
   let activeRuntimeSettings = { ...DEFAULT_RUNTIME_SETTINGS };
+  let remotePolicyPending = true;
   let activeDisabledSites = { ...DEFAULT_DISABLED_SITES };
   let activePageRubySettings = { ...DEFAULT_PAGE_RUBY_SETTINGS };
   let activePopupBundleId = DEFAULT_POPUP_BUNDLE_ID;
@@ -258,7 +261,9 @@
   };
 
   const canUseRemoteApiForTransform = () => {
-    return !DEBUG &&
+    return remotePolicyPending !== true &&
+      RemotePrivacyPolicy?.permits(activeRuntimeSettings.remoteProcessing, location.protocol, location.hostname) === true &&
+      !DEBUG &&
       !hasDebugTargets() &&
       !remoteApiFailed &&
       remoteApiProfiles.length > 0 &&
@@ -634,6 +639,7 @@
     return {
       skipEditableInputs: value?.skipEditableInputs === true,
       globalEnabled: value?.globalEnabled !== false,
+      remoteProcessing: RemotePrivacyPolicy?.normalize(value?.remoteProcessing) ?? { enabled: false, allowedDomains: [] },
       ruby: TransformShared.normalizeRubyRuntimeSettings(value?.ruby)
     };
   };
@@ -2083,12 +2089,18 @@
   };
 
   const sendRemoteTransformBatch = (runs, revision) => {
+    // Re-evaluate permission immediately before transmission.
+    if (!canUseRemoteApiForTransform()) {
+      workerBatchQueue.push(...runs);
+      scheduleWorkerBatchFlush();
+      return;
+    }
     remoteApiInFlight += 1;
     remoteApiClient.transformBatch(
       runs.map((run) => run.text),
       { profile: remoteApiProfiles },
     ).then((payload) => {
-      if (revision !== runtimeRevision) {
+      if (revision !== runtimeRevision || remotePolicyPending || !canUseRemoteApiForTransform()) {
         return;
       }
       const compatibleTexts = RemoteApiCompatibility.validateRemoteBatchResponse(payload, {
@@ -2829,6 +2841,7 @@
       .flatMap((stage) => stage.rules);
     activeTabDisabled = tabState.tabDisabled === true;
     runtimeRevision += 1;
+    remotePolicyPending = false;
     activeCompiledPlan = TransformEngine.compileRuntimePlan(activeTransformStages, {
       revision: runtimeRevision
     });
@@ -2894,6 +2907,7 @@
     }
 
     if (message.type === MESSAGE_TYPES.APPLY_SETTINGS_UPDATE) {
+      remotePolicyPending = true;
       sendResponse({ ok: true });
       refreshRuntimeState({ reapply: true }).catch((error) => {
         console.error("runtime refresh failed", error);
@@ -2939,6 +2953,7 @@
           return;
         }
 
+        remotePolicyPending = true;
         refreshRuntimeState({ reapply: true }).catch((error) => {
           console.error("runtime refresh failed", error);
         });

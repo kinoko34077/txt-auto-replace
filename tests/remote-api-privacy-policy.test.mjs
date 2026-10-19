@@ -74,14 +74,56 @@ test("imported settings never silently grant remote permission", () => {
   assert.ok(source("options.js").includes("RemotePrivacyPolicy.preserveConsentOnImport("));
 });
 
+test("stale Options tab cannot silently regrant after another tab revokes", () => {
+  const allowed = { enabled: true, allowedDomains: ["private.example"] };
+  const revoked = { enabled: false, allowedDomains: [] };
+  // Tab A has a stale, UNEDITED in-memory copy; Tab B already persisted revoke.
+  const staleA = policy.reconcileForSave(allowed, allowed, revoked);
+  assert.deepEqual(staleA, { ok: true, policy: revoked, reason: "PRESERVE_LATEST" });
+  assert.equal(policy.permits(staleA.policy, "https:", "private.example"), false);
+  // A deliberately changed grant, but B changed policy while A was open.
+  const conflict = policy.reconcileForSave(allowed, revoked, { enabled: true, allowedDomains: ["other.example"] });
+  assert.equal(conflict.ok, false);
+  assert.equal(conflict.reason, "CONCURRENT_CONSENT_CHANGE");
+  // Current owner can make an explicit change to the latest baseline.
+  const fresh = policy.reconcileForSave(revoked, allowed, revoked);
+  assert.equal(fresh.ok, true);
+  assert.equal(fresh.reason, "EXPLICIT_CONSENT_EDIT");
+});
+
+test("popup and options saves preserve the current consent boundary", () => {
+  const popup = source("popup.js");
+  assert.match(popup, /remoteProcessing: value\?\.remoteProcessing/);
+  assert.match(popup, /latest\?\.runtime_settings\?\.remoteProcessing/);
+  const options = source("options.js");
+  assert.match(options, /preparePayloadWithCurrentConsent\(\)/);
+  assert.match(options, /RemotePrivacyPolicy\.reconcileForSave\(/);
+  assert.match(options, /state\.remoteConsentBaseline = RemotePrivacyPolicy\.normalize/);
+  assert.match(options, /const activeConsent = RemotePrivacyPolicy\.normalize/);
+});
+
+test("JSON/YAML export strips private hostnames and consent but leaves source unchanged", () => {
+  const input = {
+    roots: [{ id: "root" }],
+    runtime_settings: { globalEnabled: true, remoteProcessing: { enabled: true, allowedDomains: ["private.example"] } },
+  };
+  const exported = policy.redactForExport(input);
+  assert.equal("remoteProcessing" in exported.runtime_settings, false);
+  assert.deepEqual(input.runtime_settings.remoteProcessing.allowedDomains, ["private.example"]);
+  assert.equal(JSON.stringify(exported).includes("private.example"), false);
+  assert.match(source("options.js"), /RemotePrivacyPolicy\.redactForExport\(buildPayload\(\)\)/);
+});
+
 test("content source performs consent check at both selection and send boundary", () => {
   const src = source("content.js");
   const selection = src.slice(src.indexOf("const canUseRemoteApiForTransform ="), src.indexOf("const canUseTransformBackend ="));
   const send = src.slice(src.indexOf("const sendRemoteTransformBatch ="), src.indexOf("const enqueueWorkerTransformRun ="));
   assert.match(selection, /RemotePrivacyPolicy\?\.permits\(activeRuntimeSettings.remoteProcessing/);
   assert.match(selection, /remotePolicyPending !== true/);
-  assert.match(send, /if \(!canUseRemoteApiForTransform\(\)\)/);
-  assert.match(send, /workerBatchQueue\.push\(\.\.\.runs\)/);
+  const flush = src.slice(src.indexOf("const flushWorkerBatchQueue ="), src.indexOf("const scheduleWorkerBatchFlush ="));
+  assert.match(flush, /const useRemoteApi = canUseRemoteApiForTransform\(\)/);
+  assert.match(flush, /if \(useRemoteApi\)/);
+  assert.doesNotMatch(send, /workerBatchQueue\.push/);
   assert.match(src, /thisPolicyGeneration !== remotePolicyGeneration/);
   assert.match(src, /chrome\.storage\.onChanged\.addListener/);
 });

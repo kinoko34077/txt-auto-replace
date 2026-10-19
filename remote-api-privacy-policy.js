@@ -22,7 +22,12 @@
     return policy.enabled && protocol === "https:" && domain.length > 0 &&
       policy.allowedDomains.includes(domain);
   };
-  const api = Object.freeze({ normalize, normalizeHostname, permits });
+  // Importing a configuration file cannot authorize transmission.
+  const preserveConsentOnImport = (importedRuntime, currentRemotePolicy) => ({
+    ...(importedRuntime && typeof importedRuntime === "object" ? importedRuntime : {}),
+    remoteProcessing: normalize(currentRemotePolicy)
+  });
+  const api = Object.freeze({ normalize, normalizeHostname, permits, preserveConsentOnImport });
   globalThis.RemotePrivacyPolicy = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })();

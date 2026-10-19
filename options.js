@@ -7322,12 +7322,12 @@
   };
 
   const exportSettingsAsJson = () => {
-    downloadText("transform-settings.json", `${JSON.stringify(buildPayload(), null, 2)}\n`, "application/json");
+    downloadText("transform-settings.json", `${JSON.stringify(RemotePrivacyPolicy.redactForExport(buildPayload()), null, 2)}\n`, "application/json");
     setStatus("JSON を書き出しました。", "success");
   };
 
   const exportSettingsAsYaml = () => {
-    downloadText("transform-settings.yaml", `${serializeYamlObject(buildPayload())}\n`, "text/yaml");
+    downloadText("transform-settings.yaml", `${serializeYamlObject(RemotePrivacyPolicy.redactForExport(buildPayload()))}\n`, "text/yaml");
     setStatus("YAML を書き出しました。", "success");
   };
 

@@ -3,6 +3,7 @@
 
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
   const STORAGE_KEY = "bundleOverrideSettingsV1";
+  const REMOTE_CONSENT_STORAGE_KEY = "remoteProcessingConsentV1";
   const DIAGNOSTIC_UI_STATE_KEY = "diagnosticUiStateV1";
   const BUNDLE_UI_STATE_KEY = "bundleOptionsUiStateV1";
   const SAVE_HISTORY_STORAGE_KEY = "bundleSavedPayloadHistoryV1";
@@ -2822,30 +2823,47 @@
 
   const preparePayloadWithCurrentConsent = async () => {
     const payload = buildPayload();
-    const persistedPayload = await storageGet(STORAGE_KEY);
-    const latestConsent = RemotePrivacyPolicy.normalize(persistedPayload?.runtime_settings?.remoteProcessing);
+    // Only this dedicated key is authoritative for external transmission.
+    const latestConsent = RemotePrivacyPolicy.normalize(
+      await storageGet(REMOTE_CONSENT_STORAGE_KEY)
+    );
     const decision = RemotePrivacyPolicy.reconcileForSave(
       state.remoteConsentBaseline,
       payload.runtime_settings.remoteProcessing,
       latestConsent
     );
     if (!decision.ok) {
-      throw new Error("他のタブで外部送信許可が変更されました。設定画面を再読み込みし、許可状態を確認してください。");
+      throw new Error("別の設定画面で外部送信許可が変更されました。許可を確認してから再度保存してください。");
     }
     payload.runtime_settings.remoteProcessing = decision.policy;
-    return payload;
+    return { payload, consentChange: decision.reason === "EXPLICIT_CONSENT_EDIT" };
+  };
+
+  const persistAllWithConsent = async () => {
+    const { payload, consentChange } = await preparePayloadWithCurrentConsent();
+    // A rule/Popup/background save can never carry remote consent because
+    // the bundle and saved history deliberately omit it.
+    const bundle = RemotePrivacyPolicy.redactForExport(payload);
+    await storageSet({ [STORAGE_KEY]: bundle });
+    if (consentChange) {
+      // Only a deliberate consent edit from Options can write this key.
+      await storageSet({
+        [REMOTE_CONSENT_STORAGE_KEY]: payload.runtime_settings.remoteProcessing
+      });
+    }
+    // Advance baseline after the actual consent write, *before* later
+    // history/UI operations which might fail independently.
+    state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(
+      payload.runtime_settings.remoteProcessing
+    );
+    applyPersistedPayloadToState(payload);
+    renderApp();
+    await savePayloadHistory(bundle);
+    markPersistedPayloadSaved(payload, { source: "save" });
   };
 
   const saveAllAndNotify = async () => {
-    const payload = await preparePayloadWithCurrentConsent();
-    applyPersistedPayloadToState(payload);
-    renderApp();
-    await storageSet({
-      [STORAGE_KEY]: payload
-    });
-    await savePayloadHistory(payload);
-    state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(payload.runtime_settings.remoteProcessing);
-    markPersistedPayloadSaved(payload, { source: "save" });
+    await persistAllWithConsent();
     try {
       await notifyRuntimeSettingsApplied();
       setStatus("設定を保存しました。現在のタブへ反映しました。", "success");
@@ -2882,15 +2900,7 @@
   };
 
   const saveAll = async () => {
-    const payload = await preparePayloadWithCurrentConsent();
-    applyPersistedPayloadToState(payload);
-    renderApp();
-    await storageSet({
-      [STORAGE_KEY]: payload
-    });
-    await savePayloadHistory(payload);
-    state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(payload.runtime_settings.remoteProcessing);
-    markPersistedPayloadSaved(payload, { source: "save" });
+    await persistAllWithConsent();
     setStatus("設定を保存しました。表示タブを再読み込みしてください。", "success");
   };
 
@@ -7380,11 +7390,12 @@
       baseRoots.push(normalizeManifestDefinition(bundle, definition));
     }
 
-    const [storedPayload, storedDiagnosticUiState, storedBundleUiState, storedSavedPayloadHistory] = await Promise.all([
+    const [storedPayload, storedDiagnosticUiState, storedBundleUiState, storedSavedPayloadHistory, storedRemoteConsent] = await Promise.all([
       storageGet(STORAGE_KEY),
       storageGet(DIAGNOSTIC_UI_STATE_KEY),
       storageGet(BUNDLE_UI_STATE_KEY),
-      storageGet(SAVE_HISTORY_STORAGE_KEY)
+      storageGet(SAVE_HISTORY_STORAGE_KEY),
+      storageGet(REMOTE_CONSENT_STORAGE_KEY)
     ]);
     let currentRoots = cloneValue(baseRoots);
     const shouldSeedStorage = !hasStoredRootsPayload(storedPayload);
@@ -7395,7 +7406,8 @@
     state.baseRoots = cloneValue(baseRoots);
     state.roots = currentRoots;
     state.runtimeSettings = extractRuntimeSettings(storedPayload);
-    state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
+    state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize(storedRemoteConsent);
+    state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(storedRemoteConsent);
     state.disabledSites = extractDisabledSites(storedPayload);
     state.pageRubySettings = extractPageRubySettings(storedPayload);
     state.popupBundleId = extractPopupBundleId(storedPayload);

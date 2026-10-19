@@ -40,6 +40,7 @@
     const current = normalize(latest);
     const proposed = normalize(draft);
     if (same(baseline, proposed)) return { ok: true, policy: current, reason: "PRESERVE_LATEST" };
+    if (same(proposed, current)) return { ok: true, policy: current, reason: "ALREADY_CURRENT" };
     if (!same(baseline, current)) return { ok: false, policy: current, reason: "CONCURRENT_CONSENT_CHANGE" };
     return { ok: true, policy: proposed, reason: "EXPLICIT_CONSENT_EDIT" };
   };

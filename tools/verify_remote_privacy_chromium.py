@@ -94,6 +94,27 @@ def main():
                 assert len(requests) == 0, "default local-only emitted remote API request"
                 print("DEFAULT_LOCAL_ONLY_ZERO_POST_PASS", flush=True)
 
+                # The installed project profile includes a local-only virtual
+                # 'kinotch-token-style' stage, which rightly makes remote
+                # profiles ineligible regardless of consent. For the positive
+                # control use only the stock manifest bundles, not that local
+                # virtual stage, and confirm OFF still sends nothing.
+                service_worker.evaluate("""() => new Promise((ok, fail) => {
+                  chrome.storage.local.set({bundleOverrideSettingsV1:{}}, () => {
+                    const error=chrome.runtime.lastError;
+                    if(error)fail(Error(error.message)); else ok(true);
+                  });
+                })""")
+                standard = context.new_page()
+                standard.goto(f"https://{FIXTURE_HOST}/standard-off",
+                              wait_until="domcontentloaded")
+                standard.wait_for_function(
+                    "() => /學校|颱風|奇蹟/.test(document.querySelector('#target')?.textContent||'')",
+                    timeout=30000,
+                )
+                assert len(requests) == 0, "stock remote-eligible bundle transmitted without consent"
+                print("STANDARD_BUNDLE_LOCAL_ONLY_ZERO_POST_PASS", flush=True)
+
                 # Positive control: with both decisions authorized, the same
                 # site/standard fixture must be eligible for an attempted POST.
                 set_consent({"enabled": True, "allowedDomains": [FIXTURE_HOST]})

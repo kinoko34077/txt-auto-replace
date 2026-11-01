@@ -68,8 +68,19 @@ def main():
                     if request.method.upper() == "POST" and request.url.startswith(API_URL):
                         # Never include actual bodies in diagnostics.
                         requests.append({"method": request.method, "url": request.url})
-                    route.fulfill(status=503, content_type="application/json",
-                                  body='{"error":"synthetic positive-control response"}')
+                    data = request.post_data_json if request.method.upper() == "POST" else {}
+                    if not isinstance(data, dict):
+                        data = {}
+                    # Return a real schema-compatible, fully synthetic response
+                    # so the permitted tab stays eligible until explicit revoke.
+                    reply = {
+                        "texts": data.get("texts", []),
+                        "profile": data.get("profile", []),
+                        "ruleSetVersion": "rules-v1",
+                        "ruleSetHash": "081844df462343ce413d7e293be8ab7c12db4986fcea57d6d212704ea91111be",
+                    }
+                    route.fulfill(status=200, content_type="application/json",
+                                  body=json.dumps(reply, ensure_ascii=False))
 
                 # Playwright runs the most recently registered matching route
                 # first. Keep the catch-all below the synthetic allowlist.
@@ -191,6 +202,26 @@ def main():
                 )
                 assert len(requests) == first_count, "revoked permission emitted remote POST"
                 print("REVOKED_NEW_TAB_ZERO_POST_PASS", flush=True)
+
+                # Exercise an already-open, previously remote-enabled tab.
+                # Consent storage event must turn off remote processing before
+                # a new, otherwise eligible mutation is dispatched.
+                allowed.wait_for_timeout(1000)
+                pre_mutation=len(requests)
+                allowed.evaluate("""() => {
+                  const node=document.createElement('p');
+                  node.id='after-revoke-mutation';
+                  node.textContent='学校の台風。奇跡が続く。';
+                  document.querySelector('main').appendChild(node);
+                }""")
+                allowed.wait_for_function(
+                    "() => /學校|颱風|奇蹟/.test(document.querySelector('#after-revoke-mutation')?.textContent||'')",
+                    timeout=30000,
+                )
+                assert len(requests)==pre_mutation, (
+                    "already-open tab emitted remote request after revoke event"
+                )
+                print("REVOKED_EXISTING_TAB_ZERO_POST_PASS", flush=True)
             finally:
                 context.close()
 

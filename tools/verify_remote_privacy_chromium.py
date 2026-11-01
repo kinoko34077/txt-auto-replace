@@ -101,9 +101,33 @@ def main():
                 allowed = context.new_page()
                 allowed.goto(f"https://{FIXTURE_HOST}/allowed", wait_until="domcontentloaded")
                 allowed.wait_for_timeout(6500)
-                assert len(requests) > 0, (
-                    "positive control produced no remote request; zero-POST assertions would be vacuous"
-                )
+                if not requests:
+                    # Browser-owned diagnostics, no user text or URL payload.
+                    diagnostic = service_worker.evaluate("""async () => {
+                      const tabs=await chrome.tabs.query({url:'https://privacy-fixture.test/allowed*'});
+                      if(!tabs.length)return {error:'test tab not found'};
+                      const result=await new Promise(resolve=>{
+                        chrome.tabs.sendMessage(tabs[0].id,
+                          {type:'GET_RUNTIME_DEBUG_SNAPSHOT'},response=>
+                            resolve(chrome.runtime.lastError?{error:chrome.runtime.lastError.message}:response));
+                      });
+                      const state=result?.snapshot;
+                      return {
+                        error:result?.error,
+                        enabled:state?.remoteApi?.enabled,
+                        profiles:state?.remoteApi?.profiles,
+                        remoteFailed:state?.remoteApi?.failed,
+                        runtimeEnabled:state?.runtimeEnabled,
+                        consent:state?.runtimeSettings?.remoteProcessing,
+                        stageIds:state?.stages?.map(s=>s.id),
+                        workerEnabled:state?.worker?.enabled,
+                      };
+                    }""")
+                    raise AssertionError(
+                        "positive control produced no remote request; "
+                        + "zero-POST assertions would be vacuous: "
+                        + json.dumps(diagnostic, ensure_ascii=False)
+                    )
                 print("OPTIN_EXACT_HOST_POST_INTERCEPTED_PASS", len(requests), flush=True)
                 first_count = len(requests)
 

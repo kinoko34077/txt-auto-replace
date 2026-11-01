@@ -34,8 +34,8 @@
       a.allowedDomains.every((domain, i) => b.allowedDomains[i] === domain);
   };
   // Used on every Options save, never trust an old tab's untouched copy.
-  // Not an atomic storage CAS: concurrent writers still need versioned storage
-  // isolation if strict cross-context serialization becomes a product gate.
+  // This reconciliation alone is not atomic. Options MUST hold the same-origin
+  // exclusive Web Lock across the authoritative storage read/reconcile/write.
   const reconcileForSave = (baseline, draft, latest) => {
     const current = normalize(latest);
     const proposed = normalize(draft);

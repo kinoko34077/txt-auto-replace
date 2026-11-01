@@ -5,6 +5,7 @@ All pages and the remote transform endpoint are synthetic/intercepted. No user
 content or real remote API traffic is generated during the test.
 """
 import json
+import shutil
 import tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -24,15 +25,33 @@ PAGE = (
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="tar-privacy-chromium-") as profile:
+    with tempfile.TemporaryDirectory(prefix="tar-privacy-chromium-") as scratch:
+        # Test-only manifest variant removes the optional *local-only*
+        # KiNoTch token-style bridge, making the stock remote API stages
+        # eligible. Production source and the accepted profile remain intact.
+        # This is a positive-control fixture, not a release manifest.
+        extension_root = Path(scratch) / "extension"
+        shutil.copytree(ROOT, extension_root, ignore=shutil.ignore_patterns(
+            ".git", "node_modules", ".phase4-upstream", ".phase45b-upstream",
+            "phase4-generated", "phase45b-generated", "__pycache__"
+        ))
+        manifest_file = extension_root / "manifest.json"
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+        js = manifest["content_scripts"][0]["js"]
+        assert "kinotch-profile-style-bridge.js" in js
+        manifest["content_scripts"][0]["js"] = [
+            name for name in js if name != "kinotch-profile-style-bridge.js"
+        ]
+        manifest_file.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+        print("REMOTE_ELIGIBLE_TEST_MANIFEST_VARIANT", flush=True)
         with sync_playwright() as playwright:
             context = playwright.chromium.launch_persistent_context(
-                profile,
+                str(Path(scratch) / "profile"),
                 channel="chromium",
                 headless=True,
                 args=[
-                    f"--disable-extensions-except={ROOT}",
-                    f"--load-extension={ROOT}",
+                    f"--disable-extensions-except={extension_root}",
+                    f"--load-extension={extension_root}",
                     "--no-sandbox",
                     "--disable-dev-shm-usage",
                 ],

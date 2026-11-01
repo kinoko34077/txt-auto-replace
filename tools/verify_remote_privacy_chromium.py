@@ -247,6 +247,54 @@ def main():
                     "already-open tab emitted remote request after revoke event"
                 )
                 print("REVOKED_EXISTING_TAB_ZERO_POST_PASS", flush=True)
+
+                # Check the *real* Chrome extension Options security origin,
+                # not only a Node mock. Independent extension Options pages
+                # must share one exclusive Web Lock for the consent key.
+                left = context.new_page()
+                right = context.new_page()
+                options_url = f"chrome-extension://{extension_id}/options.html"
+                left.goto(options_url, wait_until="domcontentloaded")
+                right.goto(options_url, wait_until="domcontentloaded")
+                assert left.evaluate(
+                    "() => typeof navigator.locks?.request === 'function'"
+                ), "Web Locks unavailable in extension Options origin"
+                assert right.evaluate(
+                    "() => typeof navigator.locks?.request === 'function'"
+                ), "Web Locks unavailable in second Options origin"
+
+                left.evaluate("""() => {
+                  window.__privacyLockHeld = false;
+                  window.__privacyLockRelease = null;
+                  navigator.locks.request(
+                    'txt-auto-replace.remote-consent.v1', {mode:'exclusive'},
+                    async () => {
+                      window.__privacyLockHeld = true;
+                      await new Promise(resolve => {
+                        window.__privacyLockRelease = resolve;
+                      });
+                    }
+                  );
+                }""")
+                left.wait_for_function("() => window.__privacyLockHeld === true",
+                                       timeout=10000)
+                right.evaluate("""() => {
+                  window.__privacySecondEntered = false;
+                  navigator.locks.request(
+                    'txt-auto-replace.remote-consent.v1', {mode:'exclusive'},
+                    () => { window.__privacySecondEntered = true; }
+                  );
+                }""")
+                right.wait_for_timeout(250)
+                assert not right.evaluate(
+                    "() => window.__privacySecondEntered"
+                ), "two extension Options windows entered exclusive lock together"
+                left.evaluate("() => window.__privacyLockRelease()")
+                right.wait_for_function("() => window.__privacySecondEntered === true",
+                                        timeout=10000)
+                print("TWO_OPTIONS_WEBLOCK_EXCLUSIVE_PASS", flush=True)
+                left.close()
+                right.close()
             finally:
                 context.close()
 

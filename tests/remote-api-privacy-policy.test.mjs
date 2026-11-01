@@ -181,6 +181,7 @@ test("bulk settings failure after consent grant reports the partial write and re
     }),
     RemotePrivacyPolicy: policy,
     state,
+    navigator: { locks: { request: async (_name, _options, fn) => fn() } },
     storageSet: async (data) => {
       const names = Object.keys(data);
       writes.push(names[0]);
@@ -200,4 +201,108 @@ test("bulk settings failure after consent grant reports the partial write and re
   assert.deepEqual(state.runtimeSettings.remoteProcessing, consent);
   assert.equal(renderCount, 1);
   assert.equal(savedHistory, 0);
+});
+
+
+test("two Options windows serialize explicit consent and reject an outdated regrant", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const options = source("options.js");
+  const start = options.indexOf("const preparePayloadWithCurrentConsent = async () => {");
+  const end = options.indexOf("const saveAllAndNotify = async () => {", start);
+  assert.ok(start >= 0 && end > start);
+  const actualSaveSource = options.slice(start, end);
+  const approved = { enabled: true, allowedDomains: ["private.example"] };
+  const revoke = { enabled: false, allowedDomains: [] };
+  const lateGrant = { enabled: true, allowedDomains: ["private.example", "new.example"] };
+  const shared = { consent: approved, writes: [], maxConcurrent: 0, concurrent: 0 };
+  let lastLock = Promise.resolve();
+  const locks = {
+    request(name, options, callback) {
+      assert.equal(name, "txt-auto-replace.remote-consent.v1");
+      assert.equal(options.mode, "exclusive");
+      const run = lastLock.then(async () => {
+        shared.concurrent++;
+        shared.maxConcurrent = Math.max(shared.maxConcurrent, shared.concurrent);
+        try { return await callback(); } finally { shared.concurrent--; }
+      });
+      lastLock = run.catch(() => {});
+      return run;
+    },
+  };
+  const makeWindow = (draft) => {
+    const state = {
+      remoteConsentBaseline: approved,
+      runtimeSettings: { remoteProcessing: draft },
+    };
+    const context = {
+      navigator: { locks },
+      RemotePrivacyPolicy: policy,
+      state,
+      REMOTE_CONSENT_STORAGE_KEY: "remoteProcessingConsentV1",
+      STORAGE_KEY: "bundleOverrideSettingsV1",
+      buildPayload: () => ({
+        roots: [], runtime_settings: { remoteProcessing: state.runtimeSettings.remoteProcessing },
+      }),
+      async storageGet() {
+        return shared.consent;
+      },
+      async storageSet(data) {
+        if ("remoteProcessingConsentV1" in data) {
+          // Widen the vulnerable read-to-write window. Without an exclusive
+          // lock both writers may see the original approved policy.
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          shared.consent = data.remoteProcessingConsentV1;
+          shared.writes.push(JSON.parse(JSON.stringify(shared.consent)));
+        }
+      },
+      applyPersistedPayloadToState() {},
+      renderApp() {},
+      async savePayloadHistory() {},
+      markPersistedPayloadSaved() {},
+    };
+    return runInNewContext(actualSaveSource + "\npersistAllWithConsent;", context);
+  };
+  const revokeSave = makeWindow(revoke);
+  const staleGrantSave = makeWindow(lateGrant);
+  const [first, second] = await Promise.allSettled([revokeSave(), staleGrantSave()]);
+  assert.equal(first.status, "fulfilled");
+  assert.equal(second.status, "rejected");
+  assert.match(second.reason.message, /別の設定画面で外部送信許可が変更/);
+  assert.deepEqual(shared.consent, revoke);
+  assert.deepEqual(shared.writes, [revoke]);
+  assert.equal(shared.maxConcurrent, 1);
+});
+
+test("when Web Locks is absent, explicit consent edits fail closed but ordinary saves work", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const options = source("options.js");
+  const start = options.indexOf("const preparePayloadWithCurrentConsent = async () => {");
+  const end = options.indexOf("const saveAllAndNotify = async () => {", start);
+  const actualSaveSource = options.slice(start, end);
+  const prior = { enabled: false, allowedDomains: [] };
+  const writes = [];
+  const state = { remoteConsentBaseline: prior,
+    runtimeSettings: { remoteProcessing: { enabled: true, allowedDomains: ["private.example"] } } };
+  const context = {
+    navigator: {},
+    state,
+    RemotePrivacyPolicy: policy,
+    REMOTE_CONSENT_STORAGE_KEY: "remoteProcessingConsentV1",
+    STORAGE_KEY: "bundleOverrideSettingsV1",
+    buildPayload: () => ({ runtime_settings: { remoteProcessing: state.runtimeSettings.remoteProcessing } }),
+    storageGet: async () => prior,
+    storageSet: async (data) => { writes.push(Object.keys(data)[0]); },
+    applyPersistedPayloadToState() {},
+    renderApp() {},
+    async savePayloadHistory() {},
+    markPersistedPayloadSaved() {},
+  };
+  const persist = runInNewContext(actualSaveSource + "\npersistAllWithConsent;", context);
+  await assert.rejects(persist(), /安全な排他保存を利用できません/);
+  assert.deepEqual(writes, [], "unsupported lock must never grant external transmission");
+
+  state.runtimeSettings.remoteProcessing = prior;
+  await persist();
+  assert.deepEqual(writes, ["bundleOverrideSettingsV1"],
+    "ordinary settings remain usable without Web Locks");
 });

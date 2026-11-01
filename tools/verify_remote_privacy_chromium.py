@@ -52,11 +52,12 @@ def main():
                     route.fulfill(status=503, content_type="application/json",
                                   body='{"error":"synthetic positive-control response"}')
 
+                # Playwright runs the most recently registered matching route
+                # first. Keep the catch-all below the synthetic allowlist.
+                context.route("https://**/*", lambda route: route.abort())
                 context.route(f"https://{FIXTURE_HOST}/**", fixture)
                 context.route(f"https://{OTHER_HOST}/**", fixture)
                 context.route("https://api.kinotch.workers.dev/**", remote)
-                # Other web traffic is not part of this isolated fixture.
-                context.route("https://**/*", lambda route: route.abort())
 
                 service_worker = (
                     context.service_workers[0] if context.service_workers

@@ -34,7 +34,7 @@ def main():
         shutil.copytree(ROOT, extension_root, ignore=shutil.ignore_patterns(
             ".git", "node_modules", ".phase4-upstream", ".phase45b-upstream",
             "phase4-generated", "phase45b-generated", "__pycache__"
-        ))
+        ), ignore_dangling_symlinks=True)
         manifest_file = extension_root / "manifest.json"
         manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
         js = manifest["content_scripts"][0]["js"]

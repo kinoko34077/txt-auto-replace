@@ -2840,21 +2840,37 @@
   };
 
   const persistAllWithConsent = async () => {
-    const { payload, consentChange } = await preparePayloadWithCurrentConsent();
-    // A rule/Popup/background save can never carry remote consent because
-    // the bundle and saved history deliberately omit it.
+    // All Options pages share one chrome-extension:// origin. The Web Locks
+    // exclusive lock spans the authoritative read/reconcile/permission write,
+    // never the slower, non-authoritative dictionary/history persistence.
+    // Re-reading inside the lock prevents two explicit writers from both
+    // passing the same stale baseline check and silently re-granting access.
+    const commitConsent = async (hasExclusiveLock) => {
+      const { payload, consentChange } = await preparePayloadWithCurrentConsent();
+      if (consentChange) {
+        if (!hasExclusiveLock) {
+          // Do not pretend a non-atomic get/set is safe when Web Locks is
+          // unavailable. Ordinary non-consent settings remain saveable.
+          throw new Error("外部送信許可の安全な排他保存を利用できません。ブラウザーの対応状況を確認してください。");
+        }
+        await storageSet({
+          [REMOTE_CONSENT_STORAGE_KEY]: payload.runtime_settings.remoteProcessing
+        });
+        // This committed permission must remain visible even if the later
+        // unrelated bundle save fails.
+        state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(
+          payload.runtime_settings.remoteProcessing
+        );
+      }
+      return { payload, consentChange };
+    };
+    const locks = globalThis.navigator?.locks;
+    const { payload, consentChange } = typeof locks?.request === "function"
+      ? await locks.request("txt-auto-replace.remote-consent.v1", { mode: "exclusive" },
+        () => commitConsent(true))
+      : await commitConsent(false);
+    // Bundle and history never carry authority to re-enable remote egress.
     const bundle = RemotePrivacyPolicy.redactForExport(payload);
-    if (consentChange) {
-      // Minimize cross-tab race: commit small explicit consent first, rather
-      // than after a potentially large dictionary write and render.
-      await storageSet({
-        [REMOTE_CONSENT_STORAGE_KEY]: payload.runtime_settings.remoteProcessing
-      });
-      // The consent write is already live even if an unrelated bulk write fails.
-      state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(
-        payload.runtime_settings.remoteProcessing
-      );
-    }
     try {
       // Bulk persistence never carries authority to re-enable remote text egress.
       await storageSet({ [STORAGE_KEY]: bundle });

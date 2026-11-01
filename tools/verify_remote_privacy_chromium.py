@@ -7,6 +7,7 @@ content or real remote API traffic is generated during the test.
 import json
 import shutil
 import tempfile
+import time
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -54,6 +55,9 @@ def main():
                     f"--load-extension={extension_root}",
                     "--no-sandbox",
                     "--disable-dev-shm-usage",
+                    # Defense in depth: even a future extension service-worker
+                    # request must not reach the real remote transform API.
+                    "--host-resolver-rules=MAP api.kinotch.workers.dev ~NOTFOUND",
                 ],
                 ignore_https_errors=True,
                 service_workers="allow",
@@ -180,6 +184,24 @@ def main():
                         + json.dumps(diagnostic, ensure_ascii=False)
                     )
                 print("OPTIN_EXACT_HOST_POST_INTERCEPTED_PASS", len(requests), flush=True)
+
+                # Positive control for the SAME TAB's dynamic DOM mutation.
+                # Without this, a later revoked-tab zero-POST result is
+                # vacuous if the mutation pipeline never sends remotely.
+                mutation_before = len(requests)
+                allowed.evaluate("""() => {
+                  const node=document.createElement('p');
+                  node.id='allowed-positive-mutation';
+                  node.textContent='学校の台風。奇跡が続く。';
+                  document.querySelector('main').appendChild(node);
+                }""")
+                deadline = time.monotonic() + 12.0
+                while len(requests) == mutation_before and time.monotonic() < deadline:
+                    allowed.wait_for_timeout(250)
+                assert len(requests) > mutation_before, (
+                    "allowed open tab mutation did not trigger a remote POST"
+                )
+                print("OPTIN_EXISTING_TAB_MUTATION_POST_INTERCEPTED_PASS", flush=True)
                 first_count = len(requests)
 
                 # Another HTTPS hostname does not inherit permission.
@@ -218,6 +240,9 @@ def main():
                     "() => /學校|颱風|奇蹟/.test(document.querySelector('#after-revoke-mutation')?.textContent||'')",
                     timeout=30000,
                 )
+                # A local DOM conversion may finish earlier than the remote
+                # batching delay. Wait beyond the positive-control interval.
+                allowed.wait_for_timeout(6500)
                 assert len(requests)==pre_mutation, (
                     "already-open tab emitted remote request after revoke event"
                 )

@@ -2850,11 +2850,30 @@
       await storageSet({
         [REMOTE_CONSENT_STORAGE_KEY]: payload.runtime_settings.remoteProcessing
       });
+      // The consent write is already live even if an unrelated bulk write fails.
+      state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(
+        payload.runtime_settings.remoteProcessing
+      );
     }
-    // Bulk persistence never carries authority to re-enable remote text egress.
-    await storageSet({ [STORAGE_KEY]: bundle });
-    // Advance baseline after the actual consent write, *before* later
-    // history/UI operations which might fail independently.
+    try {
+      // Bulk persistence never carries authority to re-enable remote text egress.
+      await storageSet({ [STORAGE_KEY]: bundle });
+    } catch (error) {
+      if (consentChange) {
+        // Never report a generic all-or-nothing failure after a permission
+        // change has been committed. Keep the visible consent state aligned.
+        state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize(
+          payload.runtime_settings.remoteProcessing
+        );
+        renderApp();
+        throw new Error(
+          "外部送信許可の変更は反映されましたが、その他の設定は保存できませんでした: " +
+          (error?.message ?? "不明な保存エラー")
+        );
+      }
+      throw error;
+    }
+    // Advance baseline for unchanged/external consent after bundle success.
     state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(
       payload.runtime_settings.remoteProcessing
     );

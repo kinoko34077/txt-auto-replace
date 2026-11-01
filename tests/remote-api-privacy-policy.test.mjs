@@ -155,3 +155,49 @@ test("privacy module loads before content and options, visible UI is explicit", 
   assert.match(siteConsent, /RemotePrivacyPolicy\.normalizeHostname\(runtimeRemoteDomainInput/);
   assert.doesNotMatch(siteConsent, /getActiveTab\(/);
 });
+
+
+test("bulk settings failure after consent grant reports the partial write and retains authoritative consent", async () => {
+  // Exercise the actual Options persistence function with deliberately failed
+  // storage, rather than merely grepping the code or mocking the policy API.
+  const { runInNewContext } = await import("node:vm");
+  const options = source("options.js");
+  const first = options.indexOf("const persistAllWithConsent = async () => {");
+  const last = options.indexOf("const saveAllAndNotify = async () => {", first);
+  assert.ok(first >= 0 && last > first, "Options persistence contract must be identifiable");
+  const persistSource = options.slice(first, last);
+  const consent = { enabled: true, allowedDomains: ["private.example"] };
+  const state = {
+    remoteConsentBaseline: { enabled: false, allowedDomains: [] },
+    runtimeSettings: { remoteProcessing: { enabled: false, allowedDomains: [] } },
+  };
+  const writes = [];
+  let renderCount = 0;
+  let savedHistory = 0;
+  const context = {
+    preparePayloadWithCurrentConsent: async () => ({
+      payload: { runtime_settings: { remoteProcessing: consent }, roots: [] },
+      consentChange: true,
+    }),
+    RemotePrivacyPolicy: policy,
+    state,
+    storageSet: async (data) => {
+      const names = Object.keys(data);
+      writes.push(names[0]);
+      if (names[0] === "bundleOverrideSettingsV1") throw new Error("quota");
+    },
+    REMOTE_CONSENT_STORAGE_KEY: "remoteProcessingConsentV1",
+    STORAGE_KEY: "bundleOverrideSettingsV1",
+    applyPersistedPayloadToState() { throw new Error("must not treat bundle as saved"); },
+    renderApp() { renderCount++; },
+    async savePayloadHistory() { savedHistory++; },
+    markPersistedPayloadSaved() { throw new Error("must not mark bundle saved"); },
+  };
+  const persist = runInNewContext(persistSource + "\npersistAllWithConsent;", context);
+  await assert.rejects(persist(), /外部送信許可の変更は反映されましたが、その他の設定は保存できませんでした: quota/);
+  assert.deepEqual(writes, ["remoteProcessingConsentV1", "bundleOverrideSettingsV1"]);
+  assert.deepEqual(state.remoteConsentBaseline, consent);
+  assert.deepEqual(state.runtimeSettings.remoteProcessing, consent);
+  assert.equal(renderCount, 1);
+  assert.equal(savedHistory, 0);
+});

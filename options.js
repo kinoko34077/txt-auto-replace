@@ -3,6 +3,7 @@
 
   const TRANSFORM_BUNDLES_PATH = "transform-bundles.json5";
   const STORAGE_KEY = "bundleOverrideSettingsV1";
+  const REMOTE_CONSENT_STORAGE_KEY = "remoteProcessingConsentV1";
   const DIAGNOSTIC_UI_STATE_KEY = "diagnosticUiStateV1";
   const BUNDLE_UI_STATE_KEY = "bundleOptionsUiStateV1";
   const SAVE_HISTORY_STORAGE_KEY = "bundleSavedPayloadHistoryV1";
@@ -23,6 +24,7 @@
   const DEFAULT_RUNTIME_SETTINGS = Object.freeze({
     skipEditableInputs: false,
     globalEnabled: true,
+    remoteProcessing: Object.freeze({ enabled: false, allowedDomains: Object.freeze([]) }),
     ruby: Object.freeze({
       enabled: true,
       hidden: false,
@@ -41,6 +43,7 @@
   });
   const UiStrings = globalThis.ExtensionUiStrings;
   const TransformShared = globalThis.TransformShared;
+  const RemotePrivacyPolicy = globalThis.RemotePrivacyPolicy;
   const TransformEngine = globalThis.TransformEngine;
   const StructuredDictionary = globalThis.StructuredDictionary;
 
@@ -55,6 +58,7 @@
     structuredDictionary: StructuredDictionary.createEmptyDictionary(),
     structuredSyncIssues: [],
     runtimeSettings: { ...DEFAULT_RUNTIME_SETTINGS },
+    remoteConsentBaseline: { enabled: false, allowedDomains: [] },
     disabledSites: { ...DEFAULT_DISABLED_SITES },
     pageRubySettings: { ...DEFAULT_PAGE_RUBY_SETTINGS },
     popupBundleId: DEFAULT_POPUP_BUNDLE_ID,
@@ -123,6 +127,10 @@
   const exportYamlButton = document.getElementById("export-yaml");
   const importFileInput = document.getElementById("import-file");
   const runtimeGlobalEnabledInput = document.getElementById("runtime-global-enabled");
+  const runtimeRemoteEnabledInput = document.getElementById("runtime-remote-enabled");
+  const runtimeRemoteAddCurrentButton = document.getElementById("runtime-remote-add-current");
+  const runtimeRemoteDomainInput = document.getElementById("runtime-remote-domain");
+  const runtimeRemoteSitesRoot = document.getElementById("runtime-remote-sites");
   const runtimeSkipEditableInput = document.getElementById("runtime-skip-editable");
   const tokenizerInput = document.getElementById("tokenizer-input");
   const tokenizerRunButton = document.getElementById("tokenizer-run");
@@ -735,6 +743,7 @@
     return {
       skipEditableInputs: value?.skipEditableInputs === true,
       globalEnabled: value?.globalEnabled !== false,
+      remoteProcessing: RemotePrivacyPolicy.normalize(value?.remoteProcessing),
       ruby: TransformShared.normalizeRubyRuntimeSettings(value?.ruby)
     };
   };
@@ -2694,7 +2703,10 @@
     state.structuredDictionary = StructuredDictionary.normalizeDictionary(
       snapshot.structuredDictionary ?? StructuredDictionary.createFromRoots(state.roots)
     );
+    // Undo/Redo must not silently grant or revoke consent via an old history snapshot.
+    const activeConsent = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
     state.runtimeSettings = cloneValue(snapshot.runtimeSettings ?? DEFAULT_RUNTIME_SETTINGS);
+    state.runtimeSettings.remoteProcessing = activeConsent;
     state.disabledSites = cloneValue(snapshot.disabledSites ?? DEFAULT_DISABLED_SITES);
     state.pageRubySettings = cloneValue(snapshot.pageRubySettings ?? DEFAULT_PAGE_RUBY_SETTINGS);
     state.popupBundleId = `${snapshot.popupBundleId ?? DEFAULT_POPUP_BUNDLE_ID}`.trim() || DEFAULT_POPUP_BUNDLE_ID;
@@ -2809,15 +2821,86 @@
     state.structuredDictionary = extractStructuredDictionary(payload, state.roots);
   };
 
-  const saveAllAndNotify = async () => {
+  const preparePayloadWithCurrentConsent = async () => {
     const payload = buildPayload();
+    // Only this dedicated key is authoritative for external transmission.
+    const latestConsent = RemotePrivacyPolicy.normalize(
+      await storageGet(REMOTE_CONSENT_STORAGE_KEY)
+    );
+    const decision = RemotePrivacyPolicy.reconcileForSave(
+      state.remoteConsentBaseline,
+      payload.runtime_settings.remoteProcessing,
+      latestConsent
+    );
+    if (!decision.ok) {
+      throw new Error("別の設定画面で外部送信許可が変更されました。許可を確認してから再度保存してください。");
+    }
+    payload.runtime_settings.remoteProcessing = decision.policy;
+    return { payload, consentChange: decision.reason === "EXPLICIT_CONSENT_EDIT" };
+  };
+
+  const persistAllWithConsent = async () => {
+    // All Options pages share one chrome-extension:// origin. The Web Locks
+    // exclusive lock spans the authoritative read/reconcile/permission write,
+    // never the slower, non-authoritative dictionary/history persistence.
+    // Re-reading inside the lock prevents two explicit writers from both
+    // passing the same stale baseline check and silently re-granting access.
+    const commitConsent = async (hasExclusiveLock) => {
+      const { payload, consentChange } = await preparePayloadWithCurrentConsent();
+      if (consentChange) {
+        if (!hasExclusiveLock) {
+          // Do not pretend a non-atomic get/set is safe when Web Locks is
+          // unavailable. Ordinary non-consent settings remain saveable.
+          throw new Error("外部送信許可の安全な排他保存を利用できません。ブラウザーの対応状況を確認してください。");
+        }
+        await storageSet({
+          [REMOTE_CONSENT_STORAGE_KEY]: payload.runtime_settings.remoteProcessing
+        });
+        // This committed permission must remain visible even if the later
+        // unrelated bundle save fails.
+        state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(
+          payload.runtime_settings.remoteProcessing
+        );
+      }
+      return { payload, consentChange };
+    };
+    const locks = globalThis.navigator?.locks;
+    const { payload, consentChange } = typeof locks?.request === "function"
+      ? await locks.request("txt-auto-replace.remote-consent.v1", { mode: "exclusive" },
+        () => commitConsent(true))
+      : await commitConsent(false);
+    // Bundle and history never carry authority to re-enable remote egress.
+    const bundle = RemotePrivacyPolicy.redactForExport(payload);
+    try {
+      // Bulk persistence never carries authority to re-enable remote text egress.
+      await storageSet({ [STORAGE_KEY]: bundle });
+    } catch (error) {
+      if (consentChange) {
+        // Never report a generic all-or-nothing failure after a permission
+        // change has been committed. Keep the visible consent state aligned.
+        state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize(
+          payload.runtime_settings.remoteProcessing
+        );
+        renderApp();
+        throw new Error(
+          "外部送信許可の変更は反映されましたが、その他の設定は保存できませんでした: " +
+          (error?.message ?? "不明な保存エラー")
+        );
+      }
+      throw error;
+    }
+    // Advance baseline for unchanged/external consent after bundle success.
+    state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(
+      payload.runtime_settings.remoteProcessing
+    );
     applyPersistedPayloadToState(payload);
     renderApp();
-    await storageSet({
-      [STORAGE_KEY]: payload
-    });
-    await savePayloadHistory(payload);
+    await savePayloadHistory(bundle);
     markPersistedPayloadSaved(payload, { source: "save" });
+  };
+
+  const saveAllAndNotify = async () => {
+    await persistAllWithConsent();
     try {
       await notifyRuntimeSettingsApplied();
       setStatus("設定を保存しました。現在のタブへ反映しました。", "success");
@@ -2854,14 +2937,7 @@
   };
 
   const saveAll = async () => {
-    const payload = buildPayload();
-    applyPersistedPayloadToState(payload);
-    renderApp();
-    await storageSet({
-      [STORAGE_KEY]: payload
-    });
-    await savePayloadHistory(payload);
-    markPersistedPayloadSaved(payload, { source: "save" });
+    await persistAllWithConsent();
     setStatus("設定を保存しました。表示タブを再読み込みしてください。", "success");
   };
 
@@ -7142,6 +7218,33 @@
   const renderRuntimeSettings = () => {
     runtimeGlobalEnabledInput.checked = state.runtimeSettings.globalEnabled !== false;
     runtimeSkipEditableInput.checked = state.runtimeSettings.skipEditableInputs === true;
+    const policy = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
+    runtimeRemoteEnabledInput.checked = policy.enabled;
+    runtimeRemoteSitesRoot.textContent = "";
+    for (const domain of policy.allowedDomains) {
+      const row = document.createElement("div");
+      row.className = "simple-row";
+      const label = document.createElement("span");
+      label.textContent = domain;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "ghost";
+      remove.textContent = "許可を削除";
+      remove.setAttribute("aria-label", domain + " のリモート許可を削除");
+      remove.addEventListener("click", () => {
+        runTrackedMutation("リモート許可サイト削除", () => {
+          state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize({
+            ...state.runtimeSettings.remoteProcessing,
+            allowedDomains: policy.allowedDomains.filter((item) => item !== domain)
+          });
+        });
+      });
+      row.append(label, remove);
+      runtimeRemoteSitesRoot.appendChild(row);
+    }
+    if (!policy.allowedDomains.length) {
+      runtimeRemoteSitesRoot.textContent = "許可サイト未登録（全サイトでローカル処理）";
+    }
   };
 
   const renderHotkeys = () => {
@@ -7266,12 +7369,12 @@
   };
 
   const exportSettingsAsJson = () => {
-    downloadText("transform-settings.json", `${JSON.stringify(buildPayload(), null, 2)}\n`, "application/json");
+    downloadText("transform-settings.json", `${JSON.stringify(RemotePrivacyPolicy.redactForExport(buildPayload()), null, 2)}\n`, "application/json");
     setStatus("JSON を書き出しました。", "success");
   };
 
   const exportSettingsAsYaml = () => {
-    downloadText("transform-settings.yaml", `${serializeYamlObject(buildPayload())}\n`, "text/yaml");
+    downloadText("transform-settings.yaml", `${serializeYamlObject(RemotePrivacyPolicy.redactForExport(buildPayload()))}\n`, "text/yaml");
     setStatus("YAML を書き出しました。", "success");
   };
 
@@ -7289,8 +7392,14 @@
 
     runTrackedMutation(`置換読込: ${fileName}`, () => {
       const importedRoots = normalizeImportedRoots(parsed);
+      // Imported JSON/YAML is configuration data, not an explicit consent grant.
+      // Retain this installation's current remote policy; do not silently turn
+      // on external transmission from somebody else's shared settings file.
+      const currentRemoteConsent = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
       state.roots = importedRoots;
-      state.runtimeSettings = extractRuntimeSettings(parsed);
+      state.runtimeSettings = RemotePrivacyPolicy.preserveConsentOnImport(
+        extractRuntimeSettings(parsed), currentRemoteConsent
+      );
       state.disabledSites = extractDisabledSites(parsed);
       state.pageRubySettings = extractPageRubySettings(parsed);
       state.popupBundleId = extractPopupBundleId(parsed);
@@ -7298,7 +7407,7 @@
       ensurePopupBundleRoot(state.roots);
       state.structuredDictionary = extractStructuredDictionary(parsed, state.roots);
     });
-    setStatus(`${fileName} を読み込みました。`, "success");
+    setStatus(`${fileName} を読み込みました。外部APIへの送信許可は読み込まず、現在の許可設定を維持しました。`, "success");
   };
 
   const initialize = async () => {
@@ -7318,11 +7427,12 @@
       baseRoots.push(normalizeManifestDefinition(bundle, definition));
     }
 
-    const [storedPayload, storedDiagnosticUiState, storedBundleUiState, storedSavedPayloadHistory] = await Promise.all([
+    const [storedPayload, storedDiagnosticUiState, storedBundleUiState, storedSavedPayloadHistory, storedRemoteConsent] = await Promise.all([
       storageGet(STORAGE_KEY),
       storageGet(DIAGNOSTIC_UI_STATE_KEY),
       storageGet(BUNDLE_UI_STATE_KEY),
-      storageGet(SAVE_HISTORY_STORAGE_KEY)
+      storageGet(SAVE_HISTORY_STORAGE_KEY),
+      storageGet(REMOTE_CONSENT_STORAGE_KEY)
     ]);
     let currentRoots = cloneValue(baseRoots);
     const shouldSeedStorage = !hasStoredRootsPayload(storedPayload);
@@ -7333,6 +7443,8 @@
     state.baseRoots = cloneValue(baseRoots);
     state.roots = currentRoots;
     state.runtimeSettings = extractRuntimeSettings(storedPayload);
+    state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize(storedRemoteConsent);
+    state.remoteConsentBaseline = RemotePrivacyPolicy.normalize(storedRemoteConsent);
     state.disabledSites = extractDisabledSites(storedPayload);
     state.pageRubySettings = extractPageRubySettings(storedPayload);
     state.popupBundleId = extractPopupBundleId(storedPayload);
@@ -7507,6 +7619,33 @@
       state.runtimeSettings.globalEnabled = runtimeGlobalEnabledInput.checked;
     }, { render: false });
     setStatus("拡張全体の有効状態を更新しました。保存すると即時反映されます。", "info");
+  });
+
+  runtimeRemoteEnabledInput?.addEventListener("change", () => {
+    runTrackedMutation("remote: 明示許可", () => {
+      state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize({
+        ...state.runtimeSettings.remoteProcessing,
+        enabled: runtimeRemoteEnabledInput.checked
+      });
+    }, { render: false });
+    setStatus("外部API送信設定を変更しました。保存後、許可サイトの開いているタブにも反映されます。", "info");
+  });
+
+  runtimeRemoteAddCurrentButton?.addEventListener("click", () => {
+    const domain = RemotePrivacyPolicy.normalizeHostname(runtimeRemoteDomainInput?.value ?? "");
+    if (!domain) {
+      setStatus("HTTPSサイトのホスト名だけを入力してください（例: example.com）。", "warning");
+      return;
+    }
+    runTrackedMutation("remote: サイト追加", () => {
+      const existing = RemotePrivacyPolicy.normalize(state.runtimeSettings.remoteProcessing);
+      state.runtimeSettings.remoteProcessing = RemotePrivacyPolicy.normalize({
+        ...existing,
+        allowedDomains: [...existing.allowedDomains, domain]
+      });
+    });
+    if (runtimeRemoteDomainInput) runtimeRemoteDomainInput.value = "";
+    setStatus(domain + " を許可候補に追加しました。外部送信するには明示許可をONにして保存してください。", "info");
   });
 
   openShortcutsButton?.addEventListener("click", async () => {

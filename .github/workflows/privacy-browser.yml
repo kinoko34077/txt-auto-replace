@@ -1,0 +1,32 @@
+name: Verify Chrome extension privacy boundary
+
+on:
+  pull_request:
+    paths:
+      - "content.js"
+      - "options.js"
+      - "popup.js"
+      - "background.js"
+      - "remote-api-privacy-policy.js"
+      - "remote-api-compatibility.js"
+      - "text-api-client.js"
+      - "manifest.json"
+      - "tools/verify_remote_privacy_chromium.py"
+      - ".github/workflows/privacy-browser.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  privacy-chromium:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install isolated Chromium runner
+        run: |
+          python3 -m pip install --quiet playwright
+          python3 -m playwright install chromium
+      - name: Verify MV3 local-only and exact-host consent without real egress
+        run: python3 tools/verify_remote_privacy_chromium.py

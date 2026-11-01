@@ -371,6 +371,18 @@
           <input id="runtime-skip-editable" type="checkbox">
           <span>入力中のテキストでは置換しない</span>
         </label>
+        <label class="toggle">
+          <input id="runtime-remote-enabled" type="checkbox">
+          <span>外部APIによる文字列変換を許可する（既定OFF・許可サイト限定）</span>
+        </label>
+        <p>許可サイトでは変換対象の本文テキストが外部の api.kinotch.workers.dev へ送信されます。HTML全体ではなく本文の文字列断片が対象です。許可していないサイトではローカル処理します。</p>
+        <div class="panel-actions">
+          <label for="runtime-remote-domain">許可するHTTPSサイトのホスト名</label>
+          <input id="runtime-remote-domain" type="text" inputmode="url" autocomplete="off" placeholder="example.com" aria-describedby="runtime-remote-domain-help">
+          <button id="runtime-remote-add-current" type="button" class="secondary">入力したホスト名を追加</button>
+        </div>
+        <p id="runtime-remote-domain-help">サイトのホスト名だけを指定します。サブドメインは個別指定です。登録後、上の明示許可をONにして設定を保存してください。</p>
+        <div id="runtime-remote-sites" class="simple-list" aria-label="リモート処理を許可したサイト"></div>
       </div>
     </section>
 
@@ -466,6 +478,7 @@
   <script src="lib/json5.min.js"></script>
   <script src="lib/kuromoji.js"></script>
   <script src="transform-shared.js"></script>
+  <script src="remote-api-privacy-policy.js"></script>
   <script src="structured-dictionary.js"></script>
   <script src="transform-engine.js"></script>
   <script src="ui-strings.js"></script>

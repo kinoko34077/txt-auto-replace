@@ -1094,7 +1094,7 @@
     const url = chrome.runtime.getURL(path) + `?t=${Date.now()}`;
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
-      throw new Error(`${path} 驍ｵ・ｺ繝ｻ・ｮ鬮ｫ・ｱ繝ｻ・ｭ鬮ｴ雜｣・ｽ・ｼ驍ｵ・ｺ繝ｻ・ｫ髯樊ｻゑｽｽ・ｱ髫ｰ・ｨ陷会ｽｱ繝ｻ・ｰ驍ｵ・ｺ繝ｻ・ｾ驍ｵ・ｺ陷会ｽｱ隨ｳ繝ｻ ${response.status}`);
+      throw new Error(`${path} の読み込みに失敗しました: ${response.status}`);
     }
 
     return JSON5.parse(await response.text());
@@ -1103,7 +1103,7 @@
   const buildTokenizer = () => {
     return new Promise((resolve, reject) => {
       if (typeof kuromoji === "undefined") {
-        reject(new Error("kuromoji ????????????"));
+        reject(new Error("kuromoji が読み込まれていません。"));
         return;
       }
 
@@ -1127,7 +1127,7 @@
         const url = new URL(filename, new URL(DICT_PATH, window.location.href)).href;
         const response = await fetch(url, { cache: "no-store" });
         if (!response.ok) {
-          throw new Error(`鬮ｴ蜿厄ｽｨ髮・ｽｶ讙趣ｽｹ譎・ｽｼ譁撰ｼ憺Δ・ｧ繝ｻ・､驛｢譎｢・ｽ・ｫ髯ｷ・ｿ鬮｢ﾂ繝ｻ・ｾ隲､諛ｶ・ｽ・､繝ｻ・ｱ髫ｰ・ｨ郢晢ｽｻ ${response.status} ${url}`);
+          throw new Error(`辞書ファイルの取得に失敗しました: ${response.status} ${url}`);
         }
         await response.arrayBuffer();
         return url;
@@ -1144,7 +1144,7 @@
             }
 
             if (!tokenizer) {
-              reject(new Error("tokenizer ?????????????????????????"));
+              reject(new Error("tokenizer を初期化できませんでした。"));
               return;
             }
 
@@ -1962,7 +1962,7 @@
       }
     }
 
-    throw new Error(`YAML 驍ｵ・ｺ繝ｻ・ｮ鬮ｯ・ｦ陟暮ｯ会ｽｽ蟶晏專繝ｻ・｣鬯ｩ・･陋ｹ・ｻ邵ｲ蝣､・ｸ・ｺ鬮ｦ・ｪ遶擾ｽｪ驍ｵ・ｺ陝ｶ蜻ｻ・ｽ繝ｻ ${text}`);
+    throw new Error(`YAML の行を解釈できません: ${text}`);
   };
 
   const normalizeYamlKey = (key) => parseYamlScalar(key);
@@ -7386,7 +7386,7 @@
       try {
         parsed = parseYamlDocument(text);
       } catch (yamlError) {
-        throw new Error(`鬮ｫ・ｱ繝ｻ・ｭ鬮ｴ雜｣・ｽ・ｼ驍ｵ・ｺ繝ｻ・ｫ髯樊ｻゑｽｽ・ｱ髫ｰ・ｨ陷会ｽｱ繝ｻ・ｰ驍ｵ・ｺ繝ｻ・ｾ驍ｵ・ｺ陷会ｽｱ隨ｳ繝ｻ ${yamlError.message}`);
+        throw new Error(`JSON / YAML として読み込めませんでした: ${yamlError.message}`);
       }
     }
 
